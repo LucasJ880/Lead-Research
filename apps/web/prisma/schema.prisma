@@ -1,0 +1,360 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ─────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  viewer
+}
+
+enum SourceType {
+  bid_portal
+  municipal
+  school_board
+  housing_authority
+  university
+  hospital
+  construction
+  aggregator
+  other
+}
+
+enum CrawlFrequency {
+  hourly
+  daily
+  weekly
+  manual
+}
+
+enum RunStatus {
+  pending
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum OpportunityStatus {
+  open
+  closed
+  awarded
+  cancelled
+  archived
+  unknown
+}
+
+enum OrgType {
+  government
+  education
+  healthcare
+  housing
+  commercial
+  non_profit
+  other
+}
+
+enum AlertType {
+  new_match
+  closing_soon
+  source_error
+  digest
+}
+
+enum NotifyFrequency {
+  immediate
+  daily
+  weekly
+}
+
+enum TriggerType {
+  schedule
+  manual
+  retry
+}
+
+// ─── Users ─────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String   @db.VarChar(255)
+  role         UserRole @default(admin)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  notes         Note[]
+  savedSearches SavedSearch[]
+  alerts        Alert[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+// ─── Sources ───────────────────────────────────────────────
+
+model Source {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String         @db.VarChar(255)
+  sourceType       SourceType     @map("source_type")
+  baseUrl          String         @map("base_url")
+  country          String         @db.VarChar(2)
+  region           String?        @db.VarChar(100)
+  city             String?        @db.VarChar(255)
+  crawlConfig      Json           @default("{}") @map("crawl_config")
+  frequency        CrawlFrequency @default(daily)
+  isActive         Boolean        @default(true) @map("is_active")
+  lastCrawledAt    DateTime?      @map("last_crawled_at") @db.Timestamptz()
+  lastRunStatus    RunStatus?     @map("last_run_status")
+  categoryTags     String[]       @default([]) @map("category_tags")
+  notes            String?
+  robotsTxtCache   String?        @map("robots_txt_cache")
+  robotsTxtFetched DateTime?      @map("robots_txt_fetched_at") @db.Timestamptz()
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+
+  sourceRuns    SourceRun[]
+  opportunities Opportunity[]
+
+  @@index([isActive], name: "idx_sources_active")
+  @@index([country, region], name: "idx_sources_country_region")
+  @@index([sourceType], name: "idx_sources_type")
+  @@map("sources")
+}
+
+// ─── Source Runs ───────────────────────────────────────────
+
+model SourceRun {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceId              String      @map("source_id") @db.Uuid
+  status                RunStatus   @default(pending)
+  startedAt             DateTime?   @map("started_at") @db.Timestamptz()
+  completedAt           DateTime?   @map("completed_at") @db.Timestamptz()
+  durationMs            Int?        @map("duration_ms")
+  pagesCrawled          Int         @default(0) @map("pages_crawled")
+  opportunitiesFound    Int         @default(0) @map("opportunities_found")
+  opportunitiesCreated  Int         @default(0) @map("opportunities_created")
+  opportunitiesUpdated  Int         @default(0) @map("opportunities_updated")
+  opportunitiesSkipped  Int         @default(0) @map("opportunities_skipped")
+  errorMessage          String?     @map("error_message")
+  errorDetails          Json?       @map("error_details")
+  metadata              Json        @default("{}") @map("metadata")
+  triggeredBy           TriggerType @default(schedule) @map("triggered_by")
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  source        Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  opportunities Opportunity[]
+
+  @@index([sourceId, status], name: "idx_source_runs_source_status")
+  @@index([createdAt(sort: Desc)], name: "idx_source_runs_created")
+  @@map("source_runs")
+}
+
+// ─── Organizations ─────────────────────────────────────────
+
+model Organization {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String   @db.VarChar(500)
+  nameNormalized String   @map("name_normalized") @db.VarChar(500)
+  orgType        OrgType? @map("org_type")
+  country        String?  @db.VarChar(2)
+  region         String?  @db.VarChar(100)
+  city           String?  @db.VarChar(255)
+  website        String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  opportunities Opportunity[]
+
+  @@unique([nameNormalized, country, region], name: "uq_org_name_country_region")
+  @@index([nameNormalized], name: "idx_organizations_name_normalized")
+  @@map("organizations")
+}
+
+// ─── Opportunities ─────────────────────────────────────────
+
+model Opportunity {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceId            String            @map("source_id") @db.Uuid
+  sourceRunId         String?           @map("source_run_id") @db.Uuid
+  organizationId      String?           @map("organization_id") @db.Uuid
+  externalId          String?           @map("external_id") @db.VarChar(500)
+  title               String
+  descriptionSummary  String?           @map("description_summary")
+  descriptionFull     String?           @map("description_full")
+  status              OpportunityStatus @default(unknown)
+  country             String?           @db.VarChar(2)
+  region              String?           @db.VarChar(100)
+  city                String?           @db.VarChar(255)
+  locationRaw         String?           @map("location_raw")
+  postedDate          DateTime?         @map("posted_date") @db.Date
+  closingDate         DateTime?         @map("closing_date") @db.Timestamptz()
+  projectType         String?           @map("project_type") @db.VarChar(255)
+  category            String?           @db.VarChar(255)
+  solicitationNumber  String?           @map("solicitation_number") @db.VarChar(255)
+  estimatedValue      Decimal?          @map("estimated_value") @db.Decimal(15, 2)
+  currency            String            @default("USD") @db.VarChar(3)
+  contactName         String?           @map("contact_name") @db.VarChar(255)
+  contactEmail        String?           @map("contact_email") @db.VarChar(255)
+  contactPhone        String?           @map("contact_phone") @db.VarChar(50)
+  sourceUrl           String            @map("source_url")
+  hasDocuments        Boolean           @default(false) @map("has_documents")
+  mandatorySiteVisit  String?           @map("mandatory_site_visit")
+  preBidMeeting       String?           @map("pre_bid_meeting")
+  addendaCount        Int               @default(0) @map("addenda_count")
+  keywordsMatched     String[]          @default([]) @map("keywords_matched")
+  relevanceScore      Int               @default(0) @map("relevance_score")
+  relevanceBreakdown  Json              @default("{}") @map("relevance_breakdown")
+  rawData             Json?             @map("raw_data")
+  fingerprint         String            @db.VarChar(64)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz()
+
+  source       Source        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  sourceRun    SourceRun?    @relation(fields: [sourceRunId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  documents OpportunityDocument[]
+  tags      OpportunityTag[]
+  notes     Note[]
+  alerts    Alert[]
+
+  @@unique([sourceId, externalId], name: "uq_source_external_id")
+  @@unique([fingerprint], name: "uq_fingerprint")
+  @@index([status], name: "idx_opportunities_status")
+  @@index([country, region], name: "idx_opportunities_country_region")
+  @@index([closingDate], name: "idx_opportunities_closing_date")
+  @@index([postedDate(sort: Desc)], name: "idx_opportunities_posted_date")
+  @@index([relevanceScore(sort: Desc)], name: "idx_opportunities_relevance")
+  @@index([sourceId], name: "idx_opportunities_source")
+  @@index([organizationId], name: "idx_opportunities_org")
+  @@map("opportunities")
+}
+
+// ─── Opportunity Documents ─────────────────────────────────
+
+model OpportunityDocument {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  opportunityId String   @map("opportunity_id") @db.Uuid
+  title         String?  @db.VarChar(500)
+  url           String
+  fileType      String?  @map("file_type") @db.VarChar(50)
+  fileSizeBytes Int?     @map("file_size_bytes")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId], name: "idx_opp_docs_opportunity")
+  @@map("opportunity_documents")
+}
+
+// ─── Tags ──────────────────────────────────────────────────
+
+model Tag {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(100)
+  category  String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  opportunities OpportunityTag[]
+
+  @@unique([name, category])
+  @@map("tags")
+}
+
+model OpportunityTag {
+  opportunityId String @map("opportunity_id") @db.Uuid
+  tagId         String @map("tag_id") @db.Uuid
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([opportunityId, tagId])
+  @@map("opportunity_tags")
+}
+
+// ─── Saved Searches ────────────────────────────────────────
+
+model SavedSearch {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  name            String          @db.VarChar(255)
+  filters         Json
+  notifyEnabled   Boolean         @default(false) @map("notify_enabled")
+  notifyFrequency NotifyFrequency @default(daily) @map("notify_frequency")
+  lastNotifiedAt  DateTime?       @map("last_notified_at") @db.Timestamptz()
+  resultCount     Int?            @map("result_count")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alerts Alert[]
+
+  @@index([userId], name: "idx_saved_searches_user")
+  @@map("saved_searches")
+}
+
+// ─── Alerts ────────────────────────────────────────────────
+
+model Alert {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  savedSearchId String?   @map("saved_search_id") @db.Uuid
+  opportunityId String?   @map("opportunity_id") @db.Uuid
+  alertType     AlertType @map("alert_type")
+  title         String    @db.VarChar(500)
+  message       String?
+  isRead        Boolean   @default(false) @map("is_read")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  savedSearch SavedSearch? @relation(fields: [savedSearchId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+
+  @@index([userId, isRead], name: "idx_alerts_user_unread")
+  @@index([createdAt(sort: Desc)], name: "idx_alerts_created")
+  @@map("alerts")
+}
+
+// ─── Notes ─────────────────────────────────────────────────
+
+model Note {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  opportunityId String   @map("opportunity_id") @db.Uuid
+  content       String
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId], name: "idx_notes_opportunity")
+  @@map("notes")
+}
+
+// ─── Audit Logs ────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String?  @map("entity_type") @db.VarChar(50)
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json     @default("{}")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId], name: "idx_audit_entity")
+  @@index([createdAt(sort: Desc)], name: "idx_audit_created")
+  @@map("audit_logs")
+}

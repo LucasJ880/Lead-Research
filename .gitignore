@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+venv/
+.venv/
+env/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.sql.bak
+
+# Logs
+logs/
+*.log
+
+# Docker
+docker-data/
+
+# Testing
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Prisma
+apps/web/prisma/*.db
+apps/web/prisma/migrations/**/migration_lock.toml
+
+# Turbo
+.turbo/

@@ -1,0 +1,2479 @@
+# ═══════════════════════════════════════════════════════════════════════
+# LeadHarvest — North America Tender Source Registry
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Master registry of public procurement data sources for the LeadHarvest
+# crawl pipeline. Every entry describes a single publicly accessible
+# procurement portal, bid listing, or tender notification page.
+#
+# SAFETY RULES
+#   - Every URL listed here MUST be publicly accessible without login.
+#   - No sources requiring authentication, CAPTCHA, or paywalls.
+#   - All crawlers must respect robots.txt and rate limits.
+#   - This registry is for public information discovery only.
+#
+# ADDING A NEW SOURCE
+#   1. Append an entry to this file following the field schema below.
+#   2. Run `python run_pipeline.py --sync-sources` to register it in the DB.
+#   3. If the GenericTenderParser cannot handle the HTML structure, create
+#      a custom parser in services/scraper/src/parsers/<source_id>.py.
+#
+# FIELD SCHEMA
+#   source_id           Unique snake_case key (lookup key for parsers)
+#   source_name         Human-readable display name
+#   country             "CA" or "US"
+#   region              Province/state abbreviation, or "National"
+#   organization_type   Category of the issuing body (see list below)
+#   source_type         One of: bid_portal, municipal, school_board,
+#                       housing_authority, university, hospital,
+#                       construction, aggregator, other
+#   base_url            Root URL of the procurement portal
+#   listing_pattern     Page type: tenders, bids, rfp, solicitations, procurement
+#   parser_class        Python class in services/scraper/src/parsers/
+#   crawl_frequency     One of: hourly, daily, weekly, manual
+#   active              Whether the source should be crawled on schedule
+#   notes               Special considerations for this source
+#   crawl_config        Source-specific crawler configuration
+#
+# ORGANIZATION TYPES
+#   federal_government      National-level procurement
+#   provincial_government   Canadian provincial procurement
+#   state_government        US state-level procurement
+#   municipal_government    City / town procurement
+#   county_government       US county procurement
+#   regional_government     Regional municipality or district
+#   school_board            K-12 school board / school district
+#   university              Post-secondary institution
+#   housing_authority       Public / social housing provider
+#   hospital_system         Public healthcare facility
+#   construction_industry   Private construction bid aggregator
+#   aggregator              Multi-jurisdiction bid aggregator
+#
+# SOURCE COUNT: 112 sources
+#   Canada:  47 sources across 7 provinces + national
+#   US:      65 sources across 9 states + national
+#
+# ═══════════════════════════════════════════════════════════════════════
+
+sources:
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  SECTION 1 — NATIONAL AGGREGATORS
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ─── Canadian National ─────────────────────────────────────────────
+
+  - source_id: merx
+    source_name: "MERX Canadian Public Tenders"
+    country: CA
+    region: National
+    organization_type: aggregator
+    source_type: aggregator
+    base_url: "https://www.merx.com"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: true
+    notes: >
+      Canada's largest electronic tendering service. Aggregates federal,
+      provincial, and municipal procurement notices. Public listings
+      accessible without login.
+    crawl_config:
+      listing_url: "/search?query=window+coverings+blinds&page={page}"
+      pagination: { type: page_param, param: page, max_pages: 10 }
+      rate_limit_seconds: 3
+
+  - source_id: government_bids_ca
+    source_name: "Government of Canada — Buyandsell.gc.ca"
+    country: CA
+    region: National
+    organization_type: federal_government
+    source_type: bid_portal
+    base_url: "https://buyandsell.gc.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: true
+    notes: >
+      Official Government of Canada procurement portal. Federal tenders
+      for all departments. Public data accessible without login.
+    crawl_config:
+      listing_url: "/procurement-data/search/site?search_text=window+coverings+blinds&page={page}"
+      pagination: { type: page_param, param: page, max_pages: 10 }
+      rate_limit_seconds: 3
+
+  - source_id: biddingo
+    source_name: "Biddingo — Canadian Public Tenders"
+    country: CA
+    region: National
+    organization_type: aggregator
+    source_type: aggregator
+    base_url: "https://www.biddingo.com"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Canadian tender aggregation service. Free tier shows basic listings.
+      Covers municipal, provincial, and federal opportunities.
+    crawl_config:
+      listing_url: "/tenders?q=window+coverings&page={page}"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 3
+
+  - source_id: bonfire_ca
+    source_name: "Bonfire Interactive — Canadian e-Procurement"
+    country: CA
+    region: National
+    organization_type: aggregator
+    source_type: aggregator
+    base_url: "https://bonfirehub.com"
+    listing_pattern: procurement
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      e-Procurement platform used by hundreds of Canadian municipalities,
+      school boards, and public agencies. Public opportunity listings
+      are browsable without login.
+    crawl_config:
+      listing_url: "/opportunities/search"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  # ─── US National ───────────────────────────────────────────────────
+
+  - source_id: sam_gov
+    source_name: "SAM.gov — US Federal Procurement"
+    country: US
+    region: National
+    organization_type: federal_government
+    source_type: bid_portal
+    base_url: "https://sam.gov"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: true
+    notes: >
+      US federal System for Award Management. Hosts all federal
+      procurement opportunities. Public API available.
+    crawl_config:
+      listing_url: "/search/?keywords=window+coverings+blinds&dateType=updateDate&page={page}"
+      pagination: { type: page_param, param: page, max_pages: 10 }
+      rate_limit_seconds: 3
+
+  - source_id: bidnet_direct
+    source_name: "BidNet Direct"
+    country: US
+    region: National
+    organization_type: aggregator
+    source_type: aggregator
+    base_url: "https://www.bidnetdirect.com"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: true
+    notes: >
+      Aggregates US state and local government bids. Free tier shows
+      basic listing information.
+    crawl_config:
+      listing_url: "/solicitations?query=window+coverings&page={page}"
+      pagination: { type: page_param, param: page, max_pages: 10 }
+      rate_limit_seconds: 3
+
+  - source_id: constructconnect
+    source_name: "ConstructConnect — Project Leads"
+    country: US
+    region: National
+    organization_type: construction_industry
+    source_type: construction
+    base_url: "https://www.constructconnect.com"
+    listing_pattern: bids
+    parser_class: ConstructionBidParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      US construction project database. Public listings include project
+      descriptions and timelines. Only scrape publicly accessible pages.
+    crawl_config:
+      listing_url: "/projects?q=window+coverings"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  - source_id: publicpurchase
+    source_name: "PublicPurchase.com"
+    country: US
+    region: National
+    organization_type: aggregator
+    source_type: aggregator
+    base_url: "https://www.publicpurchase.com"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Free public procurement platform used by US municipalities
+      and counties. Bid listings are publicly browsable.
+    crawl_config:
+      listing_url: "/gems/bid/bidList/getBidList"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  - source_id: govwin
+    source_name: "GovWin IQ — Public Listings"
+    country: US
+    region: National
+    organization_type: aggregator
+    source_type: aggregator
+    base_url: "https://iq.govwin.com"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Deltek GovWin IQ aggregates federal, state, and local procurement.
+      Only scrape public preview listings — full data requires subscription.
+    crawl_config:
+      listing_url: "/opportunities"
+      pagination: { type: page_param, param: page, max_pages: 3 }
+      rate_limit_seconds: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  SECTION 2 — CANADA
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ─── Ontario — Provincial ──────────────────────────────────────────
+
+  - source_id: ontario_tenders
+    source_name: "Ontario Tenders Portal"
+    country: CA
+    region: "ON"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://ontariotenders.bravosolution.com"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Province of Ontario's centralized procurement portal. Construction,
+      renovation, and goods contracts for provincial ministries and agencies.
+    crawl_config:
+      listing_url: "/esop/toolkit/opportunity/opportunityList.do"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Ontario — Municipal ───────────────────────────────────────────
+
+  - source_id: toronto_bids
+    source_name: "City of Toronto — Open Bids"
+    country: CA
+    region: "ON"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.toronto.ca/business-economy/doing-business-with-the-city/searching-bidding-on-city-contracts/"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Toronto's official bid portal. Construction, goods, and services
+      contracts. HTML table structure.
+    crawl_config:
+      listing_url: "/business-economy/doing-business-with-the-city/searching-bidding-on-city-contracts/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: ottawa_bids
+    source_name: "City of Ottawa — Open Bids"
+    country: CA
+    region: "ON"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://ottawa.ca/en/business/procurement"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Ottawa's public procurement portal. Government building renovation
+      contracts are the primary target.
+    crawl_config:
+      listing_url: "/en/business/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: hamilton_procurement
+    source_name: "City of Hamilton — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.hamilton.ca/government-information/trust-and-confidence-report/procurement"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Hamilton procurement portal. Construction and renovation contracts
+      for city facilities.
+    crawl_config:
+      listing_url: "/government-information/trust-and-confidence-report/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: mississauga_procurement
+    source_name: "City of Mississauga — Bids & Tenders"
+    country: CA
+    region: "ON"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.mississauga.ca/services-and-programs/business/procurement-and-bids/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Mississauga's public bid listings for city contracts.
+    crawl_config:
+      listing_url: "/services-and-programs/business/procurement-and-bids/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: brampton_procurement
+    source_name: "City of Brampton — Purchasing"
+    country: CA
+    region: "ON"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.brampton.ca/en/business/purchasing/pages/welcome.aspx"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Brampton procurement portal. Growing city with active construction.
+    crawl_config:
+      listing_url: "/en/business/purchasing/pages/welcome.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: london_on_procurement
+    source_name: "City of London ON — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://london.ca/business-development/bids-proposals"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      London Ontario procurement listings.
+    crawl_config:
+      listing_url: "/business-development/bids-proposals"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: york_region_procurement
+    source_name: "York Region — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: regional_government
+    source_type: municipal
+    base_url: "https://www.york.ca/business/procurement"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Regional Municipality of York procurement portal.
+    crawl_config:
+      listing_url: "/business/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: durham_region_procurement
+    source_name: "Durham Region — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: regional_government
+    source_type: municipal
+    base_url: "https://www.durham.ca/en/doing-business/procurement.aspx"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Regional Municipality of Durham procurement portal.
+    crawl_config:
+      listing_url: "/en/doing-business/procurement.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: waterloo_region_procurement
+    source_name: "Region of Waterloo — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: regional_government
+    source_type: municipal
+    base_url: "https://www.regionofwaterloo.ca/en/doing-business/bid-opportunities.aspx"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Region of Waterloo procurement for municipal and transit projects.
+    crawl_config:
+      listing_url: "/en/doing-business/bid-opportunities.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: peel_region_procurement
+    source_name: "Region of Peel — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: regional_government
+    source_type: municipal
+    base_url: "https://www.peelregion.ca/purchasing/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Region of Peel procurement portal covering Mississauga, Brampton,
+      and Caledon regional infrastructure.
+    crawl_config:
+      listing_url: "/purchasing/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Ontario — School Boards ───────────────────────────────────────
+
+  - source_id: tdsb_procurement
+    source_name: "Toronto District School Board — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.tdsb.on.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Canada's largest school board. Window covering replacements,
+      classroom renovations, and FF&E procurement are common.
+    crawl_config:
+      listing_url: "/About-Us/Facility-Services/Procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: pdsb_procurement
+    source_name: "Peel District School Board — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.peelschools.org"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Large GTA school board. Regular FF&E and classroom blind
+      replacement contracts.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: yrdsb_procurement
+    source_name: "York Region District School Board — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.yrdsb.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      York Region DSB. School construction and renovation program
+      often includes window covering packages.
+    crawl_config:
+      listing_url: "/about-us/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: ddsb_procurement
+    source_name: "Durham District School Board — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.ddsb.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Durham DSB procurement for school renovations and upgrades.
+    crawl_config:
+      listing_url: "/about-ddsb/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: hdsb_procurement
+    source_name: "Halton District School Board — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.hdsb.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Halton DSB. Covers Burlington, Oakville, Milton school facilities.
+    crawl_config:
+      listing_url: "/our-board/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Ontario — Universities ────────────────────────────────────────
+
+  - source_id: uoft_procurement
+    source_name: "University of Toronto — Procurement Services"
+    country: CA
+    region: "ON"
+    organization_type: university
+    source_type: university
+    base_url: "https://procurement.utoronto.ca"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Canada's largest university. Renovation and FF&E contracts for
+      campus buildings across three campuses.
+    crawl_config:
+      listing_url: "/open-competitions"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: york_university_procurement
+    source_name: "York University — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.yorku.ca/finance/procurement/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      York University procurement for campus construction and renovation.
+    crawl_config:
+      listing_url: "/finance/procurement/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: tmu_procurement
+    source_name: "Toronto Metropolitan University — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.torontomu.ca/facilities-management-development/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      TMU (formerly Ryerson) procurement for campus facilities.
+    crawl_config:
+      listing_url: "/facilities-management-development/procurement/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Ontario — Housing ─────────────────────────────────────────────
+
+  - source_id: tchc_bids
+    source_name: "Toronto Community Housing — Bid Opportunities"
+    country: CA
+    region: "ON"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.torontohousing.ca"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Canada's largest social housing provider. Regular window covering
+      replacement contracts for apartment units and common areas.
+    crawl_config:
+      listing_url: "/doing-business/procurement-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: ottawa_community_housing
+    source_name: "Ottawa Community Housing — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.och-lco.ca"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Ottawa's largest social housing provider. Unit renovation
+      and facility upgrade contracts.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Ontario — Hospitals ───────────────────────────────────────────
+
+  - source_id: uhn_procurement
+    source_name: "University Health Network — Procurement"
+    country: CA
+    region: "ON"
+    organization_type: hospital_system
+    source_type: hospital
+    base_url: "https://www.uhn.ca"
+    listing_pattern: rfp
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Toronto's largest hospital network. Renovation and FF&E
+      contracts for hospital buildings.
+    crawl_config:
+      listing_url: "/corporate/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── British Columbia ──────────────────────────────────────────────
+
+  - source_id: bc_bid
+    source_name: "BC Bid — Provincial Procurement"
+    country: CA
+    region: "BC"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://www.bcbid.gov.bc.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Province of British Columbia's centralized bid portal.
+      All provincial ministry and agency procurement.
+    crawl_config:
+      listing_url: "/open.dll/welcome"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: vancouver_bids
+    source_name: "City of Vancouver — Bid Opportunities"
+    country: CA
+    region: "BC"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://bids.vancouver.ca"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Vancouver's procurement portal. Interior finishing and renovation
+      categories are most relevant.
+    crawl_config:
+      listing_url: "/bidopp/openBids.htm"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: surrey_procurement
+    source_name: "City of Surrey — Procurement"
+    country: CA
+    region: "BC"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.surrey.ca/services-payments/business-services/doing-business-with-surrey"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Surrey's procurement listings. Rapidly growing municipality
+      with significant construction activity.
+    crawl_config:
+      listing_url: "/services-payments/business-services/doing-business-with-surrey"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: victoria_procurement
+    source_name: "City of Victoria — Procurement"
+    country: CA
+    region: "BC"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.victoria.ca/EN/main/departments/finance/procurement.html"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Victoria BC procurement portal.
+    crawl_config:
+      listing_url: "/EN/main/departments/finance/procurement.html"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: bc_housing
+    source_name: "BC Housing — Procurement"
+    country: CA
+    region: "BC"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.bchousing.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      British Columbia's provincial housing authority. Renovation and
+      construction contracts for social housing developments.
+    crawl_config:
+      listing_url: "/about/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: ubc_procurement
+    source_name: "University of British Columbia — Procurement"
+    country: CA
+    region: "BC"
+    organization_type: university
+    source_type: university
+    base_url: "https://procurement.ubc.ca"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      UBC procurement for campus construction and renovation.
+      Large campus with ongoing building programs.
+    crawl_config:
+      listing_url: "/rfps-and-rfqs"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Alberta ───────────────────────────────────────────────────────
+
+  - source_id: alberta_purchasing
+    source_name: "Alberta Purchasing Connection"
+    country: CA
+    region: "AB"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://vendor.purchasingconnection.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Province of Alberta's centralized procurement portal for
+      provincial government contracts.
+    crawl_config:
+      listing_url: "/Opportunity.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: calgary_procurement
+    source_name: "City of Calgary — Procurement"
+    country: CA
+    region: "AB"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.calgary.ca/business/procurement.html"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Calgary's public procurement listings. Construction, renovation,
+      and goods/services contracts.
+    crawl_config:
+      listing_url: "/business/procurement.html"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: edmonton_procurement
+    source_name: "City of Edmonton — Procurement"
+    country: CA
+    region: "AB"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.edmonton.ca/business_economy/selling-to-the-city"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Edmonton procurement portal for city contracts.
+    crawl_config:
+      listing_url: "/business_economy/selling-to-the-city"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: red_deer_procurement
+    source_name: "City of Red Deer — Purchasing"
+    country: CA
+    region: "AB"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.reddeer.ca/business/bids-and-tenders/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Red Deer procurement portal.
+    crawl_config:
+      listing_url: "/business/bids-and-tenders/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: uofa_procurement
+    source_name: "University of Alberta — Procurement"
+    country: CA
+    region: "AB"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.ualberta.ca/facilities-operations/procurement"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      University of Alberta campus procurement.
+    crawl_config:
+      listing_url: "/facilities-operations/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Quebec ────────────────────────────────────────────────────────
+
+  - source_id: seao_quebec
+    source_name: "SEAO — Quebec Electronic Tendering System"
+    country: CA
+    region: "QC"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://www.seao.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Quebec's mandatory electronic tendering system for all public
+      bodies. Public opportunity listings accessible without login.
+    crawl_config:
+      listing_url: "/OpportunityPublication/Search"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  - source_id: montreal_procurement
+    source_name: "City of Montreal — Procurement"
+    country: CA
+    region: "QC"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://montreal.ca/en/topics/calls-tenders"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Montreal's public tender listings. Large volume of construction
+      and renovation contracts.
+    crawl_config:
+      listing_url: "/en/topics/calls-tenders"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: quebec_city_procurement
+    source_name: "Ville de Québec — Appels d'offres"
+    country: CA
+    region: "QC"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.ville.quebec.qc.ca/gens_affaires/appels_offres/"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Quebec City procurement. Bilingual content available.
+    crawl_config:
+      listing_url: "/gens_affaires/appels_offres/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: laval_procurement
+    source_name: "Ville de Laval — Procurement"
+    country: CA
+    region: "QC"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.laval.ca/Pages/En/Business/calls-for-tenders.aspx"
+    listing_pattern: tenders
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Laval procurement portal.
+    crawl_config:
+      listing_url: "/Pages/En/Business/calls-for-tenders.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: mcgill_procurement
+    source_name: "McGill University — Procurement Services"
+    country: CA
+    region: "QC"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.mcgill.ca/procurement/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      McGill University procurement for campus construction and renovation.
+    crawl_config:
+      listing_url: "/procurement/open-competitions"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Manitoba ──────────────────────────────────────────────────────
+
+  - source_id: manitoba_procurement
+    source_name: "Province of Manitoba — Tenders"
+    country: CA
+    region: "MB"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://www.gov.mb.ca/central/tenders/"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Province of Manitoba's centralized procurement portal.
+    crawl_config:
+      listing_url: "/central/tenders/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: winnipeg_procurement
+    source_name: "City of Winnipeg — Bid Opportunities"
+    country: CA
+    region: "MB"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.winnipeg.ca/finance/findata/matmgt/bidopp.asp"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Winnipeg's public bid opportunities page.
+    crawl_config:
+      listing_url: "/finance/findata/matmgt/bidopp.asp"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: uofm_procurement
+    source_name: "University of Manitoba — Procurement"
+    country: CA
+    region: "MB"
+    organization_type: university
+    source_type: university
+    base_url: "https://umanitoba.ca/financial-services/procurement"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      University of Manitoba campus procurement.
+    crawl_config:
+      listing_url: "/financial-services/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Saskatchewan ──────────────────────────────────────────────────
+
+  - source_id: saskatchewan_procurement
+    source_name: "SaskTenders — Provincial Procurement"
+    country: CA
+    region: "SK"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://sasktenders.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Saskatchewan's centralized tendering system for provincial
+      and municipal procurement.
+    crawl_config:
+      listing_url: "/content/public/Search.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: regina_procurement
+    source_name: "City of Regina — Purchasing"
+    country: CA
+    region: "SK"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.regina.ca/business-development/doing-business-with-city/purchasing/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Regina procurement portal.
+    crawl_config:
+      listing_url: "/business-development/doing-business-with-city/purchasing/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: saskatoon_procurement
+    source_name: "City of Saskatoon — Procurement"
+    country: CA
+    region: "SK"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.saskatoon.ca/business-development/doing-business-city/goods-services-procurement"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Saskatoon's public procurement listings.
+    crawl_config:
+      listing_url: "/business-development/doing-business-city/goods-services-procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Nova Scotia ───────────────────────────────────────────────────
+
+  - source_id: nova_scotia_procurement
+    source_name: "Province of Nova Scotia — Procurement"
+    country: CA
+    region: "NS"
+    organization_type: provincial_government
+    source_type: bid_portal
+    base_url: "https://procurement.novascotia.ca"
+    listing_pattern: tenders
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Nova Scotia's centralized procurement portal.
+    crawl_config:
+      listing_url: "/ns-buyer/public/directSearchPublic.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: halifax_procurement
+    source_name: "Halifax Regional Municipality — Procurement"
+    country: CA
+    region: "NS"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.halifax.ca/business/doing-business-halifax/procurement"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Halifax regional municipality procurement portal.
+    crawl_config:
+      listing_url: "/business/doing-business-halifax/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: dalhousie_procurement
+    source_name: "Dalhousie University — Procurement"
+    country: CA
+    region: "NS"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.dal.ca/dept/procurement.html"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Dalhousie University campus procurement.
+    crawl_config:
+      listing_url: "/dept/procurement/for-vendors.html"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  SECTION 3 — UNITED STATES
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ─── California — State ────────────────────────────────────────────
+
+  - source_id: cal_eprocure
+    source_name: "California eProcure — State Procurement"
+    country: US
+    region: "CA"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://caleprocure.ca.gov"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      California's state procurement system. Lists solicitations for
+      all state agencies, departments, and institutions.
+    crawl_config:
+      listing_url: "/pages/Events-BS3/event-search.aspx"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  # ─── California — Municipal / County ───────────────────────────────
+
+  - source_id: la_city_procurement
+    source_name: "City of Los Angeles — Business Assistance"
+    country: US
+    region: "CA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://labavn.org"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Los Angeles Business Assistance Virtual Network. City procurement
+      opportunities and bid listings.
+    crawl_config:
+      listing_url: "/bid-opportunities"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  - source_id: la_county_bids
+    source_name: "Los Angeles County — Open Bids"
+    country: US
+    region: "CA"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://camisvr.co.la.ca.us/lacobids/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      LA County procurement portal. Large volume of construction and
+      renovation contracts for county facilities.
+    crawl_config:
+      listing_url: "/BidLookUp/BidOpenList.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: sf_procurement
+    source_name: "City of San Francisco — Procurement"
+    country: US
+    region: "CA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://sfgov.org/oca"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      San Francisco Office of Contract Administration. Public bid listings
+      for city construction and renovation projects.
+    crawl_config:
+      listing_url: "/contracting-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: san_diego_procurement
+    source_name: "City of San Diego — Procurement"
+    country: US
+    region: "CA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.sandiego.gov/purchasing"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      San Diego procurement portal.
+    crawl_config:
+      listing_url: "/purchasing/current-bids"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: san_jose_procurement
+    source_name: "City of San Jose — Bid Opportunities"
+    country: US
+    region: "CA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://sanjose.gov/your-government/departments/finance/purchasing"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      San Jose procurement listings.
+    crawl_config:
+      listing_url: "/your-government/departments/finance/purchasing/open-solicitations"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: sacramento_procurement
+    source_name: "City of Sacramento — Procurement"
+    country: US
+    region: "CA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.cityofsacramento.gov/finance/procurement"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Sacramento procurement portal.
+    crawl_config:
+      listing_url: "/finance/procurement/open-bids"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── California — School Districts ─────────────────────────────────
+
+  - source_id: lausd_procurement
+    source_name: "LAUSD — Procurement Services"
+    country: US
+    region: "CA"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.lausd.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Los Angeles Unified School District. Second-largest US school
+      district. Frequent classroom renovation and FF&E contracts.
+    crawl_config:
+      listing_url: "/procurement-services"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── California — Universities ─────────────────────────────────────
+
+  - source_id: uc_procurement
+    source_name: "University of California — Procurement"
+    country: US
+    region: "CA"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.ucop.edu/procurement-services/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      University of California system-wide procurement. Covers 10 campuses
+      and 5 medical centers. Significant construction volume.
+    crawl_config:
+      listing_url: "/procurement-services/for-suppliers/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Texas — State ─────────────────────────────────────────────────
+
+  - source_id: texas_smartbuy
+    source_name: "Texas SmartBuy — State Procurement"
+    country: US
+    region: "TX"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://www.txsmartbuy.com"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Texas state procurement portal. Window covering contracts for
+      state buildings, universities, and agencies.
+    crawl_config:
+      listing_url: "/sp"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  # ─── Texas — Municipal ─────────────────────────────────────────────
+
+  - source_id: houston_procurement
+    source_name: "City of Houston — Procurement"
+    country: US
+    region: "TX"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://purchasing.houstontx.gov"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Houston procurement for city construction and renovation contracts.
+    crawl_config:
+      listing_url: "/bid_opps/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: dallas_procurement
+    source_name: "City of Dallas — Procurement"
+    country: US
+    region: "TX"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://dallascityhall.com/departments/procurement/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Dallas procurement portal.
+    crawl_config:
+      listing_url: "/departments/procurement/Pages/bid-information.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: austin_procurement
+    source_name: "City of Austin — Procurement"
+    country: US
+    region: "TX"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.austintexas.gov/financeonline/finance/index.cfm"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Austin financial online procurement portal.
+    crawl_config:
+      listing_url: "/financeonline/finance/index.cfm"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: san_antonio_procurement
+    source_name: "City of San Antonio — Procurement"
+    country: US
+    region: "TX"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.sanantonio.gov/Finance/BidsAndProposals"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      San Antonio procurement portal.
+    crawl_config:
+      listing_url: "/Finance/BidsAndProposals"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Texas — School Districts ──────────────────────────────────────
+
+  - source_id: houston_isd_procurement
+    source_name: "Houston ISD — Procurement"
+    country: US
+    region: "TX"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.houstonisd.org/procurement"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Houston Independent School District. Large district with ongoing
+      school renovation programs.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Texas — Universities ──────────────────────────────────────────
+
+  - source_id: tamu_procurement
+    source_name: "Texas A&M University — Procurement"
+    country: US
+    region: "TX"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.tamus.edu/business/procurement/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Texas A&M University System procurement. Multi-campus system
+      with significant construction.
+    crawl_config:
+      listing_url: "/business/procurement/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Florida — State ───────────────────────────────────────────────
+
+  - source_id: florida_vendorlink
+    source_name: "Florida VendorLink — State Procurement"
+    country: US
+    region: "FL"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://vendor.myfloridamarketplace.com"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Florida's state procurement system. Solicitations for state
+      agencies, school districts, and local governments.
+    crawl_config:
+      listing_url: "/search/bids"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  # ─── Florida — Municipal / County ──────────────────────────────────
+
+  - source_id: miami_dade_procurement
+    source_name: "Miami-Dade County — Procurement"
+    country: US
+    region: "FL"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://www.miamidade.gov/global/management/procurement.page"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Miami-Dade County procurement portal. County facility renovation
+      and construction contracts.
+    crawl_config:
+      listing_url: "/global/management/procurement.page"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: tampa_procurement
+    source_name: "City of Tampa — Procurement"
+    country: US
+    region: "FL"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.tampagov.net/purchasing"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Tampa procurement portal.
+    crawl_config:
+      listing_url: "/purchasing/bid-solicitations"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: orlando_procurement
+    source_name: "City of Orlando — Procurement"
+    country: US
+    region: "FL"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.orlando.gov/Our-Government/Departments-Offices/Business-Financial-Services/Purchasing-and-Materials-Management"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Orlando procurement portal.
+    crawl_config:
+      listing_url: "/Our-Government/Departments-Offices/Business-Financial-Services/Purchasing-and-Materials-Management"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: jacksonville_procurement
+    source_name: "City of Jacksonville — Procurement"
+    country: US
+    region: "FL"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.coj.net/departments/procurement"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Jacksonville procurement portal.
+    crawl_config:
+      listing_url: "/departments/procurement/current-solicitations"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: broward_county_procurement
+    source_name: "Broward County — Procurement"
+    country: US
+    region: "FL"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://www.broward.org/Purchasing/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Broward County procurement for county facility projects.
+    crawl_config:
+      listing_url: "/Purchasing/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── New York — State ──────────────────────────────────────────────
+
+  - source_id: nys_procurement
+    source_name: "New York State — Procurement"
+    country: US
+    region: "NY"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://ogs.ny.gov/procurement"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      New York State Office of General Services procurement.
+      State agency and institution construction contracts.
+    crawl_config:
+      listing_url: "/procurement/bidopportunities.asp"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  # ─── New York — Municipal ──────────────────────────────────────────
+
+  - source_id: nyc_procurement
+    source_name: "NYC Procurement — City Record"
+    country: US
+    region: "NY"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://a856-cityrecord.nyc.gov"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      New York City's official procurement portal. Construction,
+      renovation, and goods/services contracts for city agencies.
+    crawl_config:
+      listing_url: "/Section/2"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  - source_id: buffalo_procurement
+    source_name: "City of Buffalo — Procurement"
+    country: US
+    region: "NY"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.buffalony.gov/291/Purchasing"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Buffalo procurement portal.
+    crawl_config:
+      listing_url: "/291/Purchasing"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: albany_procurement
+    source_name: "City of Albany — Procurement"
+    country: US
+    region: "NY"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.albanyny.gov/Government/Departments/PurchasingDivision"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Albany procurement portal.
+    crawl_config:
+      listing_url: "/Government/Departments/PurchasingDivision"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── New York — Universities ───────────────────────────────────────
+
+  - source_id: suny_procurement
+    source_name: "SUNY — Procurement"
+    country: US
+    region: "NY"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.suny.edu/about/leadership/offices/procurement/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      State University of New York system procurement. 64 campuses
+      across New York State.
+    crawl_config:
+      listing_url: "/about/leadership/offices/procurement/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── New York — Housing ────────────────────────────────────────────
+
+  - source_id: nycha_procurement
+    source_name: "NYCHA — Procurement"
+    country: US
+    region: "NY"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.nyc.gov/site/nycha/business/procurement.page"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      New York City Housing Authority. Largest US public housing provider.
+      Regular unit rehabilitation and facility upgrade contracts.
+    crawl_config:
+      listing_url: "/site/nycha/business/procurement.page"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Washington — State ────────────────────────────────────────────
+
+  - source_id: washington_webs
+    source_name: "Washington WEBS — State Procurement"
+    country: US
+    region: "WA"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://pr-webs-vendor.des.wa.gov"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Washington's Electronic Business Solution. State-wide procurement
+      system for all agencies.
+    crawl_config:
+      listing_url: "/Search.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Washington — Municipal ────────────────────────────────────────
+
+  - source_id: seattle_procurement
+    source_name: "City of Seattle — Procurement"
+    country: US
+    region: "WA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.seattle.gov/purchasing-and-contracting"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Seattle procurement portal. Construction and renovation contracts.
+    crawl_config:
+      listing_url: "/purchasing-and-contracting/bid-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: tacoma_procurement
+    source_name: "City of Tacoma — Procurement"
+    country: US
+    region: "WA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.cityoftacoma.org/government/city_departments/finance/procurement_and_payables_division"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Tacoma procurement portal.
+    crawl_config:
+      listing_url: "/government/city_departments/finance/procurement_and_payables_division"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: king_county_procurement
+    source_name: "King County — Procurement"
+    country: US
+    region: "WA"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://kingcounty.gov/depts/finance-business-operations/procurement.aspx"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      King County (Seattle metro) procurement.
+    crawl_config:
+      listing_url: "/depts/finance-business-operations/procurement.aspx"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Washington — Universities ─────────────────────────────────────
+
+  - source_id: uw_procurement
+    source_name: "University of Washington — Procurement"
+    country: US
+    region: "WA"
+    organization_type: university
+    source_type: university
+    base_url: "https://finance.uw.edu/ps"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      University of Washington procurement services.
+    crawl_config:
+      listing_url: "/bids-and-contracts"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Illinois — State ──────────────────────────────────────────────
+
+  - source_id: illinois_procurement
+    source_name: "Illinois Procurement Gateway"
+    country: US
+    region: "IL"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://www.procurement.illinois.gov"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Illinois state procurement system. All state agency solicitations.
+    crawl_config:
+      listing_url: "/ibs/Home"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Illinois — Municipal / County ─────────────────────────────────
+
+  - source_id: chicago_procurement
+    source_name: "City of Chicago — Procurement"
+    country: US
+    region: "IL"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.chicago.gov/city/en/depts/dps.html"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Chicago Department of Procurement Services.
+    crawl_config:
+      listing_url: "/city/en/depts/dps/provdrs/contract.html"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: cook_county_procurement
+    source_name: "Cook County — Procurement"
+    country: US
+    region: "IL"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://www.cookcountyil.gov/service/procurement-opportunities"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Cook County (Chicago metro) procurement.
+    crawl_config:
+      listing_url: "/service/procurement-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: springfield_il_procurement
+    source_name: "City of Springfield IL — Procurement"
+    country: US
+    region: "IL"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.springfield.il.us/Departments/Purchasing/"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Springfield IL procurement portal.
+    crawl_config:
+      listing_url: "/Departments/Purchasing/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Illinois — School Districts ───────────────────────────────────
+
+  - source_id: cps_procurement
+    source_name: "Chicago Public Schools — Procurement"
+    country: US
+    region: "IL"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.cps.edu/procurement/"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Chicago Public Schools. Third-largest US school district.
+      Active school modernization and renovation program.
+    crawl_config:
+      listing_url: "/procurement/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Illinois — Universities ───────────────────────────────────────
+
+  - source_id: uofi_procurement
+    source_name: "University of Illinois — Procurement"
+    country: US
+    region: "IL"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.obfs.uillinois.edu/purchases/"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      University of Illinois system procurement. Three campuses.
+    crawl_config:
+      listing_url: "/purchases/bid-opportunities/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Georgia — State ───────────────────────────────────────────────
+
+  - source_id: georgia_procurement
+    source_name: "Georgia Procurement Registry"
+    country: US
+    region: "GA"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://ssl.doas.state.ga.us/PRSapp/PR/searchBids.do"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Georgia state procurement registry. All state agency solicitations.
+    crawl_config:
+      listing_url: "/PRSapp/PR/searchBids.do"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Georgia — Municipal / County ──────────────────────────────────
+
+  - source_id: atlanta_procurement
+    source_name: "City of Atlanta — Procurement"
+    country: US
+    region: "GA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.atlantaga.gov/government/departments/procurement"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Atlanta procurement portal.
+    crawl_config:
+      listing_url: "/government/departments/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: dekalb_county_procurement
+    source_name: "DeKalb County — Procurement"
+    country: US
+    region: "GA"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://www.dekalbcountyga.gov/purchasing-contracting/current-solicitations"
+    listing_pattern: solicitations
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      DeKalb County (Atlanta metro) procurement.
+    crawl_config:
+      listing_url: "/purchasing-contracting/current-solicitations"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: fulton_county_procurement
+    source_name: "Fulton County — Procurement"
+    country: US
+    region: "GA"
+    organization_type: county_government
+    source_type: municipal
+    base_url: "https://www.fultoncountyga.gov/services/purchasing-and-contract-compliance"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Fulton County (Atlanta metro) procurement portal.
+    crawl_config:
+      listing_url: "/services/purchasing-and-contract-compliance"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Georgia — Universities ────────────────────────────────────────
+
+  - source_id: gatech_procurement
+    source_name: "Georgia Tech — Procurement"
+    country: US
+    region: "GA"
+    organization_type: university
+    source_type: university
+    base_url: "https://procurement.gatech.edu"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Georgia Institute of Technology procurement services.
+    crawl_config:
+      listing_url: "/bid-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Massachusetts — State ─────────────────────────────────────────
+
+  - source_id: mass_commbuys
+    source_name: "Massachusetts COMMBUYS — State Procurement"
+    country: US
+    region: "MA"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://www.commbuys.com"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Massachusetts state procurement system. Covers all state agencies
+      and many municipalities.
+    crawl_config:
+      listing_url: "/bso/external/publicBids.sdo"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Massachusetts — Municipal ─────────────────────────────────────
+
+  - source_id: boston_procurement
+    source_name: "City of Boston — Procurement"
+    country: US
+    region: "MA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.boston.gov/procurement"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Boston procurement portal. City construction and renovation.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: cambridge_procurement
+    source_name: "City of Cambridge — Purchasing"
+    country: US
+    region: "MA"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.cambridgema.gov/Departments/Purchasing"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Cambridge procurement portal.
+    crawl_config:
+      listing_url: "/Departments/Purchasing"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Massachusetts — Universities ──────────────────────────────────
+
+  - source_id: umass_procurement
+    source_name: "University of Massachusetts — Procurement"
+    country: US
+    region: "MA"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.umassp.edu/procurement-services"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      UMass system procurement. Five campuses across Massachusetts.
+    crawl_config:
+      listing_url: "/procurement-services/bid-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Massachusetts — Housing ───────────────────────────────────────
+
+  - source_id: boston_housing_authority
+    source_name: "Boston Housing Authority — Procurement"
+    country: US
+    region: "MA"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.bostonhousing.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Boston Housing Authority procurement. Unit rehabilitation
+      and facility upgrade contracts.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Colorado — State ──────────────────────────────────────────────
+
+  - source_id: colorado_procurement
+    source_name: "Colorado BIDS — State Procurement"
+    country: US
+    region: "CO"
+    organization_type: state_government
+    source_type: bid_portal
+    base_url: "https://www.bidscolorado.com"
+    listing_pattern: solicitations
+    parser_class: GenericTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Colorado's state procurement system.
+    crawl_config:
+      listing_url: "/co/portal/app/en/co-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Colorado — Municipal ──────────────────────────────────────────
+
+  - source_id: denver_procurement
+    source_name: "City of Denver — Procurement"
+    country: US
+    region: "CO"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://www.denvergov.org/Government/Agencies-Departments-Offices/General-Services/Purchasing"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Denver procurement portal. City facility construction and renovation.
+    crawl_config:
+      listing_url: "/Government/Agencies-Departments-Offices/General-Services/Purchasing"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: colorado_springs_procurement
+    source_name: "City of Colorado Springs — Procurement"
+    country: US
+    region: "CO"
+    organization_type: municipal_government
+    source_type: municipal
+    base_url: "https://coloradosprings.gov/finance/page/bids-proposals"
+    listing_pattern: bids
+    parser_class: MunicipalTenderParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Colorado Springs procurement portal.
+    crawl_config:
+      listing_url: "/finance/page/bids-proposals"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ─── Colorado — Universities ───────────────────────────────────────
+
+  - source_id: cu_procurement
+    source_name: "University of Colorado — Procurement"
+    country: US
+    region: "CO"
+    organization_type: university
+    source_type: university
+    base_url: "https://www.cu.edu/psc"
+    listing_pattern: rfp
+    parser_class: UniversityProcurementParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      University of Colorado system procurement. Four campuses.
+    crawl_config:
+      listing_url: "/psc/bid-opportunities"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  SECTION 4 — CONSTRUCTION & INFRASTRUCTURE AGGREGATORS
+  # ═══════════════════════════════════════════════════════════════════
+
+  - source_id: dodge_construction
+    source_name: "Dodge Construction Network — Public Projects"
+    country: US
+    region: National
+    organization_type: construction_industry
+    source_type: construction
+    base_url: "https://www.construction.com"
+    listing_pattern: bids
+    parser_class: ConstructionBidParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Dodge Construction Network. Public project data available
+      without subscription. Only scrape publicly accessible listings.
+    crawl_config:
+      listing_url: "/projects"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  - source_id: dcn_canada
+    source_name: "Daily Commercial News — Canadian Construction"
+    country: CA
+    region: National
+    organization_type: construction_industry
+    source_type: construction
+    base_url: "https://canada.constructconnect.com"
+    listing_pattern: bids
+    parser_class: ConstructionBidParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Canadian construction project listings. Public project notices
+      accessible without login.
+    crawl_config:
+      listing_url: "/dcn/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: buildingconnected
+    source_name: "BuildingConnected — Public Projects"
+    country: US
+    region: National
+    organization_type: construction_industry
+    source_type: construction
+    base_url: "https://www.buildingconnected.com"
+    listing_pattern: bids
+    parser_class: ConstructionBidParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Autodesk BuildingConnected. Public project announcements.
+      Only scrape publicly accessible content.
+    crawl_config:
+      listing_url: "/public-projects"
+      pagination: { type: page_param, param: page, max_pages: 3 }
+      rate_limit_seconds: 5
+
+  - source_id: the_blue_book
+    source_name: "The Blue Book — Construction Leads"
+    country: US
+    region: National
+    organization_type: construction_industry
+    source_type: construction
+    base_url: "https://www.thebluebook.com"
+    listing_pattern: bids
+    parser_class: ConstructionBidParser
+    crawl_frequency: daily
+    active: false
+    notes: >
+      Blue Book Network public project listings. Construction industry
+      directory and bid board.
+    crawl_config:
+      listing_url: "/bid-opportunities"
+      pagination: { type: page_param, param: page, max_pages: 5 }
+      rate_limit_seconds: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  SECTION 5 — ADDITIONAL HOUSING AUTHORITIES
+  # ═══════════════════════════════════════════════════════════════════
+
+  - source_id: cha_procurement
+    source_name: "Chicago Housing Authority — Procurement"
+    country: US
+    region: "IL"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.thecha.org/doing-business"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Chicago Housing Authority. Active unit modernization program.
+    crawl_config:
+      listing_url: "/doing-business/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: la_housing_authority
+    source_name: "Housing Authority of City of LA — Procurement"
+    country: US
+    region: "CA"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.hacla.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      HACLA procurement for public housing rehabilitation.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: atlanta_housing
+    source_name: "Atlanta Housing — Procurement"
+    country: US
+    region: "GA"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.atlantahousing.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Atlanta Housing procurement for development and renovation.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: denver_housing
+    source_name: "Denver Housing Authority — Procurement"
+    country: US
+    region: "CO"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.denverhousing.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Denver Housing Authority procurement.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: seattle_housing
+    source_name: "Seattle Housing Authority — Procurement"
+    country: US
+    region: "WA"
+    organization_type: housing_authority
+    source_type: housing_authority
+    base_url: "https://www.seattlehousing.org"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Seattle Housing Authority procurement.
+    crawl_config:
+      listing_url: "/business/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  # ═══════════════════════════════════════════════════════════════════
+  #  SECTION 6 — ADDITIONAL SCHOOL DISTRICTS (US)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - source_id: nyc_doe_procurement
+    source_name: "NYC Department of Education — Procurement"
+    country: US
+    region: "NY"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.schools.nyc.gov/about-us/doing-business-with-us"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      NYC DOE. Largest US school district. Massive ongoing school
+      renovation and modernization program.
+    crawl_config:
+      listing_url: "/about-us/doing-business-with-us"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: miami_dade_schools
+    source_name: "Miami-Dade County Public Schools — Procurement"
+    country: US
+    region: "FL"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://procurement.dadeschools.net"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Miami-Dade CPS. Fourth-largest US school district.
+    crawl_config:
+      listing_url: "/current-bids"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: dallas_isd_procurement
+    source_name: "Dallas ISD — Procurement"
+    country: US
+    region: "TX"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.dallasisd.org/procurement"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Dallas Independent School District procurement.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: denver_public_schools
+    source_name: "Denver Public Schools — Procurement"
+    country: US
+    region: "CO"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.dpsk12.org/purchasing/"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Denver Public Schools procurement.
+    crawl_config:
+      listing_url: "/purchasing/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: atlanta_public_schools
+    source_name: "Atlanta Public Schools — Procurement"
+    country: US
+    region: "GA"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.atlantapublicschools.us/procurement"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Atlanta Public Schools procurement for facility renovations.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: boston_public_schools
+    source_name: "Boston Public Schools — Procurement"
+    country: US
+    region: "MA"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.bostonpublicschools.org/procurement"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Boston Public Schools procurement.
+    crawl_config:
+      listing_url: "/procurement"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5
+
+  - source_id: seattle_public_schools
+    source_name: "Seattle Public Schools — Procurement"
+    country: US
+    region: "WA"
+    organization_type: school_board
+    source_type: school_board
+    base_url: "https://www.seattleschools.org/departments/contracting/"
+    listing_pattern: bids
+    parser_class: GenericTenderParser
+    crawl_frequency: weekly
+    active: false
+    notes: >
+      Seattle Public Schools contracting and procurement.
+    crawl_config:
+      listing_url: "/departments/contracting/"
+      pagination: { type: none, max_pages: 1 }
+      rate_limit_seconds: 5

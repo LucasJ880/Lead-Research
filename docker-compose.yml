@@ -1,0 +1,101 @@
+services:
+  # ─── PostgreSQL ───────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: lh-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leadharvest}
+      POSTGRES_USER: ${POSTGRES_USER:-leadharvest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-leadharvest}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: lh-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Python Scraper API ──────────────────────────────────
+  scraper-api:
+    build:
+      context: ./services/scraper
+      dockerfile: Dockerfile
+    container_name: lh-scraper-api
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadharvest}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-leadharvest}
+      REDIS_URL: redis://redis:6379/0
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY:-scraper-internal-key-change-in-prod}
+      DEFAULT_RATE_LIMIT_SECONDS: ${DEFAULT_RATE_LIMIT_SECONDS:-3}
+      DEFAULT_USER_AGENT: ${DEFAULT_USER_AGENT:-LeadHarvest/1.0}
+      RESPECT_ROBOTS_TXT: ${RESPECT_ROBOTS_TXT:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
+
+  # ─── Celery Worker ───────────────────────────────────────
+  scraper-worker:
+    build:
+      context: ./services/scraper
+      dockerfile: Dockerfile
+    container_name: lh-scraper-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadharvest}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-leadharvest}
+      REDIS_URL: redis://redis:6379/0
+      DEFAULT_RATE_LIMIT_SECONDS: ${DEFAULT_RATE_LIMIT_SECONDS:-3}
+      DEFAULT_USER_AGENT: ${DEFAULT_USER_AGENT:-LeadHarvest/1.0}
+      RESPECT_ROBOTS_TXT: ${RESPECT_ROBOTS_TXT:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A src.tasks.celery_app worker --loglevel=info --concurrency=2
+
+  # ─── Celery Beat Scheduler ──────────────────────────────
+  scraper-beat:
+    build:
+      context: ./services/scraper
+      dockerfile: Dockerfile
+    container_name: lh-scraper-beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadharvest}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-leadharvest}
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A src.tasks.celery_app beat --loglevel=info
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,29 @@
+{
+  "name": "leadharvest",
+  "private": true,
+  "description": "Opportunity intelligence platform for the window covering industry",
+  "scripts": {
+    "dev": "pnpm --filter @leadharvest/web dev",
+    "build": "pnpm --filter @leadharvest/web build",
+    "start": "pnpm --filter @leadharvest/web start",
+    "lint": "pnpm --filter @leadharvest/web lint",
+    "db:migrate": "pnpm --filter @leadharvest/web prisma migrate dev",
+    "db:push": "pnpm --filter @leadharvest/web prisma db push",
+    "db:seed": "pnpm --filter @leadharvest/web prisma db seed",
+    "db:studio": "pnpm --filter @leadharvest/web prisma studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
