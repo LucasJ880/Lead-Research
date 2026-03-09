@@ -68,7 +68,7 @@ _PROVINCE_MAP = {
 
 def log(msg: str, *args: object) -> None:
     ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {msg % args}" if args else f"[{ts}] {msg}")
+    print(f"[{ts}] {msg % args}" if args else f"[{ts}] {msg}", flush=True)
 
 
 # ─── Cloud API Client ──────────────────────────────────────
@@ -361,37 +361,44 @@ def _search(
 
 
 def _parse_row(session: MerxSession, row: Tag, fetch_detail: bool, stats: CrawlStats) -> dict | None:
-    link = row.find("a", href=lambda h: h and "open-bids" in str(h))
+    link = row.find("a", class_="solicitationsTitleLink")
+    if not link:
+        link = row.find("a", href=lambda h: h and ("open-solicitation" in str(h) or "open-bids" in str(h)))
     if not link:
         return None
 
     href = link.get("href", "")
     detail_url = urljoin(_MERX_BASE, href.split("?")[0])
 
-    title_el = row.find("span", class_="rowTitle")
-    title = _clean(title_el.get_text()) if title_el else ""
+    title = _clean(link.get_text())
     if not title:
         return None
 
-    org_el = row.find("span", class_="buyer-name")
+    org_el = row.find("span", class_="buyerIdentification")
     org_name = _clean(org_el.get_text()) if org_el else None
 
-    loc_el = row.find("span", class_="location")
-    location_raw = _clean(loc_el.get_text()) if loc_el else ""
+    location_raw = ""
+    region_el = row.find("span", class_="regionValue")
+    if region_el:
+        location_raw = _clean(region_el.get_text())
+    if not location_raw:
+        aws_data = link.get("id", "")
+        script = row.find("script")
+        if script:
+            import re as _re
+            loc_match = _re.search(r'"location"\s*:\s*"([^"]*)"', script.get_text())
+            if loc_match:
+                location_raw = loc_match.group(1)
     region = _extract_region(location_raw)
 
-    pub_date_el = row.find("span", class_="publicationDate")
-    posted_date = None
-    if pub_date_el:
-        date_val = pub_date_el.find("span", class_="dateValue")
-        if date_val:
-            pd = _parse_date(date_val.get_text())
-            posted_date = pd[:10] if pd else None
-
-    close_el = row.find("span", class_="closingDate")
+    date_values = row.find_all("span", class_="dateValue")
     closing_date = None
-    if close_el:
-        closing_date = _parse_date(close_el.get_text())
+    posted_date = None
+    if date_values:
+        closing_date = _parse_date(date_values[0].get_text())
+    if len(date_values) > 1:
+        pd = _parse_date(date_values[1].get_text())
+        posted_date = pd[:10] if pd else None
 
     description = None
     category = None
