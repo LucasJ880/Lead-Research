@@ -1,4 +1,4 @@
-# LeadHarvest — Coding Rules
+# BidToGo — Coding Rules
 
 These rules ensure consistent, maintainable code generation across all parts of the system.
 

@@ -1,133 +1,165 @@
-# LeadHarvest — Project Context
+# BidToGo — Project Context
 
-This file is the long-term memory for any AI assistant or engineer working on this project.
+This file is the long-term memory for any AI agent working on this project.
 Read it before writing any code, making architectural decisions, or modifying the database schema.
 
 ---
 
-## Project Mission
+## Project Identity
 
-LeadHarvest is a web-based opportunity intelligence platform built for a window covering business operating in North America. It replaces the manual process of monitoring dozens of government and institutional procurement portals by automatically collecting, normalizing, scoring, and surfacing publicly available bids, tenders, RFPs, procurement notices, and construction opportunities — all in a single searchable dashboard.
-
-The system exists so that sales, estimating, and business development teams can discover relevant opportunities in minutes instead of hours, focus effort on the highest-value leads, and never miss a deadline.
-
----
-
-## Target Market
-
-| Dimension | Details |
-|-----------|---------|
-| **Industry** | Window coverings — blinds, shades, curtains, drapery, and related interior products |
-| **Company size** | Small-to-medium window covering businesses with 1–50 employees |
-| **Users** | Owner-operators, sales/BD teams, estimators |
-| **Geography** | Canada and the United States |
-| **Opportunity types** | Public bids, tenders, RFPs, procurement notices, construction projects, renovations, facility upgrades, interior fit-outs |
-
-### Target Regions
-
-**Canada**: All provinces and territories, with emphasis on Ontario, British Columbia, Alberta, and Quebec.
-
-**United States**: All 50 states, with emphasis on California, Texas, Florida, New York, and Illinois.
+| Field | Value |
+|-------|-------|
+| **Name** | BidToGo |
+| **Domain** | bidtogo.ca |
+| **Type** | Procurement intelligence platform |
+| **Stage** | Production (internal testing) |
+| **Deployment** | DigitalOcean Droplet, 8GB RAM, Docker Compose, Caddy HTTPS |
 
 ---
 
-## Industry Keywords
+## Product Vision
 
-These keyword lists drive the relevance scoring engine and full-text search behavior. They are the business core of the platform. Any modification to these lists changes which opportunities get surfaced to the user.
+BidToGo is a BidPrime-style opportunity intelligence platform built for the North American window covering and textile furnishing industry. It replaces manual monitoring of dozens of government and institutional procurement portals by automatically collecting, normalizing, scoring, and surfacing publicly available bids, tenders, RFPs, and procurement notices in a single searchable dashboard.
 
-### Primary Keywords (direct relevance — score boost +40)
+The system is designed so that sales, estimating, and business development teams can discover relevant opportunities in minutes instead of hours, focus effort on the highest-value leads, and never miss a deadline.
 
-window coverings, blinds, roller shades, zebra blinds, curtains, drapery, drapes, blackout shades, solar shades, motorized shades, skylight shades, custom shades, exterior shades, commercial blinds, privacy curtains, drapery tracks, window treatments, venetian blinds, vertical blinds, honeycomb shades, cellular shades, roman shades, sheer shades, panel track blinds, plantation shutters, window film, shade systems, motorized window, automated shades
-
-### Secondary Keywords (adjacent relevance — score boost +20)
-
-interior fit-out, tenant improvement, renovation, furnishing, FF&E, furniture fixtures equipment, design-build, school modernization, hospital expansion, condo development, apartment development, hospitality renovation, office fit-out, interior finishing, millwork, soft furnishing, window replacement, building envelope, interior design services, commercial interiors
-
-### Project Type Indicators (contextual relevance — score boost +15)
-
-school renovation, hospital renovation, senior living, public housing, hotel construction, office construction, university residence, dormitory, healthcare facility, government building, courthouse, library, community center, recreation center, fire station, police station, correctional facility
-
-### Negative Keywords (reduce score or exclude)
-
-software, IT services, vehicles, road construction, bridge, sewer, water main, HVAC only, electrical only, plumbing only, demolition only, landscaping only, paving
+BidToGo is not a generic bid scraper. It is an intelligence product that prioritizes the owner's business vertical while maintaining an architecture capable of expanding to broader verticals later.
 
 ---
 
-## System Components
+## Business Focus
 
-The platform is composed of six major subsystems. Each has a defined responsibility boundary.
+The platform prioritizes opportunities related to:
 
-| Component | Technology | Responsibility |
-|-----------|-----------|----------------|
-| **Dashboard UI** | Next.js 14, React 18, Tailwind CSS, shadcn/ui | Search, filter, view, annotate, and export opportunities |
-| **API Layer** | Next.js API Routes, Prisma ORM | RESTful endpoints for all dashboard operations |
-| **Database** | PostgreSQL 16 | Persistent storage with full-text search (tsvector), GIN indexes, JSONB |
-| **Cache / Queue** | Redis 7 | Celery task broker, application caching, rate-limit state |
-| **Scraper Engine** | Python 3.9+, FastAPI, Celery | Fetch, parse, normalize, score, and store opportunity data |
-| **Scoring Engine** | Python (integrated with scraper) | Keyword-based 0–100 relevance scoring with explainable breakdowns |
+**Primary products**: blinds, roller shades, zebra blinds, window coverings, curtains, drapery, shades, motorized shades, blackout shades, solar shades, skylight shades, window treatment, plantation shutters
+
+**Textile and supply**: fabric, textile, linen, bedding, blankets, privacy curtains, cubicle curtains, healthcare curtains, hospitality linen, soft furnishings
+
+**Project context**: FF&E, furnishing, interior fit-out, tenant improvement, hospital renovation, school furnishing, hotel renovation, condo furnishing
+
+**Negative signals**: watermain, sewer, asphalt, bridge, software, ERP, telecom, legal services, fuel supply, snow removal, heavy equipment
+
+---
+
+## Current Production Status
+
+### What is working
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Dashboard UI | Live | Next.js 14 at bidtogo.ca |
+| Admin authentication | Live | NextAuth.js, bcrypt |
+| SAM.gov crawler | Live | Primary working source, real opportunities ingested |
+| Relevance scoring engine | Live | Multi-tier keywords, 4-bucket system, semantic matching |
+| Opportunity search/filter | Live | Full-text search, multi-dimensional filters |
+| Source registry | Live | 300+ registered sources, SAM.gov actively crawling |
+| Crawl logs and diagnostics | Live | Real run records, source-level metrics |
+| On-demand AI analysis | Live | OpenAI GPT-4o-mini, Quick Analysis mode |
+| Settings / control center | Live | Business focus, keyword config, source controls |
+
+### What is in progress
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| MERX authenticated connector | Architecture complete | Local Playwright agent built, blocked by IDP session lock |
+| Deep Analysis mode | Planned | Requires document download pipeline |
+| Additional source crawlers | Planned | BuyAndSell.gc.ca, BC Bid, municipal portals |
+| Email alerts | Planned | Saved search + digest notifications |
+
+### Known limitations
+
+- MERX requires local authenticated browser access (datacenter IP blocked)
+- Only SAM.gov is actively producing real opportunities in production
+- AI analysis is on-demand only (no auto-analysis to control token costs)
+- Single admin user (no multi-user roles yet)
+
+---
+
+## Technical Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, shadcn/ui |
+| API | Next.js API Routes, Prisma ORM |
+| Database | PostgreSQL 16, tsvector full-text search, GIN indexes, JSONB |
+| Cache/Queue | Redis 7 (Celery broker) |
+| Scraper engine | Python 3.9+, FastAPI, Celery, BeautifulSoup, lxml |
+| AI analysis | OpenAI GPT-4o-mini via TenderAnalyzer |
+| MERX agent | Playwright-based local authenticated browser crawler |
+| Deployment | Docker Compose, Caddy (HTTPS), DigitalOcean |
+| Auth | NextAuth.js, bcrypt password hashing |
 
 ### Monorepo Structure
 
 ```
 Lead-Research/
-├── apps/web/           → Next.js frontend + API (TypeScript)
-├── services/scraper/   → Python scraping workers (FastAPI + Celery)
-├── docs/               → PRD, architecture, database docs
-├── data/               → Source registry (YAML), keyword lists
-├── .ai/                → AI assistant rules and project context
-└── docker-compose.yml  → Infrastructure (PostgreSQL, Redis)
+├── apps/web/              → Next.js frontend + API (TypeScript)
+│   ├── src/app/api/       → API route handlers
+│   ├── src/app/dashboard/ → Dashboard pages
+│   ├── prisma/            → Schema, migrations
+│   └── src/components/    → UI components
+├── services/scraper/      → Python scraping + AI analysis (FastAPI + Celery)
+│   ├── src/api/           → FastAPI endpoints (health, crawl, analysis, agent sync)
+│   ├── src/crawlers/      → Source crawlers
+│   ├── src/parsers/       → HTML parsers
+│   ├── src/intelligence/  → TenderAnalyzer, AI pipeline
+│   └── src/utils/         → Scorer, normalizer, dedup
+├── agent/                 → Local MERX Playwright agent
+├── .ai/                   → AI team rules and project context
+├── docker-compose.prod.yml → Production services
+└── Caddyfile              → HTTPS reverse proxy config
 ```
 
 ---
 
-## Core Capabilities
+## Architecture Layers
 
-1. **Data Collection** — Scheduled and manual crawling of public procurement portals with rate limiting, robots.txt compliance, and error handling.
-2. **Data Normalization** — Raw HTML is parsed into structured records with consistent date formats, location hierarchies, status enums, and deduplication fingerprints.
-3. **Relevance Scoring** — Every opportunity is scored 0–100 based on keyword matches, organization type, and project category, with a stored breakdown explaining the score.
-4. **Full-Text Search** — PostgreSQL `tsvector` with weighted fields (title > summary > description) and `websearch_to_tsquery` for natural-language search.
-5. **Filtering & Export** — Multi-dimensional filtering (status, country, region, date ranges, relevance threshold, source, category) with CSV and Excel export.
-6. **Saved Searches** — Persistent filter configurations for quick re-use, with a backend structure ready for email alerting.
-7. **Notes & Annotations** — Users can attach private notes to any opportunity for tracking evaluation and follow-up status.
+| Layer | Purpose |
+|-------|---------|
+| Source Layer | Source registry, access modes, crawl config |
+| Access Layer | HTTP, browser, authenticated browser, API fetch |
+| Extraction Layer | Listing pages, detail pages, pagination, normalization |
+| Intelligence Layer | Relevance scoring, AI analysis, feasibility assessment |
+| Product Layer | Dashboard, opportunities, sources, logs, settings, export |
 
 ---
 
-## Business Goals
+## Data Pipeline
 
-| Priority | Goal |
+All opportunity data flows through this pipeline:
+
+```
+source → access/fetch → extraction/parse → normalize → score → deduplicate → database → API → dashboard
+```
+
+No module may bypass this pipeline. Scrapers must not write directly to the database without normalization and scoring. The API layer must not modify opportunity data directly. The frontend must not query sources directly.
+
+---
+
+## Current Roadmap Priorities
+
+| Priority | Item |
 |----------|------|
-| P0 | Surface high-relevance window covering opportunities that the business would otherwise miss |
-| P0 | Reduce daily opportunity research from hours to under 5 minutes |
-| P1 | Cover 50+ public sources across Canada and the US |
-| P1 | Ingest 500+ opportunities per week with automated scoring |
-| P2 | Enable saved searches with email alerts for new matches |
-| P2 | Provide CSV/Excel export for team sharing and CRM import |
-| P3 | Support multi-user access with role-based permissions |
-
----
-
-## Long-Term Vision
-
-**Phase 1 (Current)** — MVP: Collect, score, and display opportunities in a searchable dashboard with export and notes.
-
-**Phase 2** — Alerting: Email digests when new opportunities match saved searches. Closing-soon notifications.
-
-**Phase 3** — Intelligence: AI-powered description summarization. ML-based scoring trained on user feedback (which opportunities the user actually bid on).
-
-**Phase 4** — Scale: 200+ sources. Multi-user with roles. CRM integrations (HubSpot, Salesforce). Public API. Bid calendar view.
-
-**Phase 5** — Competitive: Track which competitors are bidding. Document parsing to extract specs from attached PDFs. Predictive win-rate analysis.
+| P0 | Keep SAM.gov pipeline healthy and observable |
+| P0 | Production stability — all services start reliably |
+| P1 | Complete MERX local connector (unblock IDP session, verify crawl) |
+| P1 | On-demand AI Quick Analysis stable in production |
+| P2 | Expand to 3-5 more active source crawlers |
+| P2 | Source yield analytics and health monitoring |
+| P3 | Email alert digests for saved searches |
+| P3 | Multi-user access with role-based permissions |
+| P3 | Deep Analysis mode with document intelligence |
 
 ---
 
 ## Compliance Constraints
 
-These rules are non-negotiable. Every feature, scraper, and data pipeline must comply.
+These rules are non-negotiable:
 
-1. **Public data only** — Only collect from publicly accessible pages that do not require authentication.
-2. **robots.txt** — Respect all robots.txt directives on every target domain.
-3. **Rate limiting** — Minimum 2-second delay between requests to the same domain. Configurable per source.
-4. **No bypass** — Never circumvent CAPTCHAs, login walls, paywalls, or anti-bot systems.
-5. **Attribution** — Always store and display the source URL. Always link back to the original listing.
-6. **User-Agent** — Use a transparent, honest User-Agent string that identifies the crawler.
-7. **Terms compliance** — Review terms of use before adding any new source. Flag sources requiring legal review.
+1. **Public data only** — Only collect from publicly accessible pages (exception: MERX via authorized account on local machine)
+2. **robots.txt** — Respect all robots.txt directives
+3. **Rate limiting** — Minimum 2-second delay between requests to the same domain
+4. **No bypass** — Never circumvent CAPTCHAs, paywalls, or anti-bot systems
+5. **Attribution** — Always store and display the source URL
+6. **No fabrication** — Never generate fake opportunity data
+7. **Credentials safety** — Never log or hardcode credentials, API keys, or secrets

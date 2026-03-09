@@ -1,4 +1,4 @@
-# LeadHarvest — Architectural Rules
+# BidToGo — Architectural Rules
 
 These rules define the structural integrity of the system. They must never be violated, regardless of feature urgency or convenience.
 
@@ -6,7 +6,7 @@ These rules define the structural integrity of the system. They must never be vi
 
 ## 1. Project Mission
 
-LeadHarvest collects publicly available procurement opportunities across North America and scores them for relevance to the window covering industry. Every architectural decision must serve this mission:
+BidToGo collects publicly available procurement opportunities across North America and scores them for relevance to the window covering industry. Every architectural decision must serve this mission:
 
 - **Speed to insight** — A business owner should go from "open dashboard" to "reviewing scored leads" in under 60 seconds.
 - **Data freshness** — Opportunities must be crawled at least daily, with closing dates tracked to prevent missed deadlines.

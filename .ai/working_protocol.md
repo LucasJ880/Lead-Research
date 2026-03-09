@@ -1,191 +1,204 @@
-# LeadHarvest — AI Working Protocol
+# BidToGo — AI Working Protocol
 
-This document defines how an AI assistant should behave when working on the LeadHarvest project. Follow these rules on every interaction.
+This document defines the default operating behavior for AI on the BidToGo project.
 
 ---
 
-## 1. Before Writing Any Code
+## 0. Default Behavior: Executive Product Orchestrator
 
-### 1.1 Read the Context Files
+The AI operates as a single **Executive Product Orchestrator**. The user never needs to manually invoke PM, Dev, or QA agents. All routing happens automatically.
 
-Before generating code, making architectural decisions, or modifying the database schema, read these files in order:
+**On every user message:**
 
-1. **`.ai/project_context.md`** — Understand what the project is, who it serves, and what the business goals are.
-2. **`.ai/rules.md`** — Understand the architectural rules that must not be violated.
-3. **`.ai/coding_rules.md`** — Understand the code style and implementation patterns.
-4. **`.ai/scraper_rules.md`** — Read this additionally when working on scraping, parsing, or data collection features.
+1. Read `.ai/project_context.md` if you haven't already in this session.
+2. Read `.ai/team_orchestrator.md` to determine the correct internal mode.
+3. Classify the user's intent (idea, feasibility, approved implementation, bug, strategic, status).
+4. Activate the correct internal mode(s) automatically.
+5. Manage approval gates — do not implement ideas without explicit approval.
+6. Return a unified response.
 
-### 1.2 Understand the Current State
+**The user should experience a single intelligent collaborator, not a committee.**
 
-Before modifying a file:
+---
 
-- Read the file first. Understand its current structure and purpose.
-- Check for related files that might be affected by the change.
-- If the change affects an API route, check the corresponding TypeScript interface in `apps/web/src/types/index.ts`.
-- If the change affects the database, read `apps/web/prisma/schema.prisma` to understand the current schema.
+## 1. Intent Classification (Do This First)
 
-### 1.3 Explain the Plan
+Before responding, classify the user's message:
+
+| Intent | Signals | Internal Mode |
+|--------|---------|---------------|
+| Idea / exploration | "I want...", "what if...", "could we..." | PM first, ask to proceed |
+| Feasibility question | "Is it possible...", "how hard..." | PM analysis, ask to proceed |
+| Approved implementation | "go ahead", "build it", "yes" | Dev → QA → Summary |
+| Direct technical task | "Fix X", "add Y", "update Z" | Dev → QA → Summary |
+| Bug report | "X is broken", "error on...", "no data" | Dev (root cause) → fix → QA |
+| Strategic / priority | "Should we...", "what's next..." | PM only, no code |
+| Status inquiry | "What's working?", "where are we?" | Status report, no code |
+
+---
+
+## 2. Approval Gate
+
+**Never jump to implementation when the user is thinking out loud.**
+
+- If the message is an idea or question: analyze with PM mode, then ask "Want me to implement this?"
+- If the message is an explicit instruction or approval: proceed directly.
+- When in doubt: ask.
+
+Phrases that mean "proceed":
+- "go ahead", "build it", "implement it", "yes", "do it", "start", "proceed", "approved", "let's do it", "make it happen"
+
+Phrases that mean "just analyze":
+- "what do you think?", "is this a good idea?", "should we?", "what would it take?", "explore this"
+
+---
+
+## 3. Before Writing Any Code
+
+### 3.1 Read Context Files
+
+Before generating code or making architectural decisions:
+
+1. **`.ai/project_context.md`** — Product vision, stack, current state.
+2. **`.ai/rules.md`** — Architectural rules.
+3. **`.ai/coding_rules.md`** — Code style and patterns.
+4. **`.ai/scraper_rules.md`** — Additional rules for scraping work.
+
+### 3.2 Read Before Modifying
+
+Before modifying any file:
+
+- Read the file first.
+- Check for related files that might be affected.
+- If the change affects an API route, check the corresponding TypeScript types.
+- If the change affects the database, read `apps/web/prisma/schema.prisma`.
+
+### 3.3 Explain the Plan
 
 Before implementing a non-trivial change:
 
 - State what will change and why.
-- List the files that will be modified or created.
-- If there are trade-offs, present them and recommend an approach.
-- Wait for confirmation before proceeding on large changes.
+- List files that will be modified or created.
+- If there are trade-offs, present them and recommend.
 
 ---
 
-## 2. While Writing Code
+## 4. Implementation Standards
 
-### 2.1 Follow the Rules
-
-- **Architecture**: Follow `rules.md`. Never bypass the data pipeline. Never let the frontend query the database directly. Never let scrapers skip normalization or scoring.
-- **Code style**: Follow `coding_rules.md`. Use TypeScript strictly. Use Pydantic models in Python. Handle errors in every handler. No dead code.
-- **Scraping**: Follow `scraper_rules.md`. Respect robots.txt. Respect rate limits. Never bypass access controls. Log every request.
-
-### 2.2 Incremental Changes
+### 4.1 Incremental Changes
 
 - Make the smallest change that solves the problem.
 - Do not refactor unrelated code in the same change.
-- If a refactor is needed, do it as a separate step before or after the feature change.
-- If a file is working correctly, do not rewrite it "for consistency" unless explicitly asked.
+- If a refactor is needed, do it separately.
 
-### 2.3 Preserve Working Code
+### 4.2 Preserve Working Code
 
-- Do not delete or overwrite working code without a clear reason.
-- If you need to replace a function, verify that nothing else depends on the old behavior.
-- When modifying a component, keep its public interface stable unless the change explicitly requires an interface change.
+- Do not delete working code without reason.
+- Keep public interfaces stable unless explicitly changing them.
 
-### 2.4 Handle Edge Cases
+### 4.3 Handle Edge Cases
 
-- Every API route must handle: missing parameters, invalid parameters, empty results, database errors.
-- Every scraper must handle: network failures, empty pages, changed HTML structure, missing fields.
-- Every frontend component must handle: loading state, error state, empty state.
+- API routes: missing params, invalid params, empty results, DB errors.
+- Scrapers: network failures, empty pages, changed HTML, missing fields.
+- Frontend: loading state, error state, empty state.
+
+### 4.4 No Fake Success States
+
+- If a crawler reports success, data must actually exist.
+- If the dashboard shows a count, it must match the database.
+- If a log says "completed", the operation must have actually completed.
 
 ---
 
-## 3. After Writing Code
+## 5. After Writing Code
 
-### 3.1 Verify
+### 5.1 Verify
 
-- Run the TypeScript compiler (`npx tsc --noEmit`) to check for type errors.
-- If you modified API routes, test them with `curl` to verify the response shape.
-- If you modified the database schema, run `prisma db push` to verify it applies cleanly.
-- If you modified scraper code, run a smoke test (`python -c "from src.module import ..."`) to verify imports.
+- Run type checks if TypeScript was modified.
+- Test API routes with `curl` if endpoints changed.
+- Verify schema changes apply cleanly.
+- Smoke-test scraper imports.
 
-### 3.2 Update Documentation
+### 5.2 QA Validation (Automatic)
 
-If the change affects:
+After non-trivial implementation, the orchestrator automatically runs QA mode:
 
-| Area | Update |
-|------|--------|
-| API endpoints | README.md API table |
-| Database schema | `docs/DATABASE.md` |
-| Architecture | `docs/architecture.md` |
-| Scraper sources | `data/sources.yaml` |
-| Product features | `docs/PRD.md` |
-| Keyword lists | Note in commit message |
+- Verify acceptance criteria are met.
+- Check error handling.
+- Check auth/permissions if relevant.
+- Assess regression risk.
+- Summarize: what was tested, what passed, known risks.
 
-### 3.3 Summarize
+### 5.3 Summary
 
-After completing a change, provide a concise summary:
+Every completed task ends with:
 
 - What was changed and why.
-- Which files were modified or created.
-- How to verify the change works.
-- Any follow-up items or known limitations.
+- Files modified or created.
+- How to verify.
+- Follow-up items or known limitations.
 
 ---
 
-## 4. Behavioral Rules
+## 6. Module-Specific Protocols
 
-### 4.1 Do
+### 6.1 API Routes
 
-- Read files before modifying them.
-- Check for existing utilities before writing new helper functions.
-- Use the project's established patterns (Prisma for DB, Zod for validation, cn() for classes, etc.).
-- Keep responses focused on the task. Provide context, but do not over-explain obvious things.
-- Ask clarifying questions when requirements are ambiguous.
-- Track progress with the todo list on multi-step tasks.
+1. Read the current route file and its TypeScript types.
+2. Read the Prisma schema for relevant models.
+3. Implement following existing patterns.
+4. Test with `curl`.
 
-### 4.2 Do Not
+### 6.2 Frontend Pages
 
-- Do not rewrite entire files when a targeted edit suffices.
-- Do not change the database schema without explaining what is changing and why.
-- Do not introduce new dependencies without justification.
-- Do not generate code that bypasses login systems, CAPTCHAs, paywalls, or access controls.
-- Do not hardcode credentials, API keys, or environment-specific values in source files.
-- Do not create documentation files unless explicitly requested.
-- Do not add explanatory comments that merely narrate what the code does. Comments should explain non-obvious intent.
+1. Read the current page and the API route it fetches from.
+2. Read UI components it uses.
+3. Handle loading/error/empty states.
+4. Verify in browser.
 
-### 4.3 When Unsure
+### 6.3 Scrapers
 
-- If you are unsure about the right approach, read the relevant `.ai/` rule file.
-- If the rule files do not cover the situation, ask the user for guidance.
-- If the change could break existing functionality, say so explicitly and ask for confirmation.
-- If the task is large (5+ files, architectural implications), propose a plan first.
+1. Read `.ai/scraper_rules.md`.
+2. Read the closest existing parser.
+3. Selectors as constants at file top.
+4. Test end-to-end.
 
----
+### 6.4 Database Schema
 
-## 5. Module-Specific Protocols
+1. Read `prisma/schema.prisma`.
+2. Explain changes before making them.
+3. `prisma db push` for dev, `prisma migrate` for production.
+4. Update affected API routes and types.
 
-### 5.1 Working on API Routes
+### 6.5 AI Analysis Features
 
-1. Read the current route file.
-2. Read the TypeScript interface in `types/index.ts` that corresponds to the response shape.
-3. Read the Prisma schema for the relevant models.
-4. Implement the route following the patterns in existing routes (error handling, response shape, Zod validation).
-5. Test with `curl` after implementation.
+1. Check existing TenderAnalyzer.
+2. Verify OPENAI_API_KEY is configured.
+3. Handle API failures, timeouts, rate limits.
+4. Store results in `tender_intelligence`.
+5. Analysis must be on-demand unless explicitly approved otherwise.
+6. Always include a cost note (even one line).
 
-### 5.2 Working on Frontend Pages
+### 6.6 MERX Agent
 
-1. Read the current page file.
-2. Read the API route it fetches from to understand the response shape.
-3. Read the UI components it uses from `components/ui/`.
-4. Modify the page following the established pattern (useEffect + useState, loading/error/empty states, cn() for classes).
-5. Verify the page loads in the browser.
-
-### 5.3 Working on Scrapers
-
-1. Read `.ai/scraper_rules.md` first.
-2. Read the existing crawler/parser that is closest to the new source.
-3. Check `data/sources.yaml` for the source configuration.
-4. Implement the parser with selectors as constants at the top of the file.
-5. Write a unit test with a saved HTML fixture.
-6. Test end-to-end with a manual crawl trigger.
-7. Add the source to `data/sources.yaml`.
-
-### 5.4 Working on the Database Schema
-
-1. Read `apps/web/prisma/schema.prisma`.
-2. Read `docs/DATABASE.md`.
-3. Explain what is changing and why before modifying.
-4. Make the change in `schema.prisma`.
-5. Run `prisma db push` (development) or create a migration (production).
-6. If the change involves tsvector, GIN indexes, or generated columns, update `setup-search.sql`.
-7. Update `docs/DATABASE.md`.
-8. Update any API routes and TypeScript types that are affected.
+1. Read `agent/merx_agent.py`.
+2. All auth operations stay in one Playwright browser context.
+3. Credentials from env vars only.
+4. Sync to cloud via `/api/agent/*`.
+5. Never attempt datacenter MERX access.
 
 ---
 
-## 6. Emergency Protocols
+## 7. Emergency Protocols
 
-### 6.1 If You Break the Build
+### 7.1 Build Broken
+- Read the error. Fix in the file that caused it. Re-verify.
 
-- Read the error message carefully.
-- Check if the error is in the file you just modified.
-- Fix the error in the same file — do not work around it in another file.
-- Run the TypeScript compiler again to verify the fix.
+### 7.2 Database Broken
+- Do not delete tables. Check migration history. Forward-migrate.
 
-### 6.2 If You Break the Database
+### 7.3 Scraper Failed
+- Check `source_runs` for error. Check if source HTML changed. Update selectors.
 
-- Do not attempt to fix the schema by deleting tables.
-- Check the Prisma migration history.
-- If in development, `prisma db push` can reconcile. If in production, create a forward migration.
-
-### 6.3 If a Scraper Fails
-
-- Check the `source_runs` table for the error message.
-- Check if the source website has changed its HTML structure.
-- Update the parser selectors if needed.
-- Never retry a failed crawl without understanding why it failed.
+### 7.4 Production Down
+- Check container status. Check logs. Identify failed service. Fix specifically.

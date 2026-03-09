@@ -1,4 +1,4 @@
-# LeadHarvest — Scraper Rules
+# BidToGo — Scraper Rules
 
 These rules govern the design, implementation, and operation of all data collection components.
 
@@ -6,7 +6,7 @@ These rules govern the design, implementation, and operation of all data collect
 
 ## 1. Scraper Philosophy
 
-LeadHarvest collects opportunity data from publicly accessible procurement portals. The scraper is a guest on these websites — it must behave politely, transparently, and within the boundaries of what is authorized.
+BidToGo collects opportunity data from publicly accessible procurement portals. The scraper is a guest on these websites — it must behave politely, transparently, and within the boundaries of what is authorized.
 
 **Core principles:**
 
@@ -205,7 +205,7 @@ Before every crawl run:
 The crawler must identify itself with a transparent User-Agent string:
 
 ```
-LeadHarvest/1.0 (+https://leadharvest.local/bot; bot@leadharvest.local)
+BidToGo/1.0 (+https://bidtogo.ca/bot; bot@bidtogo.ca)
 ```
 
 This string must include:
