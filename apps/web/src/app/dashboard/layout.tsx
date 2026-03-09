@@ -47,7 +47,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       >
         {/* Brand */}
         <div className="flex h-16 items-center gap-3 border-b border-white/10 px-4">
-          <img src="/icon.png" alt="BidToGo" className="h-8 w-8 shrink-0 rounded-lg" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" className="h-5 w-5">
+              <path d="M8 7h10l4 4v12a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2z" fill="none" stroke="#fff" strokeWidth="2" strokeLinejoin="round"/>
+              <path d="M18 7v4h4" fill="none" stroke="#fff" strokeWidth="2" strokeLinejoin="round"/>
+              <circle cx="14" cy="17" r="4" fill="none" stroke="#fff" strokeWidth="2"/>
+              <line x1="17" y1="20" x2="21" y2="24" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
           {!collapsed && (
             <span className="text-lg font-semibold tracking-tight">
               BidToGo

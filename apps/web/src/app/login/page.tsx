@@ -40,8 +40,15 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4">
-            <img src="/icon.png" alt="BidToGo" className="h-12 w-12 rounded-xl" />
+          <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" className="h-9 w-9">
+              <path d="M8 7h10l4 4v12a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2z" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round"/>
+              <path d="M18 7v4h4" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round"/>
+              <circle cx="14" cy="17" r="4" fill="none" stroke="#fff" strokeWidth="1.5"/>
+              <line x1="17" y1="20" x2="21" y2="24" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="12" y1="16" x2="16" y2="16" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/>
+              <line x1="12.5" y1="18" x2="15.5" y2="18" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
           </div>
           <CardTitle className="text-xl">Sign in to BidToGo</CardTitle>
           <CardDescription>

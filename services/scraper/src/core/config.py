@@ -6,7 +6,17 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+def _find_project_root() -> Path:
+    """Walk up from this file to find the project root (.env location)."""
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / ".env").exists():
+            return parent
+        if parent == parent.parent:
+            break
+    return Path("/app")
+
+_PROJECT_ROOT = _find_project_root()
 _ENV_FILE = _PROJECT_ROOT / ".env"
 
 
