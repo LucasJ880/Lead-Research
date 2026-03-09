@@ -13,6 +13,7 @@ import {
   X,
   Loader2,
   Eye,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -581,12 +582,24 @@ function OpportunitiesPage() {
                         {opp.sourceName}
                       </td>
                       <td className="px-4 py-3">
-                        <Link
-                          href={`/dashboard/opportunities/${opp.id}`}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline whitespace-nowrap"
-                        >
-                          View <ExternalLink className="h-3 w-3" />
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          {opp.hasIntelligence && (
+                            <Link
+                              href={`/dashboard/opportunities/${opp.id}`}
+                              className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                              title={`AI Report: ${opp.recommendationStatus?.replace(/_/g, " ") || "analyzed"} · Feasibility ${opp.feasibilityScore || "—"}`}
+                            >
+                              <Sparkles className="h-2.5 w-2.5" />
+                              AI Report
+                            </Link>
+                          )}
+                          <Link
+                            href={`/dashboard/opportunities/${opp.id}`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline whitespace-nowrap"
+                          >
+                            View <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   ))}

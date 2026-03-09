@@ -30,9 +30,7 @@ export async function GET(
       return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
     }
 
-    // Fetch intelligence — try Prisma first, fall back to raw SQL
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let intelligence: any = null;
+    let intelligence: Record<string, unknown> | null = null;
     try {
       intelligence = await prisma.tenderIntelligence.findUnique({
         where: { opportunityId: id },
@@ -80,9 +78,7 @@ export async function GET(
       }
     }
 
-    // Fetch documents — try with new columns, fall back
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let documents: any[] = [];
+    let documents: Record<string, unknown>[] = [];
     try {
       documents = await prisma.opportunityDocument.findMany({
         where: { opportunityId: id },

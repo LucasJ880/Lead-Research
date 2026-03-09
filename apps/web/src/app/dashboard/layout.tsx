@@ -17,12 +17,14 @@ import {
   User,
   Search,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/opportunities", label: "Opportunities", icon: FileSearch },
+  { href: "/dashboard/intelligence", label: "AI Intelligence", icon: Sparkles },
   { href: "/dashboard/sources", label: "Sources", icon: Globe },
   { href: "/dashboard/saved-searches", label: "Saved Searches", icon: Bookmark },
   { href: "/dashboard/logs", label: "Logs", icon: ScrollText },

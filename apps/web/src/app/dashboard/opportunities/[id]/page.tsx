@@ -28,6 +28,7 @@ import {
   XCircle,
   Radio,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ export default function OpportunityDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const [intel, setIntel] = useState<any>(null);
   const [intelLoading, setIntelLoading] = useState(false);
 
@@ -297,9 +298,69 @@ export default function OpportunityDetailPage() {
         </CardContent>
       </Card>
 
+      {/* AI Intelligence Banner — prominent CTA when report exists */}
+      {intel?.intelligence && !intelLoading && (
+        <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full border-2 text-lg font-bold ${
+                  (intel.intelligence.feasibilityScore ?? intel.intelligence.feasibility_score ?? 0) >= 70
+                    ? "border-emerald-400 text-emerald-600 bg-emerald-50"
+                    : (intel.intelligence.feasibilityScore ?? intel.intelligence.feasibility_score ?? 0) >= 40
+                    ? "border-amber-400 text-amber-600 bg-amber-50"
+                    : "border-red-400 text-red-600 bg-red-50"
+                }`}>
+                  {intel.intelligence.feasibilityScore ?? intel.intelligence.feasibility_score ?? "—"}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-blue-900">AI Intelligence Report Available</span>
+                    {(() => {
+                      const rec = intel.intelligence.recommendationStatus ?? intel.intelligence.recommendation_status;
+                      if (!rec) return null;
+                      const colors: Record<string, string> = {
+                        strongly_pursue: "bg-emerald-100 text-emerald-800",
+                        pursue: "bg-green-100 text-green-800",
+                        review_carefully: "bg-amber-100 text-amber-800",
+                        low_probability: "bg-orange-100 text-orange-800",
+                        skip: "bg-red-100 text-red-800",
+                      };
+                      return (
+                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${colors[rec] || "bg-gray-100"}`}>
+                          {rec.replace(/_/g, " ").toUpperCase()}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-xs text-blue-700 mt-0.5">
+                    {intel.intelligence.analysisModel ?? intel.intelligence.analysis_model === "gpt-4o-mini" ? "GPT-4o powered analysis" : "Rule-based analysis"} with feasibility scoring, scope extraction, and business recommendations.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="#ai-intelligence"
+                className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors shrink-0"
+              >
+                <Sparkles className="h-4 w-4" />
+                View Full Report
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main content */}
         <div className="space-y-6 lg:col-span-2">
+          {/* Intelligence Panel — shown first when available */}
+          {intel?.intelligence && (
+            <div id="ai-intelligence">
+              <IntelligencePanel data={intel.intelligence} />
+            </div>
+          )}
+
           {/* Description */}
           <Card>
             <CardHeader>
@@ -317,9 +378,6 @@ export default function OpportunityDetailPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Intelligence Panel */}
-          {intel?.intelligence && <IntelligencePanel data={intel.intelligence} />}
 
           {/* Documents (from intelligence + original) */}
           <Card>
@@ -637,7 +695,7 @@ function MetaRow({
   );
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable */
 function IntelligencePanel({ data }: { data: any }) {
   if (!data) return null;
 
@@ -890,4 +948,4 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </div>
   );
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+/* eslint-enable */

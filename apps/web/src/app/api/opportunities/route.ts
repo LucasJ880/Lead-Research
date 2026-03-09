@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
 import type {
   OpportunityStatus,
   OpportunitySummary,
@@ -8,8 +7,6 @@ import type {
   RelevanceBucket,
   WorkflowStatus,
 } from "@/types";
-
-const RELEVANT_BUCKETS: RelevanceBucket[] = ["highly_relevant", "moderately_relevant"];
 
 interface RawOpportunityRow {
   id: string;
@@ -32,6 +29,9 @@ interface RawOpportunityRow {
   estimated_value: string | null;
   currency: string;
   rank?: number;
+  has_intelligence?: boolean;
+  recommendation_status?: string | null;
+  feasibility_score?: number | null;
 }
 
 function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
@@ -55,36 +55,12 @@ function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
     sourceName: row.source_name,
     estimatedValue: row.estimated_value ? Number(row.estimated_value) : undefined,
     currency: row.currency ?? undefined,
+    hasIntelligence: row.has_intelligence ?? false,
+    recommendationStatus: row.recommendation_status ?? undefined,
+    feasibilityScore: row.feasibility_score ? Number(row.feasibility_score) : undefined,
   };
 }
 
-function mapPrismaToSummary(
-  opp: Prisma.OpportunityGetPayload<{
-    include: { source: { select: { name: true } }; organization: { select: { name: true } } };
-  }>
-): OpportunitySummary {
-  return {
-    id: opp.id,
-    title: opp.title,
-    status: opp.status as OpportunityStatus,
-    workflowStatus: (opp.workflowStatus ?? "new") as WorkflowStatus,
-    organization: opp.organization?.name ?? undefined,
-    country: opp.country ?? undefined,
-    region: opp.region ?? undefined,
-    city: opp.city ?? undefined,
-    category: opp.category ?? undefined,
-    postedDate: opp.postedDate ? opp.postedDate.toISOString() : undefined,
-    closingDate: opp.closingDate ? opp.closingDate.toISOString() : undefined,
-    relevanceScore: Number(opp.relevanceScore),
-    relevanceBucket: opp.relevanceBucket as RelevanceBucket,
-    keywordsMatched: opp.keywordsMatched ?? [],
-    industryTags: opp.industryTags ?? [],
-    sourceUrl: opp.sourceUrl,
-    sourceName: opp.source.name,
-    estimatedValue: opp.estimatedValue ? Number(opp.estimatedValue) : undefined,
-    currency: opp.currency ?? undefined,
-  };
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -280,10 +256,14 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
       o.keywords_matched, o.industry_tags,
       o.source_url, s.name AS source_name,
       o.estimated_value::text, o.currency,
-      ts_rank_cd(o.search_vector, websearch_to_tsquery('english', $1)) AS rank
+      ts_rank_cd(o.search_vector, websearch_to_tsquery('english', $1)) AS rank,
+      (ti.id IS NOT NULL) AS has_intelligence,
+      ti.recommendation_status,
+      ti.feasibility_score
     FROM opportunities o
     LEFT JOIN organizations org ON o.organization_id = org.id
     JOIN sources s ON o.source_id = s.id
+    LEFT JOIN tender_intelligence ti ON ti.opportunity_id = o.id
     ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${idx.v} OFFSET $${idx.v + 1}
@@ -311,75 +291,136 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
 }
 
 async function handlePrismaSearch(params: SearchParams) {
-  const where: Prisma.OpportunityWhereInput = {
-    ingestionMode: "live",
-  };
+  // Use raw SQL to always include intelligence status (resilient to Prisma client sync issues)
+  const conditions: string[] = ["o.ingestion_mode = 'live'"];
+  const values: unknown[] = [];
+  const idx = { v: 1 };
 
   if (params.bucket && params.bucket !== "all") {
     if (params.bucket === "relevant") {
-      where.relevanceBucket = { in: RELEVANT_BUCKETS };
+      conditions.push(`o.relevance_bucket IN ('highly_relevant', 'moderately_relevant')`);
     } else {
-      where.relevanceBucket = params.bucket;
+      conditions.push(`o.relevance_bucket = $${idx.v}`);
+      values.push(params.bucket);
+      idx.v++;
     }
   }
 
   if (params.tag) {
-    where.industryTags = { has: params.tag };
+    conditions.push(`$${idx.v} = ANY(o.industry_tags)`);
+    values.push(params.tag);
+    idx.v++;
   }
   if (params.workflow) {
-    where.workflowStatus = params.workflow as never;
+    conditions.push(`o.workflow_status = $${idx.v}::"WorkflowStatus"`);
+    values.push(params.workflow);
+    idx.v++;
   }
-  if (params.status) where.status = params.status as OpportunityStatus;
-  if (params.country) where.country = params.country;
-  if (params.region) where.region = params.region;
-  if (params.sourceId) where.sourceId = params.sourceId;
-  if (params.category) where.category = params.category;
-
-  if (params.postedAfter || params.postedBefore) {
-    where.postedDate = {};
-    if (params.postedAfter) where.postedDate.gte = new Date(params.postedAfter);
-    if (params.postedBefore) where.postedDate.lte = new Date(params.postedBefore);
+  if (params.status) {
+    conditions.push(`o.status = $${idx.v}::"OpportunityStatus"`);
+    values.push(params.status);
+    idx.v++;
   }
-
-  if (params.closingAfter || params.closingBefore) {
-    where.closingDate = {};
-    if (params.closingAfter) where.closingDate.gte = new Date(params.closingAfter);
-    if (params.closingBefore) where.closingDate.lte = new Date(params.closingBefore);
+  if (params.country) {
+    conditions.push(`o.country = $${idx.v}`);
+    values.push(params.country);
+    idx.v++;
   }
-
+  if (params.region) {
+    conditions.push(`o.region = $${idx.v}`);
+    values.push(params.region);
+    idx.v++;
+  }
+  if (params.sourceId) {
+    conditions.push(`o.source_id = $${idx.v}::uuid`);
+    values.push(params.sourceId);
+    idx.v++;
+  }
+  if (params.category) {
+    conditions.push(`o.category = $${idx.v}`);
+    values.push(params.category);
+    idx.v++;
+  }
+  if (params.postedAfter) {
+    conditions.push(`o.posted_date >= $${idx.v}::date`);
+    values.push(params.postedAfter);
+    idx.v++;
+  }
+  if (params.postedBefore) {
+    conditions.push(`o.posted_date <= $${idx.v}::date`);
+    values.push(params.postedBefore);
+    idx.v++;
+  }
+  if (params.closingAfter) {
+    conditions.push(`o.closing_date >= $${idx.v}::timestamptz`);
+    values.push(params.closingAfter);
+    idx.v++;
+  }
+  if (params.closingBefore) {
+    conditions.push(`o.closing_date <= $${idx.v}::timestamptz`);
+    values.push(params.closingBefore);
+    idx.v++;
+  }
   if (params.minRelevance) {
-    where.relevanceScore = { gte: parseInt(params.minRelevance, 10) };
+    conditions.push(`o.relevance_score >= $${idx.v}`);
+    values.push(parseInt(params.minRelevance, 10));
+    idx.v++;
   }
 
-  let orderBy: Prisma.OpportunityOrderByWithRelationInput;
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  let orderBy: string;
   switch (params.sort) {
     case "closing_soon":
-      orderBy = { closingDate: { sort: "asc", nulls: "last" } };
+      orderBy = "o.closing_date ASC NULLS LAST";
       break;
     case "newest":
-      orderBy = { postedDate: { sort: "desc", nulls: "last" } };
+      orderBy = "o.posted_date DESC NULLS LAST";
       break;
     case "relevance":
     default:
-      orderBy = { relevanceScore: "desc" };
+      orderBy = "o.relevance_score DESC";
       break;
   }
 
-  const [total, opportunities] = await Promise.all([
-    prisma.opportunity.count({ where }),
-    prisma.opportunity.findMany({
-      where,
-      orderBy,
-      skip: params.offset,
-      take: params.pageSize,
-      include: {
-        source: { select: { name: true } },
-        organization: { select: { name: true } },
-      },
-    }),
+  const countQuery = `
+    SELECT COUNT(*)::int AS total
+    FROM opportunities o
+    ${whereClause}
+  `;
+
+  const dataQuery = `
+    SELECT
+      o.id, o.title, o.status::text, o.workflow_status::text,
+      org.name AS organization_name,
+      o.country, o.region, o.city, o.category,
+      o.posted_date, o.closing_date,
+      o.relevance_score, o.relevance_bucket,
+      o.keywords_matched, o.industry_tags,
+      o.source_url, s.name AS source_name,
+      o.estimated_value::text, o.currency,
+      (ti.id IS NOT NULL) AS has_intelligence,
+      ti.recommendation_status,
+      ti.feasibility_score
+    FROM opportunities o
+    LEFT JOIN organizations org ON o.organization_id = org.id
+    JOIN sources s ON o.source_id = s.id
+    LEFT JOIN tender_intelligence ti ON ti.opportunity_id = o.id
+    ${whereClause}
+    ORDER BY ${orderBy}
+    LIMIT $${idx.v} OFFSET $${idx.v + 1}
+  `;
+
+  const countValues = [...values];
+  values.push(params.pageSize, params.offset);
+
+  const [countResult, rows] = await Promise.all([
+    prisma.$queryRawUnsafe<[{ total: number }]>(countQuery, ...countValues),
+    prisma.$queryRawUnsafe<RawOpportunityRow[]>(dataQuery, ...values),
   ]);
 
-  const data = opportunities.map(mapPrismaToSummary);
+  const total = countResult[0]?.total ?? 0;
+  const data = rows.map(mapRowToSummary);
 
   const response: PaginatedResponse<OpportunitySummary> = {
     data,

@@ -357,33 +357,51 @@ export default function DashboardPage() {
       {stats.intelligence && stats.intelligence.analyzedCount > 0 && (
         <Card className="border-blue-200 bg-blue-50/20">
           <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-blue-600" />
-              <CardTitle className="text-base font-semibold">AI Tender Intelligence</CardTitle>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                <CardTitle className="text-base font-semibold">AI Tender Intelligence</CardTitle>
+              </div>
+              <Link
+                href="/dashboard/intelligence"
+                className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                View all reports <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-5">
-              <div className="rounded-lg border bg-white p-3 text-center">
-                <p className="text-2xl font-bold text-blue-600">{stats.intelligence.analyzedCount}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Analyzed</p>
-              </div>
-              <div className="rounded-lg border bg-white p-3 text-center">
-                <p className="text-2xl font-bold text-emerald-600">{stats.intelligence.pursueCount}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Pursue</p>
-              </div>
-              <div className="rounded-lg border bg-white p-3 text-center">
-                <p className="text-2xl font-bold text-amber-600">{stats.intelligence.reviewCount}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Review</p>
-              </div>
-              <div className="rounded-lg border bg-white p-3 text-center">
-                <p className="text-2xl font-bold text-slate-500">{stats.intelligence.skipCount}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Skip</p>
-              </div>
-              <div className="rounded-lg border bg-white p-3 text-center">
-                <p className="text-2xl font-bold">{stats.intelligence.avgFeasibility}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Avg Feasibility</p>
-              </div>
+              <Link href="/dashboard/intelligence">
+                <div className="rounded-lg border bg-white p-3 text-center hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer">
+                  <p className="text-2xl font-bold text-blue-600">{stats.intelligence.analyzedCount}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Analyzed</p>
+                </div>
+              </Link>
+              <Link href="/dashboard/intelligence?filter=pursue">
+                <div className="rounded-lg border bg-white p-3 text-center hover:border-emerald-400 hover:shadow-sm transition-all cursor-pointer">
+                  <p className="text-2xl font-bold text-emerald-600">{stats.intelligence.pursueCount}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Pursue</p>
+                </div>
+              </Link>
+              <Link href="/dashboard/intelligence?filter=review">
+                <div className="rounded-lg border bg-white p-3 text-center hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer">
+                  <p className="text-2xl font-bold text-amber-600">{stats.intelligence.reviewCount}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Review</p>
+                </div>
+              </Link>
+              <Link href="/dashboard/intelligence?filter=skip">
+                <div className="rounded-lg border bg-white p-3 text-center hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer">
+                  <p className="text-2xl font-bold text-slate-500">{stats.intelligence.skipCount}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Skip</p>
+                </div>
+              </Link>
+              <Link href="/dashboard/intelligence">
+                <div className="rounded-lg border bg-white p-3 text-center hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer">
+                  <p className="text-2xl font-bold">{stats.intelligence.avgFeasibility}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Avg Feasibility</p>
+                </div>
+              </Link>
             </div>
           </CardContent>
         </Card>

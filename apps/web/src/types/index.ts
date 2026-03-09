@@ -147,6 +147,9 @@ export interface OpportunitySummary {
   sourceName: string;
   estimatedValue?: number;
   currency?: string;
+  hasIntelligence?: boolean;
+  recommendationStatus?: string;
+  feasibilityScore?: number;
 }
 
 export interface OpportunityDetail extends OpportunitySummary {
