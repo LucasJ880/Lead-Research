@@ -10,6 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY run_intelligence.py ./
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

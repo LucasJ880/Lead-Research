@@ -10,6 +10,9 @@ RUN corepack enable pnpm && pnpm install --frozen-lockfile 2>/dev/null || pnpm i
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+ARG DATABASE_URL="postgresql://placeholder:placeholder@placeholder:5432/placeholder"
+ENV DATABASE_URL=${DATABASE_URL}
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
