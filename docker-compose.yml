@@ -47,6 +47,7 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-this-secret-in-production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       SCRAPER_API_URL: http://scraper-api:8001
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY:-scraper-internal-key-change-in-prod}
     depends_on:
       postgres:
         condition: service_healthy

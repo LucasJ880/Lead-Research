@@ -60,6 +60,7 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       SCRAPER_API_URL: http://scraper-api:8001
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY}
       NODE_ENV: production
     depends_on:
       postgres:

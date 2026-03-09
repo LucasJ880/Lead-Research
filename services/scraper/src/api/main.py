@@ -87,9 +87,25 @@ class IntelligenceResponse(BaseModel):
 
 
 @app.get("/health", response_model=HealthResponse)
+@app.get("/api/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """Liveness / readiness probe."""
     return HealthResponse(status="ok", service="scraper")
+
+
+@app.get("/api/diagnostics", dependencies=[Depends(verify_api_key)])
+async def diagnostics() -> dict:
+    """Return non-secret config diagnostics for debugging parity issues."""
+    return {
+        "scraper_api_key_set": bool(settings.SCRAPER_API_KEY),
+        "merx_credentials_available": settings.merx_credentials_available,
+        "openai_key_set": bool(settings.OPENAI_API_KEY),
+        "database_url_set": bool(settings.DATABASE_URL),
+        "redis_url": settings.REDIS_URL,
+        "rate_limit": settings.DEFAULT_RATE_LIMIT_SECONDS,
+        "respect_robots": settings.RESPECT_ROBOTS_TXT,
+        "log_level": settings.LOG_LEVEL,
+    }
 
 
 @app.post(
