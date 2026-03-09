@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from src.api.main import verify_api_key
+from src.api.auth import verify_api_key
 from src.core.config import settings
 from src.core.database import get_db_session
 from src.core.logging import get_logger

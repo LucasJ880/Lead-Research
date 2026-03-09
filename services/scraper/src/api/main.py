@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -35,28 +35,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from src.api.auth import verify_api_key
 from src.api.agent_sync import router as agent_router
 from src.api.quick_analysis import router as analysis_router
 app.include_router(agent_router)
 app.include_router(analysis_router)
-
-
-# ─── Auth Dependency ────────────────────────────────────────
-
-
-def verify_api_key(x_api_key: str = Header(...)) -> str:
-    """Validate the X-API-Key header against the configured secret."""
-    if not settings.SCRAPER_API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="SCRAPER_API_KEY is not configured",
-        )
-    if x_api_key != settings.SCRAPER_API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-    return x_api_key
 
 
 # ─── Response Models ────────────────────────────────────────
