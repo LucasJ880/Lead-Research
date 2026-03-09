@@ -27,13 +27,21 @@ class StructuredFormatter(logging.Formatter):
         return log_line
 
 
+class _FlushHandler(logging.StreamHandler):
+    """StreamHandler that flushes after every emit for real-time visibility."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        self.flush()
+
+
 def _configure_root_logger() -> None:
     """Configure the root logger with structured formatting."""
     root = logging.getLogger()
     root.setLevel(settings.LOG_LEVEL.upper())
 
     if not root.handlers:
-        handler = logging.StreamHandler(sys.stdout)
+        handler = _FlushHandler(sys.stderr)
         handler.setFormatter(StructuredFormatter())
         root.addHandler(handler)
 

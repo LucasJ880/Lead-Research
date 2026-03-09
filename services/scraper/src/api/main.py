@@ -70,6 +70,19 @@ class TaskStatusResponse(BaseModel):
     result: dict | None = None
 
 
+class IntelligenceRequest(BaseModel):
+    opportunity_id: str | None = None
+    batch: bool = False
+    limit: int = 5
+    min_relevance: int = 40
+    source: str = "MERX"
+
+
+class IntelligenceResponse(BaseModel):
+    results: list[dict]
+    count: int
+
+
 # ─── Endpoints ──────────────────────────────────────────────
 
 
@@ -130,3 +143,31 @@ async def trigger_crawl(source_id: str) -> CrawlTriggerResponse:
         source_id=source_id,
         status="dispatched",
     )
+
+
+@app.post(
+    "/api/intelligence/analyze",
+    response_model=IntelligenceResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+async def run_intelligence(req: IntelligenceRequest) -> IntelligenceResponse:
+    """Run AI intelligence analysis on MERX opportunities."""
+    from src.core.database import get_db
+    from src.intelligence.merx_pipeline import MerxIntelligencePipeline
+
+    with get_db() as db:
+        pipeline = MerxIntelligencePipeline(db)
+
+        if req.opportunity_id:
+            result = pipeline.analyze_opportunity(req.opportunity_id)
+            return IntelligenceResponse(results=[result], count=1)
+
+        if req.batch:
+            results = pipeline.analyze_batch(
+                limit=req.limit,
+                min_relevance=req.min_relevance,
+                source_name=req.source,
+            )
+            return IntelligenceResponse(results=results, count=len(results))
+
+    return IntelligenceResponse(results=[], count=0)

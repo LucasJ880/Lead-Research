@@ -72,6 +72,9 @@ class SourceConfig(BaseModel):
     frequency: CrawlFrequency = CrawlFrequency.DAILY
     is_active: bool = True
     category_tags: list[str] = Field(default_factory=list)
+    industry_fit_score: int = 50
+    source_priority: str = "medium"
+    listing_path: str | None = None
 
 
 # ─── Opportunity Create / Update ────────────────────────────
@@ -108,8 +111,11 @@ class OpportunityCreate(BaseModel):
     pre_bid_meeting: str | None = None
     addenda_count: int = 0
     keywords_matched: list[str] = Field(default_factory=list)
+    negative_keywords: list[str] = Field(default_factory=list)
     relevance_score: int = 0
+    relevance_bucket: str = "irrelevant"
     relevance_breakdown: dict[str, Any] = Field(default_factory=dict)
+    industry_tags: list[str] = Field(default_factory=list)
     raw_data: dict[str, Any] | None = None
     fingerprint: str
 

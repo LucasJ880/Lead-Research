@@ -26,6 +26,20 @@ export type RunStatus =
 
 export type CrawlFrequency = "hourly" | "daily" | "weekly" | "manual";
 
+export type SourcePriority =
+  | "critical"
+  | "high"
+  | "medium"
+  | "low"
+  | "experimental";
+
+export type SourceHealthStatus =
+  | "healthy"
+  | "degraded"
+  | "failing"
+  | "unsupported"
+  | "untested";
+
 export type OrgType =
   | "government"
   | "education"
@@ -35,15 +49,34 @@ export type OrgType =
   | "non_profit"
   | "other";
 
+export type RelevanceBucket =
+  | "highly_relevant"
+  | "moderately_relevant"
+  | "low_relevance"
+  | "irrelevant";
+
+export type WorkflowStatus =
+  | "new"
+  | "hot"
+  | "review"
+  | "shortlisted"
+  | "pursuing"
+  | "passed"
+  | "not_relevant"
+  | "monitor";
+
 export interface OpportunityFilters {
   keyword?: string;
   status?: OpportunityStatus;
+  workflow?: WorkflowStatus;
   country?: string;
   region?: string;
   city?: string;
   organization?: string;
   source?: string;
   category?: string;
+  bucket?: RelevanceBucket | "relevant";
+  tag?: string;
   postedAfter?: string;
   postedBefore?: string;
   closingAfter?: string;
@@ -67,13 +100,38 @@ export interface DashboardStats {
   openOpportunities: number;
   closingThisWeek: number;
   highRelevanceLeads: number;
+  newLast24h: number;
   recentOpportunities: OpportunitySummary[];
+  bucketDistribution?: {
+    highly_relevant: number;
+    moderately_relevant: number;
+    low_relevance: number;
+    irrelevant: number;
+  };
+  workflowDistribution?: Record<WorkflowStatus, number>;
+  topSources?: { name: string; relevant: number; total: number }[];
+  sourceNetwork?: {
+    totalSources: number;
+    activeSources: number;
+    priorityCounts: Record<string, number>;
+    healthCounts: Record<string, number>;
+    crawlRunsLast24h: number;
+    totalCrawlRuns: number;
+  };
+  intelligence?: {
+    analyzedCount: number;
+    pursueCount: number;
+    reviewCount: number;
+    skipCount: number;
+    avgFeasibility: number;
+  };
 }
 
 export interface OpportunitySummary {
   id: string;
   title: string;
   status: OpportunityStatus;
+  workflowStatus: WorkflowStatus;
   organization?: string;
   country?: string;
   region?: string;
@@ -82,6 +140,9 @@ export interface OpportunitySummary {
   postedDate?: string;
   closingDate?: string;
   relevanceScore: number;
+  relevanceBucket: RelevanceBucket;
+  keywordsMatched: string[];
+  industryTags: string[];
   sourceUrl: string;
   sourceName: string;
   estimatedValue?: number;
@@ -102,8 +163,11 @@ export interface OpportunityDetail extends OpportunitySummary {
   mandatorySiteVisit?: string;
   preBidMeeting?: string;
   addendaCount: number;
-  keywordsMatched: string[];
-  relevanceBreakdown: Record<string, number>;
+  negativeKeywords: string[];
+  relevanceBreakdown: Record<string, unknown>;
+  businessFitExplanation?: string;
+  workflowNote?: string;
+  workflowUpdatedAt?: string;
   documents: DocumentItem[];
   notes: NoteItem[];
   tags: string[];
@@ -130,6 +194,7 @@ export interface SourceItem {
   name: string;
   sourceType: SourceType;
   baseUrl: string;
+  listingPath?: string;
   country: string;
   region?: string;
   frequency: CrawlFrequency;
@@ -137,6 +202,19 @@ export interface SourceItem {
   lastCrawledAt?: string;
   lastRunStatus?: RunStatus;
   categoryTags: string[];
+  industryFitScore: number;
+  sourcePriority: SourcePriority;
+  healthStatus: SourceHealthStatus;
+  totalOpportunities: number;
+  relevantOpportunities: number;
+  highlyRelevantCount: number;
+  sourceYieldPct: number;
+  totalCrawlRuns: number;
+  successfulCrawlRuns: number;
+  failedCrawlRuns: number;
+  avgCrawlDurationMs: number;
+  yieldAnalyticsUpdatedAt?: string;
+  lastCrawlSuccess: boolean;
 }
 
 export interface CrawlLogEntry {

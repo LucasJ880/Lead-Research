@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard,
   FileSearch,
@@ -15,6 +16,7 @@ import {
   Bell,
   User,
   Search,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +32,7 @@ const NAV_ITEMS = [
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { data: session } = useSession();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -115,12 +118,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <User className="h-4 w-4" />
               </div>
               <div className="hidden text-sm sm:block">
-                <p className="font-medium leading-none">Admin</p>
+                <p className="font-medium leading-none">
+                  {session?.user?.name ?? "Admin"}
+                </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  admin@leadharvest.io
+                  {session?.user?.email ?? ""}
                 </p>
               </div>
             </div>
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              title="Logout"
+            >
+              <LogOut className="h-5 w-5" />
+            </button>
           </div>
         </header>
 

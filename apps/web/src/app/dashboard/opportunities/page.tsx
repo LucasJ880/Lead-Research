@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams as useNextSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Search,
@@ -11,13 +12,56 @@ import {
   ExternalLink,
   X,
   Loader2,
+  Eye,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { formatDate, getRelevanceColor, formatCurrency } from "@/lib/utils";
-import type { OpportunitySummary, OpportunityStatus, PaginatedResponse } from "@/types";
+import {
+  formatDate,
+  getRelevanceColor,
+  getBucketLabel,
+  getBucketColor,
+  formatCurrency,
+} from "@/lib/utils";
+import type {
+  OpportunitySummary,
+  OpportunityStatus,
+  PaginatedResponse,
+  RelevanceBucket,
+  WorkflowStatus,
+} from "@/types";
+import { getWorkflowLabel, getWorkflowColor } from "@/lib/utils";
+
+const QUICK_FILTERS = [
+  "Blinds",
+  "Shades",
+  "Curtains",
+  "Fabric",
+  "Linen",
+  "Bedding",
+  "Window Coverings",
+  "FF&E",
+  "Hospitality",
+  "Healthcare",
+  "School",
+] as const;
+
+const BUCKET_OPTIONS: { label: string; value: string }[] = [
+  { label: "Relevant Only", value: "relevant" },
+  { label: "Highly Relevant", value: "highly_relevant" },
+  { label: "Moderate", value: "moderately_relevant" },
+  { label: "Low Relevance", value: "low_relevance" },
+  { label: "Irrelevant", value: "irrelevant" },
+  { label: "All Buckets", value: "all" },
+];
+
+const SORT_OPTIONS = [
+  { label: "Highest Relevance", value: "relevance" },
+  { label: "Newest", value: "newest" },
+  { label: "Closing Soon", value: "closing_soon" },
+];
 
 const STATUS_OPTIONS: { label: string; value: OpportunityStatus | "" }[] = [
   { label: "All Statuses", value: "" },
@@ -33,18 +77,16 @@ const COUNTRY_OPTIONS = [
   { label: "United States", value: "US" },
 ];
 
-const SOURCE_OPTIONS = [
-  { label: "All Sources", value: "" },
-  { label: "MERX", value: "MERX" },
-  { label: "SAM.gov", value: "SAM.gov" },
-  { label: "BidNet Direct", value: "BidNet Direct" },
-];
-
-const CATEGORY_OPTIONS = [
-  { label: "All Categories", value: "" },
-  { label: "Window Coverings", value: "Window Coverings" },
-  { label: "FF&E", value: "FF&E" },
-  { label: "Healthcare Furnishings", value: "Healthcare Furnishings" },
+const WORKFLOW_OPTIONS: { label: string; value: string }[] = [
+  { label: "All Stages", value: "" },
+  { label: "New", value: "new" },
+  { label: "Hot", value: "hot" },
+  { label: "Review", value: "review" },
+  { label: "Shortlisted", value: "shortlisted" },
+  { label: "Pursuing", value: "pursuing" },
+  { label: "Monitor", value: "monitor" },
+  { label: "Passed", value: "passed" },
+  { label: "Not Relevant", value: "not_relevant" },
 ];
 
 const statusVariant: Record<string, "success" | "warning" | "destructive" | "outline"> = {
@@ -64,21 +106,34 @@ function buildQueryString(params: Record<string, string | number>): string {
   return searchParams.toString();
 }
 
-export default function OpportunitiesPage() {
+export default function OpportunitiesPageWrapper() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading…</div>}>
+      <OpportunitiesPage />
+    </Suspense>
+  );
+}
+
+function OpportunitiesPage() {
+  const nextSearchParams = useNextSearchParams();
+  const initialWorkflow = nextSearchParams.get("workflow") || "";
+
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const initialBucket = nextSearchParams.get("bucket") || "relevant";
+  const [bucketFilter, setBucketFilter] = useState(initialBucket);
+  const [workflowFilter, setWorkflowFilter] = useState(initialWorkflow);
+  const [tagFilter, setTagFilter] = useState("");
+  const [sortBy, setSortBy] = useState("relevance");
   const [minRelevance, setMinRelevance] = useState(0);
-  const [postedAfter, setPostedAfter] = useState("");
-  const [postedBefore, setPostedBefore] = useState("");
   const [closingAfter, setClosingAfter] = useState("");
   const [closingBefore, setClosingBefore] = useState("");
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 15;
+  const [businessFocus, setBusinessFocus] = useState(false);
 
   const [data, setData] = useState<PaginatedResponse<OpportunitySummary> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,19 +152,21 @@ export default function OpportunitiesPage() {
     };
   }, [keyword]);
 
+  const effectiveBucket = businessFocus ? "relevant" : bucketFilter;
+
   const fetchOpportunities = useCallback(() => {
     setLoading(true);
     const qs = buildQueryString({
       keyword: debouncedKeyword,
       status: statusFilter,
+      workflow: workflowFilter,
       country: countryFilter,
-      sourceId: sourceFilter,
-      category: categoryFilter,
+      bucket: effectiveBucket,
+      tag: tagFilter,
       minRelevance,
-      postedAfter,
-      postedBefore,
       closingAfter,
       closingBefore,
+      sort: sortBy,
       page,
       pageSize,
     });
@@ -127,14 +184,14 @@ export default function OpportunitiesPage() {
   }, [
     debouncedKeyword,
     statusFilter,
+    workflowFilter,
     countryFilter,
-    sourceFilter,
-    categoryFilter,
+    effectiveBucket,
+    tagFilter,
     minRelevance,
-    postedAfter,
-    postedBefore,
     closingAfter,
     closingBefore,
+    sortBy,
     page,
     pageSize,
   ]);
@@ -149,11 +206,10 @@ export default function OpportunitiesPage() {
 
   const activeFilterCount = [
     statusFilter,
+    workflowFilter,
     countryFilter,
-    sourceFilter,
-    categoryFilter,
-    postedAfter,
-    postedBefore,
+    bucketFilter !== "relevant" ? bucketFilter : "",
+    tagFilter,
     closingAfter,
     closingBefore,
     minRelevance > 0 ? String(minRelevance) : "",
@@ -161,14 +217,33 @@ export default function OpportunitiesPage() {
 
   function clearFilters() {
     setStatusFilter("");
+    setWorkflowFilter("");
     setCountryFilter("");
-    setSourceFilter("");
-    setCategoryFilter("");
+    setBucketFilter("relevant");
+    setTagFilter("");
     setMinRelevance(0);
-    setPostedAfter("");
-    setPostedBefore("");
     setClosingAfter("");
     setClosingBefore("");
+    setBusinessFocus(false);
+    setPage(1);
+  }
+
+  function handleQuickFilter(label: string) {
+    const tagMap: Record<string, string> = {
+      Blinds: "blinds",
+      Shades: "shades",
+      Curtains: "curtains",
+      Fabric: "fabric",
+      Linen: "linen",
+      Bedding: "bedding",
+      "Window Coverings": "window coverings",
+      "FF&E": "FF&E",
+      Hospitality: "hospitality",
+      Healthcare: "healthcare",
+      School: "school",
+    };
+    const newTag = tagMap[label] ?? label.toLowerCase();
+    setTagFilter(tagFilter === newTag ? "" : newTag);
     setPage(1);
   }
 
@@ -178,11 +253,9 @@ export default function OpportunitiesPage() {
       keyword: debouncedKeyword,
       status: statusFilter,
       country: countryFilter,
-      sourceId: sourceFilter,
-      category: categoryFilter,
+      bucket: effectiveBucket,
+      tag: tagFilter,
       minRelevance,
-      postedAfter,
-      postedBefore,
       closingAfter,
       closingBefore,
     });
@@ -190,7 +263,8 @@ export default function OpportunitiesPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Opportunities</h1>
@@ -199,6 +273,14 @@ export default function OpportunitiesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={businessFocus ? "default" : "outline"}
+            size="sm"
+            onClick={() => { setBusinessFocus(!businessFocus); setPage(1); }}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            Business Focus
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <SlidersHorizontal className="mr-2 h-4 w-4" />
             Filters
@@ -213,6 +295,39 @@ export default function OpportunitiesPage() {
             Export
           </Button>
         </div>
+      </div>
+
+      {/* Quick-filter chips */}
+      <div className="flex flex-wrap gap-2">
+        {QUICK_FILTERS.map((label) => {
+          const tagMap: Record<string, string> = {
+            Blinds: "blinds",
+            Shades: "shades",
+            Curtains: "curtains",
+            Fabric: "fabric",
+            Linen: "linen",
+            Bedding: "bedding",
+            "Window Coverings": "window coverings",
+            "FF&E": "FF&E",
+            Hospitality: "hospitality",
+            Healthcare: "healthcare",
+            School: "school",
+          };
+          const isActive = tagFilter === (tagMap[label] ?? label.toLowerCase());
+          return (
+            <button
+              key={label}
+              onClick={() => handleQuickFilter(label)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex gap-6">
@@ -230,6 +345,32 @@ export default function OpportunitiesPage() {
                     <X className="h-3 w-3" /> Clear all
                   </button>
                 )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Relevance Bucket</label>
+                <select
+                  value={businessFocus ? "relevant" : bucketFilter}
+                  onChange={(e) => { setBucketFilter(e.target.value); setBusinessFocus(false); setPage(1); }}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {BUCKET_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Sort By</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">
@@ -259,26 +400,13 @@ export default function OpportunitiesPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Source</label>
+                <label className="text-xs font-medium text-muted-foreground">Pipeline Stage</label>
                 <select
-                  value={sourceFilter}
-                  onChange={(e) => { setSourceFilter(e.target.value); setPage(1); }}
+                  value={workflowFilter}
+                  onChange={(e) => { setWorkflowFilter(e.target.value); setPage(1); }}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  {SOURCE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Category</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  {CATEGORY_OPTIONS.map((o) => (
+                  {WORKFLOW_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
@@ -302,26 +430,6 @@ export default function OpportunitiesPage() {
                   <span>50</span>
                   <span>100</span>
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Posted After</label>
-                <Input
-                  type="date"
-                  value={postedAfter}
-                  onChange={(e) => { setPostedAfter(e.target.value); setPage(1); }}
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Posted Before</label>
-                <Input
-                  type="date"
-                  value={postedBefore}
-                  onChange={(e) => { setPostedBefore(e.target.value); setPage(1); }}
-                  className="h-9 text-xs"
-                />
               </div>
 
               <div className="space-y-1.5">
@@ -353,14 +461,13 @@ export default function OpportunitiesPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search by title, organization, solicitation number…"
+              placeholder="Search blinds, curtains, shades, linen…"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               className="pl-9"
             />
           </div>
 
-          {/* Error */}
           {error && (
             <Card>
               <CardContent className="p-6 text-center text-sm text-destructive">
@@ -381,13 +488,13 @@ export default function OpportunitiesPage() {
                 <thead>
                   <tr className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     <th className="px-4 py-3">Title</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Posted</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Closing</th>
+                    <th className="px-4 py-3 text-center">Score</th>
+                    <th className="px-4 py-3">Bucket</th>
+                    <th className="px-4 py-3">Stage</th>
+                    <th className="px-4 py-3">Keywords</th>
                     <th className="px-4 py-3">Organization</th>
                     <th className="px-4 py-3">Region</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Est. Value</th>
-                    <th className="px-4 py-3 text-center">Relevance</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Closing</th>
                     <th className="px-4 py-3">Source</th>
                     <th className="px-4 py-3" />
                   </tr>
@@ -395,33 +502,30 @@ export default function OpportunitiesPage() {
                 <tbody className="divide-y">
                   {opportunities.map((opp) => (
                     <tr key={opp.id} className="hover:bg-muted/50 transition-colors">
-                      <td className="px-4 py-3 font-medium max-w-[280px]">
+                      <td className="px-4 py-3 font-medium max-w-[260px]">
                         <Link
                           href={`/dashboard/opportunities/${opp.id}`}
                           className="line-clamp-2 hover:text-primary transition-colors"
                         >
                           {opp.title}
                         </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={statusVariant[opp.status] ?? "outline"}>
-                          {opp.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {formatDate(opp.postedDate)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {formatDate(opp.closingDate)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground max-w-[180px]">
-                        <span className="line-clamp-1">{opp.organization}</span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {[opp.region, opp.country].filter(Boolean).join(", ")}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {formatCurrency(opp.estimatedValue, opp.currency)}
+                        {opp.industryTags.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {opp.industryTags.slice(0, 3).map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-block rounded-sm bg-accent px-1.5 py-0.5 text-[10px] text-accent-foreground"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {opp.industryTags.length > 3 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                +{opp.industryTags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span
@@ -429,6 +533,49 @@ export default function OpportunitiesPage() {
                         >
                           {opp.relevanceScore}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-medium ${getBucketColor(opp.relevanceBucket)}`}
+                        >
+                          {getBucketLabel(opp.relevanceBucket)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-medium ${getWorkflowColor(opp.workflowStatus)}`}
+                        >
+                          {getWorkflowLabel(opp.workflowStatus)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 max-w-[160px]">
+                        <div className="flex flex-wrap gap-1">
+                          {opp.keywordsMatched.slice(0, 3).map((kw) => (
+                            <span
+                              key={kw}
+                              className="inline-block rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700"
+                            >
+                              {kw}
+                            </span>
+                          ))}
+                          {opp.keywordsMatched.length > 3 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              +{opp.keywordsMatched.length - 3}
+                            </span>
+                          )}
+                          {opp.keywordsMatched.length === 0 && (
+                            <span className="text-[10px] text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-[160px]">
+                        <span className="line-clamp-1">{opp.organization || "—"}</span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {[opp.region, opp.country].filter(Boolean).join(", ") || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {formatDate(opp.closingDate)}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {opp.sourceName}
@@ -463,23 +610,13 @@ export default function OpportunitiesPage() {
                 {total}
               </p>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                >
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <span className="text-sm font-medium">
                   {page} / {totalPages}
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
-                >
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>

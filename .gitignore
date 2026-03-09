@@ -50,6 +50,9 @@ logs/
 # Docker
 docker-data/
 
+# Downloaded tender documents (potentially large, sensitive)
+documents/
+
 # Testing
 coverage/
 .coverage

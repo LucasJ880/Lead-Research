@@ -79,6 +79,33 @@ enum TriggerType {
   retry
 }
 
+enum SourcePriority {
+  critical
+  high
+  medium
+  low
+  experimental
+}
+
+enum SourceHealthStatus {
+  healthy
+  degraded
+  failing
+  unsupported
+  untested
+}
+
+enum WorkflowStatus {
+  new
+  hot
+  review
+  shortlisted
+  pursuing
+  passed
+  not_relevant
+  monitor
+}
+
 // ─── Users ─────────────────────────────────────────────────
 
 model User {
@@ -105,6 +132,7 @@ model Source {
   name             String         @db.VarChar(255)
   sourceType       SourceType     @map("source_type")
   baseUrl          String         @map("base_url")
+  listingPath      String?        @map("listing_path") @db.VarChar(500)
   country          String         @db.VarChar(2)
   region           String?        @db.VarChar(100)
   city             String?        @db.VarChar(255)
@@ -114,9 +142,23 @@ model Source {
   lastCrawledAt    DateTime?      @map("last_crawled_at") @db.Timestamptz()
   lastRunStatus    RunStatus?     @map("last_run_status")
   categoryTags     String[]       @default([]) @map("category_tags")
+  industryFitScore Int            @default(50) @map("industry_fit_score")
+  sourcePriority   SourcePriority @default(medium) @map("source_priority")
+  healthStatus     SourceHealthStatus @default(untested) @map("health_status")
   notes            String?
   robotsTxtCache   String?        @map("robots_txt_cache")
   robotsTxtFetched DateTime?      @map("robots_txt_fetched_at") @db.Timestamptz()
+
+  // Denormalized yield analytics — refreshed by recalculate job
+  totalOpportunities      Int @default(0) @map("total_opportunities")
+  relevantOpportunities   Int @default(0) @map("relevant_opportunities")
+  highlyRelevantCount     Int @default(0) @map("highly_relevant_count")
+  totalCrawlRuns          Int @default(0) @map("total_crawl_runs")
+  successfulCrawlRuns     Int @default(0) @map("successful_crawl_runs")
+  failedCrawlRuns         Int @default(0) @map("failed_crawl_runs")
+  avgCrawlDurationMs      Int @default(0) @map("avg_crawl_duration_ms")
+  yieldAnalyticsUpdatedAt DateTime? @map("yield_analytics_updated_at") @db.Timestamptz()
+
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -126,6 +168,9 @@ model Source {
   @@index([isActive], name: "idx_sources_active")
   @@index([country, region], name: "idx_sources_country_region")
   @@index([sourceType], name: "idx_sources_type")
+  @@index([sourcePriority], name: "idx_sources_priority")
+  @@index([industryFitScore(sort: Desc)], name: "idx_sources_fit_score")
+  @@index([healthStatus], name: "idx_sources_health")
   @@map("sources")
 }
 
@@ -210,8 +255,16 @@ model Opportunity {
   preBidMeeting       String?           @map("pre_bid_meeting")
   addendaCount        Int               @default(0) @map("addenda_count")
   keywordsMatched     String[]          @default([]) @map("keywords_matched")
+  negativeKeywords    String[]          @default([]) @map("negative_keywords")
   relevanceScore      Int               @default(0) @map("relevance_score")
+  relevanceBucket     String            @default("irrelevant") @map("relevance_bucket") @db.VarChar(30)
   relevanceBreakdown  Json              @default("{}") @map("relevance_breakdown")
+  businessFitExplanation String?        @map("business_fit_explanation")
+  industryTags        String[]          @default([]) @map("industry_tags")
+  workflowStatus      WorkflowStatus    @default(new) @map("workflow_status")
+  workflowNote        String?           @map("workflow_note")
+  workflowUpdatedAt   DateTime?         @map("workflow_updated_at") @db.Timestamptz()
+  ingestionMode       String            @default("live") @map("ingestion_mode") @db.VarChar(20)
   rawData             Json?             @map("raw_data")
   fingerprint         String            @db.VarChar(64)
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz()
@@ -221,10 +274,11 @@ model Opportunity {
   sourceRun    SourceRun?    @relation(fields: [sourceRunId], references: [id])
   organization Organization? @relation(fields: [organizationId], references: [id])
 
-  documents OpportunityDocument[]
-  tags      OpportunityTag[]
-  notes     Note[]
-  alerts    Alert[]
+  documents    OpportunityDocument[]
+  tags         OpportunityTag[]
+  notes        Note[]
+  alerts       Alert[]
+  intelligence TenderIntelligence?
 
   @@unique([sourceId, externalId], name: "uq_source_external_id")
   @@unique([fingerprint], name: "uq_fingerprint")
@@ -233,6 +287,8 @@ model Opportunity {
   @@index([closingDate], name: "idx_opportunities_closing_date")
   @@index([postedDate(sort: Desc)], name: "idx_opportunities_posted_date")
   @@index([relevanceScore(sort: Desc)], name: "idx_opportunities_relevance")
+  @@index([relevanceBucket], name: "idx_opportunities_bucket")
+  @@index([workflowStatus], name: "idx_opportunities_workflow")
   @@index([sourceId], name: "idx_opportunities_source")
   @@index([organizationId], name: "idx_opportunities_org")
   @@map("opportunities")
@@ -241,18 +297,53 @@ model Opportunity {
 // ─── Opportunity Documents ─────────────────────────────────
 
 model OpportunityDocument {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  opportunityId String   @map("opportunity_id") @db.Uuid
-  title         String?  @db.VarChar(500)
-  url           String
-  fileType      String?  @map("file_type") @db.VarChar(50)
-  fileSizeBytes Int?     @map("file_size_bytes")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  opportunityId  String   @map("opportunity_id") @db.Uuid
+  title          String?  @db.VarChar(500)
+  url            String
+  fileType       String?  @map("file_type") @db.VarChar(50)
+  fileSizeBytes  Int?     @map("file_size_bytes")
+  pageCount      Int?     @map("page_count")
+  localPath      String?  @map("local_path") @db.VarChar(500)
+  downloadedAt   DateTime? @map("downloaded_at") @db.Timestamptz()
+  textExtracted  Boolean  @default(false) @map("text_extracted")
+  extractedText  String?  @map("extracted_text")
+  docCategory    String?  @map("doc_category") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
 
   @@index([opportunityId], name: "idx_opp_docs_opportunity")
   @@map("opportunity_documents")
+}
+
+// ─── Tender Intelligence ──────────────────────────────────
+
+model TenderIntelligence {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  opportunityId         String   @unique @map("opportunity_id") @db.Uuid
+  projectOverview       String?  @map("project_overview")
+  scopeOfWork           String?  @map("scope_of_work")
+  scopeType             String?  @map("scope_type") @db.VarChar(100)
+  technicalRequirements Json?    @map("technical_requirements")
+  qualificationReqs     Json?    @map("qualification_reqs")
+  criticalDates         Json?    @map("critical_dates")
+  riskFactors           Json?    @map("risk_factors")
+  feasibilityScore      Int?     @map("feasibility_score")
+  recommendationStatus  String?  @map("recommendation_status") @db.VarChar(30)
+  businessFitExplanation String? @map("business_fit_explanation")
+  chinaSourceAnalysis   String?  @map("china_source_analysis")
+  intelligenceSummary   Json?    @map("intelligence_summary")
+  analysisModel         String?  @map("analysis_model") @db.VarChar(50)
+  analyzedAt            DateTime? @map("analyzed_at") @db.Timestamptz()
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([feasibilityScore(sort: Desc)], name: "idx_intel_feasibility")
+  @@index([recommendationStatus], name: "idx_intel_recommendation")
+  @@map("tender_intelligence")
 }
 
 // ─── Tags ──────────────────────────────────────────────────

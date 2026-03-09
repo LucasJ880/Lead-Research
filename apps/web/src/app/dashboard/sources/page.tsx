@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Plus,
-  MoreHorizontal,
   Globe,
   CheckCircle2,
   XCircle,
@@ -11,12 +10,22 @@ import {
   AlertCircle,
   Pause,
   Loader2,
+  ArrowUpDown,
+  Search,
+  Activity,
+  Target,
+  Zap,
+  BarChart3,
+  RefreshCw,
+  Shield,
+  AlertTriangle,
+  HelpCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
-import type { SourceItem, RunStatus } from "@/types";
+import type { SourceItem, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
 const runStatusConfig: Record<
   RunStatus,
@@ -29,19 +38,46 @@ const runStatusConfig: Record<
   cancelled: { icon: XCircle, color: "text-slate-400", label: "Cancelled" },
 };
 
-const frequencyLabels: Record<string, string> = {
-  hourly: "Every hour",
-  daily: "Daily",
-  weekly: "Weekly",
-  manual: "Manual",
+const healthConfig: Record<SourceHealthStatus, { icon: typeof CheckCircle2; color: string; label: string }> = {
+  healthy: { icon: CheckCircle2, color: "text-emerald-600", label: "Healthy" },
+  degraded: { icon: AlertTriangle, color: "text-amber-500", label: "Degraded" },
+  failing: { icon: XCircle, color: "text-red-500", label: "Failing" },
+  unsupported: { icon: AlertCircle, color: "text-slate-400", label: "Unsupported" },
+  untested: { icon: HelpCircle, color: "text-slate-400", label: "Untested" },
 };
+
+const priorityBadge: Record<SourcePriority, string> = {
+  critical: "bg-red-50 text-red-700 border-red-200",
+  high: "bg-orange-50 text-orange-700 border-orange-200",
+  medium: "bg-blue-50 text-blue-700 border-blue-200",
+  low: "bg-slate-50 text-slate-500 border-slate-200",
+  experimental: "bg-purple-50 text-purple-600 border-purple-200",
+};
+
+function fitBadge(score: number) {
+  if (score >= 60) return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (score >= 30) return "bg-amber-50 text-amber-700 border-amber-200";
+  return "bg-slate-50 text-slate-500 border-slate-200";
+}
+
+type SortKey = "name" | "priority" | "fit" | "total" | "relevant" | "yield" | "health";
+
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, experimental: 4 };
+const HEALTH_ORDER: Record<string, number> = { failing: 0, degraded: 1, untested: 2, unsupported: 3, healthy: 4 };
 
 export default function SourcesPage() {
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recalculating, setRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("priority");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("all");
+  const [filterPriority, setFilterPriority] = useState<SourcePriority | "all">("all");
+  const [filterHealth, setFilterHealth] = useState<SourceHealthStatus | "all">("all");
 
-  useEffect(() => {
+  function fetchSources() {
     setLoading(true);
     fetch("/api/sources")
       .then((res) => {
@@ -54,27 +90,184 @@ export default function SourcesPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { fetchSources(); }, []);
+
+  async function handleRecalculate() {
+    setRecalculating(true);
+    try {
+      const res = await fetch("/api/sources/recalculate", { method: "POST" });
+      if (!res.ok) throw new Error("Recalculate failed");
+      fetchSources();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Recalculate failed");
+    } finally {
+      setRecalculating(false);
+    }
+  }
+
+  const filtered = useMemo(() => {
+    let list = sources;
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.region ?? "").toLowerCase().includes(q) ||
+          s.country.toLowerCase().includes(q) ||
+          s.sourceType.toLowerCase().includes(q)
+      );
+    }
+    if (filterActive === "active") list = list.filter((s) => s.isActive);
+    if (filterActive === "inactive") list = list.filter((s) => !s.isActive);
+    if (filterPriority !== "all") list = list.filter((s) => s.sourcePriority === filterPriority);
+    if (filterHealth !== "all") list = list.filter((s) => s.healthStatus === filterHealth);
+
+    return [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "name": cmp = a.name.localeCompare(b.name); break;
+        case "priority": cmp = (PRIORITY_ORDER[a.sourcePriority] ?? 3) - (PRIORITY_ORDER[b.sourcePriority] ?? 3); break;
+        case "fit": cmp = a.industryFitScore - b.industryFitScore; break;
+        case "total": cmp = a.totalOpportunities - b.totalOpportunities; break;
+        case "relevant": cmp = a.relevantOpportunities - b.relevantOpportunities; break;
+        case "yield": cmp = a.sourceYieldPct - b.sourceYieldPct; break;
+        case "health": cmp = (HEALTH_ORDER[a.healthStatus] ?? 2) - (HEALTH_ORDER[b.healthStatus] ?? 2); break;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+  }, [sources, search, sortKey, sortAsc, filterActive, filterPriority, filterHealth]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortAsc((p) => !p);
+    else { setSortKey(key); setSortAsc(key === "name"); }
+  }
+
+  const totalActive = sources.filter((s) => s.isActive).length;
+  const totalOpps = sources.reduce((s, x) => s + x.totalOpportunities, 0);
+  const totalRelevant = sources.reduce((s, x) => s + x.relevantOpportunities, 0);
+  const avgFit = sources.length
+    ? Math.round(sources.reduce((s, x) => s + x.industryFitScore, 0) / sources.length)
+    : 0;
+
+  const priorityCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const s of sources) c[s.sourcePriority] = (c[s.sourcePriority] || 0) + 1;
+    return c;
+  }, [sources]);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Sources</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Source Intelligence</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage bid portals and opportunity sources
+            {sources.length} sources registered &middot;{" "}
+            {priorityCounts["critical"] ?? 0} critical &middot;{" "}
+            {priorityCounts["high"] ?? 0} high &middot;{" "}
+            {priorityCounts["medium"] ?? 0} medium &middot;{" "}
+            {priorityCounts["low"] ?? 0} low &middot;{" "}
+            {priorityCounts["experimental"] ?? 0} experimental
           </p>
         </div>
-        <Button size="sm">
-          <Plus className="mr-2 h-4 w-4" /> Add Source
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleRecalculate} disabled={recalculating}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${recalculating ? "animate-spin" : ""}`} />
+            Recalculate Analytics
+          </Button>
+          <Button size="sm">
+            <Plus className="mr-2 h-4 w-4" /> Add Source
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Active Sources", value: totalActive, icon: Activity, color: "text-blue-600 bg-blue-50" },
+          { label: "Total Opportunities", value: totalOpps, icon: BarChart3, color: "text-emerald-600 bg-emerald-50" },
+          { label: "Relevant Collected", value: totalRelevant, icon: Target, color: "text-violet-600 bg-violet-50" },
+          { label: "Avg Fit Score", value: avgFit, icon: Zap, color: "text-amber-600 bg-amber-50" },
+        ].map((c) => (
+          <Card key={c.label}>
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{c.label}</p>
+                  <p className="mt-2 text-3xl font-bold tracking-tight">{c.value.toLocaleString()}</p>
+                </div>
+                <div className={`rounded-lg p-2.5 ${c.color}`}>
+                  <c.icon className="h-5 w-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            className="h-9 rounded-md border border-input bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-64"
+            placeholder="Search sources…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {(["all", "active", "inactive"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setFilterActive(v)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              filterActive === v
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-muted-foreground hover:bg-muted border-input"
+            }`}
+          >
+            {v === "all" ? "All" : v === "active" ? "Active" : "Inactive"}
+          </button>
+        ))}
+
+        <span className="text-xs text-muted-foreground">|</span>
+
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-xs"
+          value={filterPriority}
+          onChange={(e) => setFilterPriority(e.target.value as SourcePriority | "all")}
+        >
+          <option value="all">All priorities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="experimental">Experimental</option>
+        </select>
+
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-xs"
+          value={filterHealth}
+          onChange={(e) => setFilterHealth(e.target.value as SourceHealthStatus | "all")}
+        >
+          <option value="all">All health</option>
+          <option value="healthy">Healthy</option>
+          <option value="degraded">Degraded</option>
+          <option value="failing">Failing</option>
+          <option value="untested">Untested</option>
+          <option value="unsupported">Unsupported</option>
+        </select>
+
+        <span className="ml-auto text-xs text-muted-foreground">
+          {filtered.length} of {sources.length} sources
+        </span>
       </div>
 
       {error && (
         <Card>
-          <CardContent className="p-6 text-center text-sm text-destructive">
-            {error}
-          </CardContent>
+          <CardContent className="p-6 text-center text-sm text-destructive">{error}</CardContent>
         </Card>
       )}
 
@@ -88,57 +281,113 @@ export default function SourcesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-3">Source</th>
+                <th className="px-4 py-3">
+                  <button className="inline-flex items-center gap-1" onClick={() => toggleSort("name")}>
+                    Source <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-center">
+                  <button className="inline-flex items-center gap-1" onClick={() => toggleSort("priority")}>
+                    Priority <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
                 <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Country</th>
                 <th className="px-4 py-3">Region</th>
-                <th className="px-4 py-3">Frequency</th>
+                <th className="px-4 py-3 text-center">
+                  <button className="inline-flex items-center gap-1" onClick={() => toggleSort("fit")}>
+                    Fit <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-right">
+                  <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("total")}>
+                    Opps <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-right">
+                  <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("relevant")}>
+                    Relevant <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-right">
+                  <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("yield")}>
+                    Yield% <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-center">Runs</th>
+                <th className="px-4 py-3">
+                  <button className="inline-flex items-center gap-1" onClick={() => toggleSort("health")}>
+                    Health <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
                 <th className="px-4 py-3 whitespace-nowrap">Last Crawled</th>
-                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-center">Active</th>
-                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y">
-              {sources.map((source) => {
-                const runInfo = source.lastRunStatus
-                  ? runStatusConfig[source.lastRunStatus]
-                  : null;
+              {filtered.map((source) => {
+                const hi = healthConfig[source.healthStatus] ?? healthConfig.untested;
+                const HealthIcon = hi.icon;
                 return (
                   <tr key={source.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
                           <Globe className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <div>
-                          <p className="font-medium">{source.name}</p>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate max-w-[200px]">{source.name}</p>
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">
                             {source.baseUrl}
                           </p>
                         </div>
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold capitalize ${priorityBadge[source.sourcePriority] ?? priorityBadge.medium}`}>
+                        {source.sourcePriority}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
-                      <Badge variant="outline" className="text-xs capitalize">
+                      <Badge variant="outline" className="text-xs capitalize whitespace-nowrap">
                         {source.sourceType.replace("_", " ")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{source.country}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{source.region ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {frequencyLabels[source.frequency] ?? source.frequency}
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {source.region ?? source.country}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${fitBadge(source.industryFitScore)}`}>
+                        {source.industryFitScore}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                      {source.totalOpportunities}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums text-emerald-600">
+                      {source.relevantOpportunities}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {source.totalOpportunities > 0 ? (
+                        <span className={source.sourceYieldPct >= 20 ? "text-emerald-600 font-medium" : "text-muted-foreground"}>
+                          {source.sourceYieldPct}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center tabular-nums">
+                      <span className="text-xs text-muted-foreground">
+                        {source.successfulCrawlRuns}/{source.totalCrawlRuns}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${hi.color}`}>
+                        <HealthIcon className="h-3.5 w-3.5" />
+                        {hi.label}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                       {formatDate(source.lastCrawledAt, "MMM d, h:mm a")}
-                    </td>
-                    <td className="px-4 py-3">
-                      {runInfo && (
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${runInfo.color}`}>
-                          <runInfo.icon className="h-3.5 w-3.5" />
-                          {runInfo.label}
-                        </span>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {source.isActive ? (
@@ -151,18 +400,13 @@ export default function SourcesPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </td>
                   </tr>
                 );
               })}
-              {!loading && sources.length === 0 && (
+              {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
-                    No sources configured yet.
+                  <td colSpan={12} className="px-4 py-12 text-center text-muted-foreground">
+                    {search ? "No sources match your search." : "No sources configured yet."}
                   </td>
                 </tr>
               )}

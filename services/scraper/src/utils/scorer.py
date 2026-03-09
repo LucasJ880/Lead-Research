@@ -1,201 +1,658 @@
-"""Business relevance scoring engine for window-covering opportunities."""
+"""Relevance Engine v2 — window-covering & textile opportunity intelligence scorer.
+
+Classifies every opportunity into one of four relevance buckets, assigns a
+0–100 score, derives industry tags, and generates a human-readable
+business_fit_explanation that tells the admin exactly why the opportunity
+scored the way it did.
+
+Scoring formula:
+  raw = (primary + secondary + contextual + semantic + title_boost
+         + org_bonus + source_fit_bonus + category_bonus) − negative_penalty
+  final = clamp(raw, 0, 100)
+
+Buckets:
+  highly_relevant  70-100  → Direct product match or strong semantic signal
+  moderately_relevant 40-69  → Adjacent products, furnishing/textile supply
+  low_relevance    15-39  → Weak contextual signal, renovation context
+  irrelevant        0-14  → No meaningful connection to the business
+"""
 
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# ─── Keyword Dictionaries ───────────────────────────────────
-# These lists are the business core of LeadHarvest.
-# Changing them affects which opportunities surface to the user.
+# ───────────────────────────────────────────────────────────────────────
+# KEYWORD DICTIONARIES
+# ───────────────────────────────────────────────────────────────────────
+# Weights reflect how directly a keyword maps to the business.
 
 PRIMARY_KEYWORDS: dict[str, int] = {
-    "blinds": 40,
-    "roller blinds": 40,
-    "zebra blinds": 40,
-    "window coverings": 40,
-    "curtains": 40,
-    "drapery": 40,
-    "drapes": 40,
+    # ── blinds ────────────────────────────
+    "blinds": 45,
+    "blind": 30,
+    "roller blinds": 50,
+    "roller blind": 50,
+    "zebra blinds": 50,
+    "zebra blind": 50,
+    "venetian blinds": 50,
+    "venetian blind": 50,
+    "vertical blinds": 50,
+    "vertical blind": 50,
+    "mini blinds": 45,
+    "mini-blinds": 45,
+    "panel track blinds": 45,
+    "commercial blinds": 50,
+    "wood blinds": 45,
+    "faux wood blinds": 45,
+    "aluminum blinds": 45,
+    # ── shades ────────────────────────────
+    "shade": 35,
     "shades": 35,
-    "solar shades": 40,
-    "blackout shades": 40,
-    "motorized shades": 40,
-    "skylight shades": 40,
-    "privacy curtains": 40,
-    "drapery track": 40,
-    "drapery tracks": 40,
-    "window treatment": 40,
-    "window treatments": 40,
-    "roller shades": 40,
-    "custom shades": 40,
-    "exterior shades": 40,
-    "commercial blinds": 40,
-    "venetian blinds": 40,
-    "vertical blinds": 40,
-    "honeycomb shades": 40,
-    "cellular shades": 40,
-    "roman shades": 40,
-    "sheer shades": 40,
-    "panel track blinds": 40,
+    "roller shade": 50,
+    "roller shades": 50,
+    "solar shades": 50,
+    "solar shade": 50,
+    "blackout shades": 50,
+    "blackout shade": 50,
+    "motorized shades": 50,
+    "motorized shade": 50,
+    "skylight shades": 50,
+    "skylight shade": 50,
+    "honeycomb shades": 45,
+    "cellular shades": 45,
+    "roman shades": 45,
+    "sheer shades": 45,
+    "custom shades": 45,
+    "exterior shades": 45,
+    "shade systems": 45,
+    "automated shades": 50,
+    "blackout systems": 45,
+    "blackout": 30,
+    "pleated shades": 45,
+    "dual shades": 45,
+    # ── curtains / drapery ────────────────
+    "curtain": 40,
+    "curtains": 45,
+    "drapery": 50,
+    "drapes": 45,
+    "drape": 40,
+    "privacy curtain": 50,
+    "privacy curtains": 50,
+    "cubicle curtain": 50,
+    "cubicle curtains": 50,
+    "hospital curtain": 50,
+    "hospital curtains": 50,
+    "drapery track": 50,
+    "drapery tracks": 50,
+    "room divider curtain": 45,
+    "patient room curtain": 50,
+    "shower curtain": 30,
+    "stage curtain": 35,
+    "acoustic curtain": 40,
+    "thermal curtain": 40,
+    "blackout curtain": 50,
+    "blackout curtains": 50,
+    # ── window covering catch-all ─────────
+    "window covering": 50,
+    "window coverings": 50,
+    "window treatment": 50,
+    "window treatments": 50,
+    "motorized window": 45,
     "plantation shutters": 40,
-    "window film": 35,
-    "shade systems": 40,
-    "motorized window": 40,
-    "automated shades": 40,
+    "window film": 30,
+    "window shade": 45,
+    "window blind": 45,
 }
 
 SECONDARY_KEYWORDS: dict[str, int] = {
-    "interior furnishing": 20,
-    "interior furnishings": 20,
-    "ff&e": 20,
-    "furniture fixtures equipment": 20,
-    "furniture fixtures and equipment": 20,
-    "renovation": 20,
-    "school modernization": 20,
-    "hospital renovation": 20,
-    "building upgrade": 20,
-    "facility improvement": 20,
-    "interior fit-out": 20,
-    "tenant improvement": 20,
+    # ── textile / fabric / linen ──────────
+    "fabric": 25,
+    "textile": 25,
+    "textiles": 25,
+    "linen": 30,
+    "linens": 30,
+    "bedding": 30,
+    "blankets": 25,
+    "blanket": 25,
+    "sheet": 20,
+    "sheets": 20,
+    "bed sheet": 30,
+    "bed sheets": 30,
+    "towel supply": 25,
+    "towel": 20,
+    "towels": 20,
+    "soft furnishing": 30,
+    "soft furnishings": 30,
+    "hospitality linen": 35,
+    "hotel linen": 35,
+    "healthcare linen": 35,
+    "hospital linen": 35,
+    "bedding supply": 35,
+    "sheet supply": 30,
+    "towel and linen": 30,
+    "laundry linen": 25,
+    "linen rental": 30,
+    "linen service": 30,
+    "pillow": 20,
+    "pillowcase": 20,
+    "duvet": 25,
+    "comforter": 25,
+    "mattress cover": 20,
+    "mattress pad": 20,
+    # ── furnishing / FF&E / furniture ──────
+    "furniture": 25,
     "furnishing": 20,
-    "design-build": 20,
-    "condo development": 20,
-    "apartment development": 20,
-    "hospitality renovation": 20,
+    "furnishings": 20,
+    "interior furnishing": 25,
+    "interior furnishings": 25,
+    "interior finishings": 20,
+    "interior finishing": 20,
+    "ff&e": 25,
+    "ffe": 20,
+    "furniture fixtures equipment": 25,
+    "furniture fixtures and equipment": 25,
+    "commercial furnishing": 25,
+    "interior fit-out": 25,
+    "interior fitout": 25,
+    "tenant improvement": 20,
     "office fit-out": 20,
     "interior finishing": 20,
-    "millwork": 15,
-    "soft furnishing": 20,
-    "window replacement": 20,
-    "building envelope": 15,
-    "interior design services": 20,
+    "interior design": 15,
     "commercial interiors": 20,
+    "soft goods": 25,
+    "finish carpentry": 15,
+    "millwork and finishing": 15,
 }
 
-PROJECT_TYPE_KEYWORDS: dict[str, int] = {
-    "school renovation": 15,
+CONTEXTUAL_KEYWORDS: dict[str, int] = {
     "hospital renovation": 15,
-    "senior living": 15,
-    "public housing": 15,
-    "hotel construction": 15,
-    "office construction": 15,
-    "university residence": 15,
-    "dormitory": 15,
-    "healthcare facility": 15,
-    "government building": 15,
-    "courthouse": 15,
-    "library": 12,
-    "community center": 12,
-    "recreation center": 12,
-    "fire station": 10,
-    "police station": 10,
-    "correctional facility": 10,
+    "school renovation": 15,
+    "hospitality renovation": 15,
+    "condo furnishing": 15,
+    "apartment furnishing": 15,
+    "hotel furnishing": 15,
+    "senior living": 12,
+    "senior living furnishing": 18,
+    "school furnishing": 18,
+    "school modernization": 12,
+    "dormitory": 12,
+    "healthcare facility": 12,
+    "university residence": 12,
+    "public housing": 10,
+    "building upgrade": 10,
+    "facility improvement": 10,
+    "renovation": 8,
+    "design-build": 8,
+    "government building": 8,
+    "courthouse": 8,
+    "library": 8,
+    "community center": 8,
+    "recreation center": 8,
+    "window replacement": 10,
+    "patient room": 12,
+    "exam room": 10,
+    "operating room": 8,
+    "long-term care": 12,
+    "assisted living": 12,
+    "nursing home": 10,
+    "hotel room": 10,
+    "guest room": 10,
+    "conference room": 8,
+    "classroom": 8,
+    "daycare": 8,
+    "child care": 8,
 }
 
-NEGATIVE_KEYWORDS: list[str] = [
-    "software",
-    "it services",
-    "vehicles",
-    "road construction",
-    "bridge",
-    "sewer",
-    "water main",
-    "paving",
-    "landscaping only",
-    "demolition only",
-    "plumbing only",
-    "electrical only",
-    "hvac only",
+NEGATIVE_KEYWORDS: dict[str, int] = {
+    # IT / software
+    "software": 25,
+    "erp": 30,
+    "it services": 25,
+    "cyber security": 25,
+    "cybersecurity": 25,
+    "cloud migration": 25,
+    "server": 15,
+    "telecom": 20,
+    "telecommunications": 20,
+    "network infrastructure": 20,
+    "data center": 20,
+    "saas": 20,
+    "microsoft": 15,
+    # civil / infrastructure
+    "watermain": 35,
+    "water main": 35,
+    "sewer": 35,
+    "sanitary sewer": 35,
+    "storm sewer": 35,
+    "asphalt": 30,
+    "road construction": 30,
+    "road": 15,
+    "bridge": 25,
+    "bridge repair": 30,
+    "concrete": 15,
+    "paving": 25,
+    "pothole": 30,
+    "gravel": 25,
+    "excavat": 20,
+    "earthwork": 20,
+    "culvert": 25,
+    "sidewalk": 20,
+    "curb and gutter": 20,
+    "water treatment": 25,
+    "wastewater": 30,
+    "pumping station": 25,
+    # mechanical / trades only
+    "hvac only": 20,
+    "electrical only": 20,
+    "plumbing only": 20,
+    "hvac": 8,
+    "mechanical upgrade": 8,
+    "boiler replacement": 20,
+    "chiller replacement": 20,
+    "elevator": 20,
+    # fleet / fuel / heavy
+    "heavy equipment": 25,
+    "fleet services": 20,
+    "fuel supply": 25,
+    "diesel": 25,
+    "gasoline": 20,
+    "vehicles": 20,
+    "snow removal": 25,
+    "snow plow": 25,
+    "landscaping": 20,
+    "mowing": 20,
+    "tree removal": 20,
+    "grounds maintenance": 15,
+    # professional services unrelated
+    "legal services": 20,
+    "audit services": 20,
+    "accounting services": 20,
+    "pharmacy": 25,
+    "pharmaceutical": 25,
+    "policing": 20,
+    "fire fighting": 15,
+    "ambulance": 20,
+    "insurance": 15,
+    "banking": 15,
+    "investment": 15,
+    # other unrelated
+    "demolition only": 20,
+    "roofing only": 15,
+    "line painting": 20,
+    "real estate": 15,
+    "environmental assessment": 15,
+    "suv": 20,
+    "truck": 15,
+    "medical equipment": 20,
+    "laboratory equipment": 20,
+    "food services": 20,
+    "catering": 20,
+    "janitorial": 15,
+    "waste management": 20,
+    "garbage": 20,
+    "recycling": 15,
+}
+
+# ───────────────────────────────────────────────────────────────────────
+# PRECOMPILED PATTERNS
+# ───────────────────────────────────────────────────────────────────────
+
+def _compile(d):
+    """Compile keyword patterns with word boundaries to avoid false positives.
+
+    For example, 'blind' should not match 'Blind River' (a city name).
+    'ffe' should not match 'office' or 'coffee'.
+    """
+    compiled = []
+    for kw, pts in d.items():
+        escaped = re.escape(kw)
+        pattern = re.compile(r"\b" + escaped + r"\b", re.IGNORECASE)
+        compiled.append((kw, pts, pattern))
+    return compiled
+
+_PRIMARY = _compile(PRIMARY_KEYWORDS)
+_SECONDARY = _compile(SECONDARY_KEYWORDS)
+_CONTEXTUAL = _compile(CONTEXTUAL_KEYWORDS)
+_NEGATIVE = _compile(NEGATIVE_KEYWORDS)
+
+# ───────────────────────────────────────────────────────────────────────
+# SEMANTIC PHRASE PATTERNS
+# ───────────────────────────────────────────────────────────────────────
+# Catch opportunities implying furnishing scope through compound phrases,
+# even when no single keyword directly matches a product.
+
+SEMANTIC_PATTERNS = [
+    # Direct product + action
+    (re.compile(r"curtain\w*\s+(replace|install|supply|procure)", re.I), 40, "curtain supply/install"),
+    (re.compile(r"(replace|install|supply|procure)\w*\s+curtain", re.I), 40, "curtain supply/install"),
+    (re.compile(r"blind\w*\s+(replace|install|supply|procure)", re.I), 40, "blinds supply/install"),
+    (re.compile(r"(replace|install|supply|procure)\w*\s+blind", re.I), 40, "blinds supply/install"),
+    (re.compile(r"shade\w*\s+(replace|install|supply|procure)", re.I), 40, "shades supply/install"),
+    (re.compile(r"window\s+(covering|treatment)\w*\s+(replace|install|supply)", re.I), 45, "window covering install"),
+    (re.compile(r"drap\w+\s+(replace|install|supply|hardware)", re.I), 40, "drapery supply/install"),
+
+    # Patient/hospital/privacy combinations
+    (re.compile(r"patient\s+(room\s+)?privacy\s+curtain", re.I), 50, "patient privacy curtain"),
+    (re.compile(r"(hospital|medical|clinical)\s+curtain", re.I), 50, "hospital curtain"),
+    (re.compile(r"privacy\s+(screen|partition|curtain|divider)", re.I), 35, "privacy divider"),
+    (re.compile(r"cubicle\s+(curtain|track|rail)", re.I), 45, "cubicle curtain/track"),
+    (re.compile(r"exam\s+room\s+curtain", re.I), 50, "exam room curtain"),
+    (re.compile(r"(disposable|anti.?microbial|flame.?retardant)\s+curtain", re.I), 40, "specialty curtain"),
+
+    # Facility + furnishing compound phrases
+    (re.compile(r"(hotel|motel|resort)\s+.{0,30}(furnish|linen|textile|bedding|curtain|drape)", re.I), 35, "hospitality furnishing"),
+    (re.compile(r"(hospital|healthcare|medical)\s+.{0,30}(furnish|linen|textile|curtain)", re.I), 35, "healthcare furnishing"),
+    (re.compile(r"(school|university|college|dormitor)\w*\s+.{0,30}(furnish|curtain|blind|shade)", re.I), 30, "education furnishing"),
+    (re.compile(r"(apartment|condo|residential)\s+.{0,30}(furnish|blind|shade|curtain|window)", re.I), 30, "residential furnishing"),
+    (re.compile(r"(senior|assisted)\s+(living|care)\s+.{0,30}(furnish|curtain|blind|linen)", re.I), 30, "senior care furnishing"),
+    (re.compile(r"(office|commercial)\s+.{0,20}(furnish|blind|shade|window\s+treat)", re.I), 25, "commercial furnishing"),
+    (re.compile(r"(military|base|barracks)\s+.{0,30}(furnish|linen|bedding|curtain)", re.I), 30, "military furnishing"),
+    (re.compile(r"(prison|correctional|detention)\s+.{0,30}(furnish|linen|bedding|curtain)", re.I), 25, "correctional furnishing"),
+
+    # Renovation + interior scope
+    (re.compile(r"(interior|room)\s+(renovation|remodel|upgrade)\s+.{0,30}(furnish|finish)", re.I), 20, "interior renovation furnishing"),
+    (re.compile(r"(furnish|ff&?e)\w*\s+(package|procurement|supply|contract)", re.I), 30, "furnishing procurement"),
+    (re.compile(r"(linen|textile|fabric)\s+(supply|service|contract|procurement|rental)", re.I), 35, "linen/textile supply"),
+    (re.compile(r"(bedding|towel|sheet)\s+(supply|service|contract|procurement|rental)", re.I), 30, "bedding supply"),
+
+    # Installation-specific
+    (re.compile(r"(motorized|automated|electric)\s+(shade|blind|curtain|window)", re.I), 45, "motorized window products"),
+    (re.compile(r"(blackout|solar|skylight)\s+(shade|blind|curtain|film)", re.I), 45, "specialty shading"),
+    (re.compile(r"window\s+(film|tint)\s+(install|supply|procure)", re.I), 25, "window film"),
+
+    # Track and hardware
+    (re.compile(r"(curtain|drapery|track)\s+(track|rod|rail|hardware)", re.I), 35, "curtain hardware/track"),
+    (re.compile(r"(ceiling|wall)\s+mount.{0,15}(track|rail|curtain)", re.I), 30, "mounted track system"),
 ]
 
-_PRIMARY_PATTERNS: list[tuple[str, int, re.Pattern]] = [
-    (kw, score, re.compile(re.escape(kw), re.IGNORECASE))
-    for kw, score in PRIMARY_KEYWORDS.items()
+# ───────────────────────────────────────────────────────────────────────
+# CATEGORY BONUS
+# ───────────────────────────────────────────────────────────────────────
+# If the opportunity's category field itself signals relevance.
+
+_CATEGORY_PATTERNS = [
+    (re.compile(r"window|blind|shade|curtain|drap|furnish|textile|linen|ff&?e|interior", re.I), 12),
+    (re.compile(r"renovation|remodel|fitout|fit-out|tenant improve", re.I), 5),
 ]
 
-_SECONDARY_PATTERNS: list[tuple[str, int, re.Pattern]] = [
-    (kw, score, re.compile(re.escape(kw), re.IGNORECASE))
-    for kw, score in SECONDARY_KEYWORDS.items()
-]
-
-_PROJECT_PATTERNS: list[tuple[str, int, re.Pattern]] = [
-    (kw, score, re.compile(re.escape(kw), re.IGNORECASE))
-    for kw, score in PROJECT_TYPE_KEYWORDS.items()
-]
-
-_NEGATIVE_PATTERNS: list[tuple[str, re.Pattern]] = [
-    (kw, re.compile(re.escape(kw), re.IGNORECASE))
-    for kw in NEGATIVE_KEYWORDS
-]
-
-_ORG_TYPE_BONUS: dict[str, int] = {
-    "government": 5,
+_ORG_TYPE_BONUS = {
+    "healthcare": 8,
+    "housing": 8,
     "education": 5,
-    "healthcare": 5,
-    "housing": 10,
+    "government": 3,
 }
 
+# ───────────────────────────────────────────────────────────────────────
+# BUCKETS
+# ───────────────────────────────────────────────────────────────────────
+
+RELEVANCE_BUCKETS = {
+    "highly_relevant": (70, 100),
+    "moderately_relevant": (40, 69),
+    "low_relevance": (15, 39),
+    "irrelevant": (0, 14),
+}
+
+
+def _bucket_from_score(score):
+    for bucket, (lo, hi) in RELEVANCE_BUCKETS.items():
+        if lo <= score <= hi:
+            return bucket
+    return "irrelevant"
+
+
+# ───────────────────────────────────────────────────────────────────────
+# INDUSTRY TAG DERIVATION
+# ───────────────────────────────────────────────────────────────────────
+
+_TAG_RULES = [
+    (re.compile(r"blind", re.I), "blinds"),
+    (re.compile(r"shade|blackout|solar shade|skylight", re.I), "shades"),
+    (re.compile(r"curtain|privacy curtain|cubicle curtain|hospital curtain|room divider", re.I), "curtains"),
+    (re.compile(r"drape|drapery", re.I), "drapery"),
+    (re.compile(r"window covering|window treatment", re.I), "window coverings"),
+    (re.compile(r"fabric|textile|soft goods", re.I), "fabric"),
+    (re.compile(r"linen|towel", re.I), "linen"),
+    (re.compile(r"bedding|bed sheet|sheet supply|blanket|duvet|comforter", re.I), "bedding"),
+    (re.compile(r"ff&e|ffe|furniture fixtures", re.I), "FF&E"),
+    (re.compile(r"interior fit|fitout|tenant improvement", re.I), "interior fit-out"),
+    (re.compile(r"motorized|automated", re.I), "motorized systems"),
+    (re.compile(r"blackout", re.I), "blackout"),
+    (re.compile(r"roller shade|roller blind", re.I), "roller shade"),
+    (re.compile(r"hospital|healthcare|patient room|medical", re.I), "healthcare"),
+    (re.compile(r"hotel|hospitality|resort|motel", re.I), "hospitality"),
+    (re.compile(r"school|education|dormitor|university|college", re.I), "school"),
+    (re.compile(r"senior|assisted living|nursing home|long.term care", re.I), "senior care"),
+    (re.compile(r"track|rail|rod|hardware", re.I), "hardware"),
+    (re.compile(r"pillow|mattress|comforter|duvet", re.I), "bedding"),
+]
+
+
+def _derive_tags(primary, secondary, semantic):
+    tags = set()
+    all_matched = " ".join(primary + secondary + semantic)
+    for pattern, tag in _TAG_RULES:
+        if pattern.search(all_matched):
+            tags.add(tag)
+    return sorted(tags)
+
+
+# ───────────────────────────────────────────────────────────────────────
+# BUSINESS FIT EXPLANATION GENERATOR
+# ───────────────────────────────────────────────────────────────────────
+
+def _build_explanation(
+    bucket,
+    primary_matches,
+    secondary_matches,
+    contextual_matches,
+    semantic_matches,
+    negative_matches,
+    industry_tags,
+    title_boost,
+    source_fit_bonus,
+    final_score,
+):
+    """Generate a plain-English explanation of why this opportunity scored the way it did."""
+
+    if bucket == "irrelevant" and final_score == 0:
+        if negative_matches:
+            return "No window covering, textile, or furnishing keywords found. Negative signals detected: {}.".format(
+                ", ".join(negative_matches[:4])
+            )
+        return "No window covering, textile, or furnishing relevance detected in the title or description."
+
+    parts = []
+
+    # Lead with the strongest signal
+    if primary_matches:
+        top = primary_matches[:3]
+        parts.append("Direct product match: {}".format(", ".join(top)))
+    if semantic_matches:
+        top = semantic_matches[:2]
+        parts.append("Semantic signal: {}".format(", ".join(top)))
+    if secondary_matches and not primary_matches:
+        top = secondary_matches[:3]
+        parts.append("Textile/furnishing match: {}".format(", ".join(top)))
+    elif secondary_matches:
+        parts.append("Also matched: {}".format(", ".join(secondary_matches[:2])))
+    if contextual_matches and not primary_matches and not secondary_matches:
+        parts.append("Contextual signal: {}".format(", ".join(contextual_matches[:2])))
+
+    if title_boost > 0:
+        parts.append("Keyword found in title (strong signal)")
+    if source_fit_bonus > 0:
+        parts.append("Source has high industry fit")
+
+    if negative_matches:
+        parts.append("Penalized for: {}".format(", ".join(negative_matches[:3])))
+
+    if industry_tags:
+        parts.append("Tags: {}".format(", ".join(industry_tags[:5])))
+
+    # Bucket-level summary prefix
+    if bucket == "highly_relevant":
+        prefix = "Strong fit for window covering/textile business."
+    elif bucket == "moderately_relevant":
+        prefix = "Potential fit — review recommended."
+    elif bucket == "low_relevance":
+        prefix = "Weak signal — may contain relevant scope."
+    else:
+        prefix = "Unlikely to be relevant."
+
+    detail = " ".join(parts)
+    if detail:
+        return "{} {}".format(prefix, detail)
+    return prefix
+
+
+# ───────────────────────────────────────────────────────────────────────
+# MAIN SCORING FUNCTION
+# ───────────────────────────────────────────────────────────────────────
 
 def score_opportunity(
-    title: str,
-    description: str,
-    org_type: str | None = None,
-    project_type: str | None = None,
-) -> tuple[int, dict]:
-    """Score how relevant an opportunity is to the window-covering business.
+    title,
+    description,
+    org_type=None,
+    project_type=None,
+    category=None,
+    source_fit_score=None,
+):
+    """Score how relevant an opportunity is to the window-covering / textile business.
 
-    Returns:
-        A tuple of ``(score, breakdown)`` where score is clamped to 0-100
-        and breakdown is a dict explaining how the score was derived.
+    Returns (score, breakdown) where score is 0-100 and breakdown explains
+    every factor including the new business_fit_explanation field.
     """
-    combined = f"{title or ''} {description or ''} {project_type or ''}"
-    raw_score = 0
+    combined = "{} {} {}".format(title or "", description or "", project_type or "")
 
-    primary_matches: list[str] = []
-    secondary_matches: list[str] = []
-    project_matches: list[str] = []
-    negative_matches: list[str] = []
-    org_bonus = 0
+    # Remove known false-positive location names before scoring
+    _false_positives = re.compile(r"\bBlind River\b", re.I)
+    scoring_text = _false_positives.sub("", combined)
 
-    for kw, points, pattern in _PRIMARY_PATTERNS:
-        if pattern.search(combined):
+    positive_score = 0
+    negative_penalty = 0
+
+    primary_matches = []
+    secondary_matches = []
+    contextual_matches = []
+    negative_matches = []
+
+    for kw, points, pattern in _PRIMARY:
+        if pattern.search(scoring_text):
             primary_matches.append(kw)
-            raw_score += points
+            positive_score += points
 
-    for kw, points, pattern in _SECONDARY_PATTERNS:
-        if pattern.search(combined):
+    for kw, points, pattern in _SECONDARY:
+        if pattern.search(scoring_text):
             secondary_matches.append(kw)
-            raw_score += points
+            positive_score += points
 
-    for kw, points, pattern in _PROJECT_PATTERNS:
-        if pattern.search(combined):
-            project_matches.append(kw)
-            raw_score += points
+    for kw, points, pattern in _CONTEXTUAL:
+        if pattern.search(scoring_text):
+            contextual_matches.append(kw)
+            positive_score += points
 
+    # Semantic phrase-pattern matching
+    semantic_matches = []
+    semantic_score = 0
+    for pattern, points, label in SEMANTIC_PATTERNS:
+        if pattern.search(scoring_text):
+            semantic_matches.append(label)
+            semantic_score += points
+    semantic_score = min(semantic_score, 60)
+    positive_score += semantic_score
+
+    # Org type bonus
+    org_bonus = 0
     if org_type and org_type.lower() in _ORG_TYPE_BONUS:
         org_bonus = _ORG_TYPE_BONUS[org_type.lower()]
-        raw_score += org_bonus
+        positive_score += org_bonus
 
-    for kw, pattern in _NEGATIVE_PATTERNS:
-        if pattern.search(combined):
+    # Source fit bonus
+    source_fit_bonus = 0
+    if source_fit_score is not None and source_fit_score >= 60:
+        source_fit_bonus = min(10, (source_fit_score - 50) // 5)
+        positive_score += source_fit_bonus
+
+    # Category field bonus
+    category_bonus = 0
+    cat_text = category or ""
+    for pat, bonus in _CATEGORY_PATTERNS:
+        if pat.search(cat_text):
+            category_bonus = max(category_bonus, bonus)
+    positive_score += category_bonus
+
+    # Negative matches
+    for kw, penalty, pattern in _NEGATIVE:
+        if pattern.search(scoring_text):
             negative_matches.append(kw)
+            negative_penalty += penalty
 
-    if negative_matches and not primary_matches:
-        raw_score = max(0, raw_score - 30)
+    # Title boost — primary keyword in title is the strongest signal
+    title_lower = (title or "").lower()
+    title_boost = 0
+    for kw, _, pattern in _PRIMARY:
+        if pattern.search(title_lower):
+            title_boost = 25
+            break
+    if not title_boost:
+        for kw, _, pattern in _SECONDARY:
+            if pattern.search(title_lower):
+                title_boost = 15
+                break
 
+    positive_score += title_boost
+
+    # Apply negative penalty — much harder if no positive matches
+    if negative_matches:
+        if not primary_matches and not secondary_matches:
+            negative_penalty = max(negative_penalty, 50)
+        elif not primary_matches:
+            negative_penalty = int(negative_penalty * 0.8)
+        else:
+            negative_penalty = int(negative_penalty * 0.3)
+
+    raw_score = positive_score - negative_penalty
     final_score = max(0, min(100, raw_score))
+
+    bucket = _bucket_from_score(final_score)
+    industry_tags = _derive_tags(primary_matches, secondary_matches, semantic_matches)
+
+    explanation = _build_explanation(
+        bucket=bucket,
+        primary_matches=primary_matches,
+        secondary_matches=secondary_matches,
+        contextual_matches=contextual_matches,
+        semantic_matches=semantic_matches,
+        negative_matches=negative_matches,
+        industry_tags=industry_tags,
+        title_boost=title_boost,
+        source_fit_bonus=source_fit_bonus,
+        final_score=final_score,
+    )
 
     breakdown = {
         "primary_matches": primary_matches,
         "secondary_matches": secondary_matches,
-        "project_matches": project_matches,
+        "contextual_matches": contextual_matches,
+        "semantic_matches": semantic_matches,
         "negative_matches": negative_matches,
+        "industry_tags": industry_tags,
         "org_bonus": org_bonus,
+        "source_fit_bonus": source_fit_bonus,
+        "category_bonus": category_bonus,
+        "title_boost": title_boost,
+        "semantic_score": semantic_score,
+        "positive_score": positive_score,
+        "negative_penalty": negative_penalty,
         "final_score": final_score,
+        "relevance_bucket": bucket,
+        "business_fit_explanation": explanation,
     }
 
     return final_score, breakdown

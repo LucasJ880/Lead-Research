@@ -29,6 +29,13 @@ class Settings(BaseSettings):
 
     SCRAPER_API_KEY: str = ""
 
+    # MERX authenticated access (never log or expose these)
+    MERX_EMAIL: str = ""
+    MERX_PASSWORD: str = ""
+
+    # OpenAI for document intelligence
+    OPENAI_API_KEY: str = ""
+
     DEFAULT_RATE_LIMIT_SECONDS: int = 3
     DEFAULT_MAX_PAGES_PER_SOURCE: int = 20
     DEFAULT_USER_AGENT: str = (
@@ -37,6 +44,10 @@ class Settings(BaseSettings):
     RESPECT_ROBOTS_TXT: bool = True
 
     LOG_LEVEL: str = "info"
+
+    @property
+    def merx_credentials_available(self) -> bool:
+        return bool(self.MERX_EMAIL and self.MERX_PASSWORD)
 
 
 settings = Settings()

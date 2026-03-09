@@ -153,25 +153,46 @@ class CrawlPipeline:
         return opp
 
     def _score(self, opp: OpportunityCreate) -> OpportunityCreate:
-        """Compute the relevance score and attach matched keywords."""
+        """Compute the relevance score, bucket, tags, and keyword arrays."""
         description = opp.description_full or opp.description_summary or ""
+        source_fit = getattr(self._source_config, "industry_fit_score", None)
         score, breakdown = score_opportunity(
             title=opp.title,
             description=description,
             org_type=None,
             project_type=opp.project_type,
+            category=opp.category,
+            source_fit_score=source_fit,
         )
         opp.relevance_score = score
         opp.relevance_breakdown = breakdown
+        opp.relevance_bucket = breakdown.get("relevance_bucket", "irrelevant")
         opp.keywords_matched = (
             breakdown.get("primary_matches", [])
             + breakdown.get("secondary_matches", [])
-            + breakdown.get("project_matches", [])
+            + breakdown.get("contextual_matches", [])
         )
+        opp.negative_keywords = breakdown.get("negative_matches", [])
+        opp.industry_tags = breakdown.get("industry_tags", [])
         return opp
+
+    def _validate(self, opp: OpportunityCreate) -> bool:
+        """Reject records with missing or invalid required fields."""
+        if not opp.title or not opp.title.strip():
+            logger.warning("Rejected opportunity: empty title")
+            self._result.opportunities_skipped += 1
+            return False
+        if not opp.source_url or not opp.source_url.startswith("http"):
+            logger.warning("Rejected opportunity: invalid source_url — %s", opp.source_url)
+            self._result.opportunities_skipped += 1
+            return False
+        return True
 
     def _dedup_and_store(self, opp: OpportunityCreate) -> None:
         """Check for duplicates and insert or update the opportunity."""
+        if not self._validate(opp):
+            return
+
         # Check by source + external ID first
         if opp.external_id:
             existing_id = check_source_duplicate(
@@ -193,8 +214,9 @@ class CrawlPipeline:
     # ─── Database Operations ────────────────────────────────
 
     def _insert_opportunity(self, opp: OpportunityCreate) -> None:
-        """Insert a new opportunity row."""
+        """Insert a new opportunity row using a SAVEPOINT for isolation."""
         try:
+            self._session.execute(text("SAVEPOINT opp_insert"))
             self._session.execute(
                 text("""
                     INSERT INTO opportunities (
@@ -206,8 +228,9 @@ class CrawlPipeline:
                         contact_name, contact_email, contact_phone,
                         source_url, has_documents,
                         mandatory_site_visit, pre_bid_meeting, addenda_count,
-                        keywords_matched, relevance_score, relevance_breakdown,
-                        raw_data, fingerprint, updated_at
+                        keywords_matched, negative_keywords, relevance_score,
+                        relevance_bucket, relevance_breakdown, industry_tags,
+                        ingestion_mode, raw_data, fingerprint, updated_at
                     ) VALUES (
                         :source_id, :source_run_id, :external_id,
                         :title, :description_summary, :description_full,
@@ -217,8 +240,9 @@ class CrawlPipeline:
                         :contact_name, :contact_email, :contact_phone,
                         :source_url, :has_documents,
                         :mandatory_site_visit, :pre_bid_meeting, :addenda_count,
-                        :keywords_matched, :relevance_score, :relevance_breakdown,
-                        :raw_data, :fingerprint, NOW()
+                        :keywords_matched, :negative_keywords, :relevance_score,
+                        :relevance_bucket, :relevance_breakdown, :industry_tags,
+                        'live', :raw_data, :fingerprint, NOW()
                     )
                 """),
                 {
@@ -249,8 +273,11 @@ class CrawlPipeline:
                     "pre_bid_meeting": opp.pre_bid_meeting,
                     "addenda_count": opp.addenda_count,
                     "keywords_matched": opp.keywords_matched,
+                    "negative_keywords": opp.negative_keywords,
                     "relevance_score": opp.relevance_score,
+                    "relevance_bucket": opp.relevance_bucket,
                     "relevance_breakdown": _safe_json_dumps(opp.relevance_breakdown),
+                    "industry_tags": opp.industry_tags,
                     "raw_data": _safe_json_dumps(opp.raw_data),
                     "fingerprint": opp.fingerprint,
                 },
@@ -262,10 +289,15 @@ class CrawlPipeline:
         except Exception:
             logger.exception("Failed to insert opportunity: %s", opp.title)
             self._result.errors.append(f"Insert failed: {opp.title}")
+            try:
+                self._session.execute(text("ROLLBACK TO SAVEPOINT opp_insert"))
+            except Exception:
+                pass
 
     def _update_opportunity(self, opportunity_id: str, opp: OpportunityCreate) -> None:
         """Update an existing opportunity with fresh data."""
         try:
+            self._session.execute(text("SAVEPOINT opp_update"))
             self._session.execute(
                 text("""
                     UPDATE opportunities SET
@@ -277,8 +309,11 @@ class CrawlPipeline:
                         closing_date = COALESCE(:closing_date, closing_date),
                         estimated_value = COALESCE(:estimated_value, estimated_value),
                         keywords_matched = :keywords_matched,
+                        negative_keywords = :negative_keywords,
                         relevance_score = :relevance_score,
+                        relevance_bucket = :relevance_bucket,
                         relevance_breakdown = :relevance_breakdown,
+                        industry_tags = :industry_tags,
                         updated_at = NOW()
                     WHERE id = :id
                 """),
@@ -292,8 +327,11 @@ class CrawlPipeline:
                     "closing_date": opp.closing_date,
                     "estimated_value": float(opp.estimated_value) if opp.estimated_value else None,
                     "keywords_matched": opp.keywords_matched,
+                    "negative_keywords": opp.negative_keywords,
                     "relevance_score": opp.relevance_score,
+                    "relevance_bucket": opp.relevance_bucket,
                     "relevance_breakdown": _safe_json_dumps(opp.relevance_breakdown),
+                    "industry_tags": opp.industry_tags,
                 },
             )
             self._session.flush()
@@ -303,6 +341,10 @@ class CrawlPipeline:
         except Exception:
             logger.exception("Failed to update opportunity %s", opportunity_id)
             self._result.errors.append(f"Update failed: {opp.title}")
+            try:
+                self._session.execute(text("ROLLBACK TO SAVEPOINT opp_update"))
+            except Exception:
+                pass
 
     # ─── Source Run Management ──────────────────────────────
 

@@ -1,26 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import type { SourceItem, SourceType, CrawlFrequency, RunStatus } from "@/types";
+import type { Source } from "@prisma/client";
+import type { SourceItem, SourceType, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
-function mapSource(s: {
-  id: string;
-  name: string;
-  sourceType: string;
-  baseUrl: string;
-  country: string;
-  region: string | null;
-  frequency: string;
-  isActive: boolean;
-  lastCrawledAt: Date | null;
-  lastRunStatus: string | null;
-  categoryTags: string[];
-}): SourceItem {
+function mapSource(s: Source): SourceItem {
+  const total = s.totalOpportunities;
+  const relevant = s.relevantOpportunities;
   return {
     id: s.id,
     name: s.name,
     sourceType: s.sourceType as SourceType,
     baseUrl: s.baseUrl,
+    listingPath: s.listingPath ?? undefined,
     country: s.country,
     region: s.region ?? undefined,
     frequency: s.frequency as CrawlFrequency,
@@ -28,6 +20,19 @@ function mapSource(s: {
     lastCrawledAt: s.lastCrawledAt ? s.lastCrawledAt.toISOString() : undefined,
     lastRunStatus: s.lastRunStatus ? (s.lastRunStatus as RunStatus) : undefined,
     categoryTags: s.categoryTags,
+    industryFitScore: s.industryFitScore,
+    sourcePriority: s.sourcePriority as SourcePriority,
+    healthStatus: s.healthStatus as SourceHealthStatus,
+    totalOpportunities: total,
+    relevantOpportunities: relevant,
+    highlyRelevantCount: s.highlyRelevantCount,
+    sourceYieldPct: total > 0 ? Math.round((relevant / total) * 100) : 0,
+    totalCrawlRuns: s.totalCrawlRuns,
+    successfulCrawlRuns: s.successfulCrawlRuns,
+    failedCrawlRuns: s.failedCrawlRuns,
+    avgCrawlDurationMs: s.avgCrawlDurationMs,
+    yieldAnalyticsUpdatedAt: s.yieldAnalyticsUpdatedAt?.toISOString(),
+    lastCrawlSuccess: s.lastRunStatus === "completed",
   };
 }
 

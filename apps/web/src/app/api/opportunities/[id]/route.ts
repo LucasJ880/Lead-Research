@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { OpportunityDetail, OpportunityStatus } from "@/types";
+import type { OpportunityDetail, OpportunityStatus, RelevanceBucket, WorkflowStatus } from "@/types";
+
+const VALID_WORKFLOW: WorkflowStatus[] = [
+  "new", "hot", "review", "shortlisted", "pursuing", "passed", "not_relevant", "monitor",
+];
 
 export async function GET(
   _request: NextRequest,
@@ -34,10 +38,7 @@ export async function GET(
     });
 
     if (!opp) {
-      return NextResponse.json(
-        { error: "Opportunity not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
     }
 
     const detail: OpportunityDetail = {
@@ -52,6 +53,11 @@ export async function GET(
       postedDate: opp.postedDate ? opp.postedDate.toISOString() : undefined,
       closingDate: opp.closingDate ? opp.closingDate.toISOString() : undefined,
       relevanceScore: Number(opp.relevanceScore),
+      relevanceBucket: opp.relevanceBucket as RelevanceBucket,
+      workflowStatus: opp.workflowStatus as WorkflowStatus,
+      keywordsMatched: opp.keywordsMatched ?? [],
+      negativeKeywords: opp.negativeKeywords ?? [],
+      industryTags: opp.industryTags ?? [],
       sourceUrl: opp.sourceUrl,
       sourceName: opp.source.name,
       estimatedValue: opp.estimatedValue ? Number(opp.estimatedValue) : undefined,
@@ -69,8 +75,10 @@ export async function GET(
       mandatorySiteVisit: opp.mandatorySiteVisit ?? undefined,
       preBidMeeting: opp.preBidMeeting ?? undefined,
       addendaCount: opp.addendaCount,
-      keywordsMatched: opp.keywordsMatched,
-      relevanceBreakdown: opp.relevanceBreakdown as Record<string, number>,
+      relevanceBreakdown: opp.relevanceBreakdown as Record<string, unknown>,
+      businessFitExplanation: opp.businessFitExplanation ?? undefined,
+      workflowNote: opp.workflowNote ?? undefined,
+      workflowUpdatedAt: opp.workflowUpdatedAt ? opp.workflowUpdatedAt.toISOString() : undefined,
       documents: opp.documents.map((doc) => ({
         id: doc.id,
         title: doc.title ?? undefined,
@@ -91,9 +99,42 @@ export async function GET(
     return NextResponse.json(detail);
   } catch (error) {
     console.error("GET /api/opportunities/[id] error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = params;
+    const body = await request.json();
+    const { workflowStatus, workflowNote } = body as {
+      workflowStatus?: string;
+      workflowNote?: string;
+    };
+
+    if (workflowStatus && !VALID_WORKFLOW.includes(workflowStatus as WorkflowStatus)) {
+      return NextResponse.json(
+        { error: `Invalid workflow status. Valid: ${VALID_WORKFLOW.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const data: Record<string, unknown> = { workflowUpdatedAt: new Date() };
+    if (workflowStatus) data.workflowStatus = workflowStatus;
+    if (workflowNote !== undefined) data.workflowNote = workflowNote;
+
+    const updated = await prisma.opportunity.update({
+      where: { id },
+      data,
+      select: { id: true, workflowStatus: true, workflowNote: true, workflowUpdatedAt: true },
+    });
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error("PATCH /api/opportunities/[id] error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

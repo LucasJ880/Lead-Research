@@ -33,6 +33,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Next.js Web App ────────────────────────────────────
+  app:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: lh-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadharvest}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-leadharvest}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-this-secret-in-production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      SCRAPER_API_URL: http://scraper-api:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ─── Python Scraper API ──────────────────────────────────
   scraper-api:
     build:

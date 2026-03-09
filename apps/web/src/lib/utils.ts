@@ -40,3 +40,51 @@ export function getRelevanceColor(score: number): string {
   if (score >= 20) return "text-orange-600 bg-orange-50";
   return "text-slate-500 bg-slate-50";
 }
+
+export function getBucketLabel(bucket: string): string {
+  const labels: Record<string, string> = {
+    highly_relevant: "Highly Relevant",
+    moderately_relevant: "Moderate",
+    low_relevance: "Low",
+    irrelevant: "Irrelevant",
+  };
+  return labels[bucket] ?? bucket;
+}
+
+export function getBucketColor(bucket: string): string {
+  const colors: Record<string, string> = {
+    highly_relevant: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    moderately_relevant: "text-blue-700 bg-blue-50 border-blue-200",
+    low_relevance: "text-amber-700 bg-amber-50 border-amber-200",
+    irrelevant: "text-slate-500 bg-slate-50 border-slate-200",
+  };
+  return colors[bucket] ?? "text-slate-500 bg-slate-50 border-slate-200";
+}
+
+export function getWorkflowLabel(status: string): string {
+  const labels: Record<string, string> = {
+    new: "New",
+    hot: "Hot",
+    review: "Review",
+    shortlisted: "Shortlisted",
+    pursuing: "Pursuing",
+    passed: "Passed",
+    not_relevant: "Not Relevant",
+    monitor: "Monitor",
+  };
+  return labels[status] ?? status;
+}
+
+export function getWorkflowColor(status: string): string {
+  const colors: Record<string, string> = {
+    new: "text-slate-600 bg-slate-50 border-slate-200",
+    hot: "text-red-700 bg-red-50 border-red-200",
+    review: "text-amber-700 bg-amber-50 border-amber-200",
+    shortlisted: "text-blue-700 bg-blue-50 border-blue-200",
+    pursuing: "text-violet-700 bg-violet-50 border-violet-200",
+    passed: "text-slate-500 bg-slate-50 border-slate-200",
+    not_relevant: "text-slate-400 bg-slate-50 border-slate-200",
+    monitor: "text-cyan-700 bg-cyan-50 border-cyan-200",
+  };
+  return colors[status] ?? "text-slate-500 bg-slate-50 border-slate-200";
+}

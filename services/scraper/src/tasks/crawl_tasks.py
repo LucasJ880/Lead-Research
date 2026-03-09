@@ -28,6 +28,9 @@ def _row_to_source_config(row: Any) -> SourceConfig:
         frequency=CrawlFrequency(row.frequency),
         is_active=row.is_active,
         category_tags=row.category_tags if row.category_tags else [],
+        industry_fit_score=row.industry_fit_score if hasattr(row, "industry_fit_score") else 50,
+        source_priority=row.source_priority if hasattr(row, "source_priority") else "medium",
+        listing_path=row.listing_path if hasattr(row, "listing_path") else None,
     )
 
 
@@ -95,11 +98,7 @@ def crawl_source(self: Any, source_id: str) -> dict[str, Any]:
 
 @celery_app.task(name="src.tasks.crawl_tasks.crawl_all_active_sources")
 def crawl_all_active_sources() -> dict[str, Any]:
-    """Query all active sources and dispatch individual crawl tasks.
-
-    Returns:
-        Dict with a list of dispatched task IDs.
-    """
+    """Query all active sources and dispatch individual crawl tasks."""
     logger.info("Dispatching crawl tasks for all active sources")
     task_ids: list[dict[str, str]] = []
 
@@ -116,3 +115,44 @@ def crawl_all_active_sources() -> dict[str, Any]:
 
     logger.info("Dispatched %d crawl tasks", len(task_ids))
     return {"dispatched": task_ids, "count": len(task_ids)}
+
+
+# Tier thresholds for industry_fit_score
+_TIER_RANGES = {
+    "high": (60, 100),
+    "medium": (30, 59),
+    "low": (0, 29),
+}
+
+
+@celery_app.task(name="src.tasks.crawl_tasks.crawl_by_fit_tier")
+def crawl_by_fit_tier(tier: str) -> dict[str, Any]:
+    """Crawl only sources in a specific industry-fit tier.
+
+    Args:
+        tier: one of 'high', 'medium', 'low'
+    """
+    lo, hi = _TIER_RANGES.get(tier, (0, 100))
+    logger.info("Dispatching crawl tasks for tier=%s (fit_score %d-%d)", tier, lo, hi)
+    task_ids: list[dict[str, str]] = []
+
+    with get_db() as session:
+        rows = session.execute(
+            text(
+                "SELECT id, name, industry_fit_score FROM sources "
+                "WHERE is_active = true "
+                "AND industry_fit_score >= :lo AND industry_fit_score <= :hi"
+            ),
+            {"lo": lo, "hi": hi},
+        ).fetchall()
+
+    for row in rows:
+        source_id = str(row.id)
+        task = crawl_source.delay(source_id)
+        task_ids.append({"source_id": source_id, "task_id": task.id})
+        logger.info(
+            "Dispatched [%s] crawl for %s (fit=%d)", tier, row.name, row.industry_fit_score
+        )
+
+    logger.info("Tier %s: dispatched %d crawl tasks", tier, len(task_ids))
+    return {"tier": tier, "dispatched": task_ids, "count": len(task_ids)}

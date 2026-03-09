@@ -1,0 +1,18 @@
+[
+  {
+    "name": "SaskTenders — Government of Saskatchewan",
+    "source_type": "bid_portal",
+    "base_url": "https://sasktenders.ca",
+    "country": "CA",
+    "region": "SK",
+    "frequency": "daily",
+    "is_active": true,
+    "industry_fit_score": 30,
+    "category_tags": ["government", "provincial", "municipal", "construction", "renovation"],
+    "crawl_config": {
+      "crawler_class": "sasktenders",
+      "max_pages": 1,
+      "rate_limit_seconds": 3
+    }
+  }
+]
