@@ -6,9 +6,16 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "LeadHarvest — Opportunity Intelligence",
+  title: "BidToGo — Bid Intelligence Platform",
   description:
-    "Opportunity intelligence dashboard for window covering professionals. Track bids, tenders, and procurement opportunities across North America.",
+    "Bid intelligence platform for window covering professionals. Track bids, tenders, and procurement opportunities across North America.",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({

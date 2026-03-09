@@ -47,12 +47,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       >
         {/* Brand */}
         <div className="flex h-16 items-center gap-3 border-b border-white/10 px-4">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500 font-bold text-white text-sm">
-            LH
-          </div>
+          <img src="/icon.png" alt="BidToGo" className="h-8 w-8 shrink-0 rounded-lg" />
           {!collapsed && (
             <span className="text-lg font-semibold tracking-tight">
-              LeadHarvest
+              BidToGo
             </span>
           )}
         </div>

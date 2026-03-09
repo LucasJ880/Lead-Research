@@ -40,10 +40,10 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary font-bold text-lg text-primary-foreground">
-            LH
+          <div className="mx-auto mb-4">
+            <img src="/icon.png" alt="BidToGo" className="h-12 w-12 rounded-xl" />
           </div>
-          <CardTitle className="text-xl">Sign in to LeadHarvest</CardTitle>
+          <CardTitle className="text-xl">Sign in to BidToGo</CardTitle>
           <CardDescription>
             Enter your credentials to access the dashboard
           </CardDescription>
