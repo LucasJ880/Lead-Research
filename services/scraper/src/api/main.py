@@ -6,17 +6,26 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from src.core.config import settings
+from src.core.config import settings, validate_startup_config
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 app = FastAPI(
-    title="LeadHarvest Scraper",
-    version="0.1.0",
+    title="BidToGo Scraper",
+    version="0.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+@app.on_event("startup")
+async def _log_config_warnings() -> None:
+    warnings = validate_startup_config()
+    for w in warnings:
+        logger.warning("CONFIG: %s", w)
+    if not warnings:
+        logger.info("CONFIG: All required settings present")
 
 app.add_middleware(
     CORSMiddleware,

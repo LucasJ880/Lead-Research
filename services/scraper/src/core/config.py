@@ -61,3 +61,20 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def validate_startup_config() -> list[str]:
+    """Return a list of warnings about missing configuration.
+
+    Called at FastAPI startup to surface misconfigurations early.
+    """
+    warnings: list[str] = []
+    if not settings.SCRAPER_API_KEY:
+        warnings.append("SCRAPER_API_KEY is empty — all authenticated endpoints will return 500")
+    if not settings.DATABASE_URL or "localhost" in settings.DATABASE_URL:
+        warnings.append(f"DATABASE_URL looks like a dev default ({settings.DATABASE_URL[:40]}...)")
+    if not settings.merx_credentials_available:
+        warnings.append("MERX_EMAIL / MERX_PASSWORD not set — MERX crawling disabled")
+    if not settings.OPENAI_API_KEY:
+        warnings.append("OPENAI_API_KEY not set — AI analysis will use rule-based fallback")
+    return warnings

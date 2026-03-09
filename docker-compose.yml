@@ -65,6 +65,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-leadharvest}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-leadharvest}
       REDIS_URL: redis://redis:6379/0
       SCRAPER_API_KEY: ${SCRAPER_API_KEY:-scraper-internal-key-change-in-prod}
+      MERX_EMAIL: ${MERX_EMAIL:-}
+      MERX_PASSWORD: ${MERX_PASSWORD:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEFAULT_RATE_LIMIT_SECONDS: ${DEFAULT_RATE_LIMIT_SECONDS:-3}
       DEFAULT_USER_AGENT: ${DEFAULT_USER_AGENT:-LeadHarvest/1.0}
       RESPECT_ROBOTS_TXT: ${RESPECT_ROBOTS_TXT:-true}
@@ -86,6 +89,10 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-leadharvest}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-leadharvest}
       REDIS_URL: redis://redis:6379/0
+      SCRAPER_API_KEY: ${SCRAPER_API_KEY:-scraper-internal-key-change-in-prod}
+      MERX_EMAIL: ${MERX_EMAIL:-}
+      MERX_PASSWORD: ${MERX_PASSWORD:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEFAULT_RATE_LIMIT_SECONDS: ${DEFAULT_RATE_LIMIT_SECONDS:-3}
       DEFAULT_USER_AGENT: ${DEFAULT_USER_AGENT:-LeadHarvest/1.0}
       RESPECT_ROBOTS_TXT: ${RESPECT_ROBOTS_TXT:-true}
