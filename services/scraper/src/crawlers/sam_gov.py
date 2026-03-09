@@ -27,11 +27,31 @@ _UI_BASE = "https://sam.gov/opp"
 
 _NOTICE_TYPES = "o,p,k,r,s"
 
+# NAICS codes relevant to our industry vertical
+_INDUSTRY_NAICS = [
+    "337920",  # Blind and Shade Manufacturing
+    "314120",  # Curtain and Linen Mills
+    "314910",  # Textile Bag and Canvas Mills
+    "314999",  # All Other Miscellaneous Textile Product Mills
+    "337127",  # Institutional Furniture Manufacturing
+    "337211",  # Wood Office Furniture Manufacturing
+    "337212",  # Custom Architectural Woodwork and Millwork Manufacturing
+    "442210",  # Floor Covering Stores
+    "423220",  # Home Furnishing Merchant Wholesalers
+    "561720",  # Janitorial Services (linen/textile supply contracts)
+    "812331",  # Linen Supply
+    "236220",  # Commercial and Institutional Building Construction
+    "238390",  # Other Building Finishing Contractors
+    "238990",  # All Other Specialty Trade Contractors
+]
+
 _INDUSTRY_KEYWORDS = [
     "blinds", "curtains", "drapery", "window covering", "window treatment",
     "furnishing", "furniture", "textile", "fabric", "linen", "bedding",
     "carpet", "flooring", "renovation", "interior", "FF&E",
     "upholstery", "shade", "cubicle curtain", "privacy curtain",
+    "roller shade", "blackout", "motorized shade", "solar shade",
+    "window shade", "hospital curtain", "privacy divider",
 ]
 
 _STATE_MAP = {
@@ -76,6 +96,7 @@ class SamGovCrawler(BaseCrawler):
         per_page = cfg.get("per_page", 100)
         days_back = cfg.get("days_back", 30)
         pre_filter = cfg.get("pre_filter_keywords", True)
+        naics_codes = cfg.get("naics_codes", _INDUSTRY_NAICS)
 
         self._http.headers.update({
             "User-Agent": (
@@ -90,7 +111,64 @@ class SamGovCrawler(BaseCrawler):
         date_from = (now - timedelta(days=days_back)).strftime("%m/%d/%Y")
         date_to = now.strftime("%m/%d/%Y")
 
+        seen_ids: set[str] = set()
         all_opps: list[OpportunityCreate] = []
+
+        # Strategy 1: NAICS-targeted searches for high-relevance hits
+        for naics in naics_codes:
+            opps = self._search_api(
+                extra_params={"ncode": naics},
+                date_from=date_from, date_to=date_to,
+                max_pages=min(max_pages, 3), per_page=per_page,
+                pre_filter=False, seen_ids=seen_ids,
+            )
+            all_opps.extend(opps)
+            self.logger.info("NAICS %s: %d opportunities", naics, len(opps))
+            time.sleep(1)
+
+        # Strategy 2: Keyword searches for additional coverage
+        keyword_groups = [
+            "blinds curtains drapery",
+            "window covering window treatment",
+            "furnishing textile fabric linen",
+            "FF&E interior renovation",
+        ]
+        for kw_group in keyword_groups:
+            opps = self._search_api(
+                extra_params={"q": kw_group},
+                date_from=date_from, date_to=date_to,
+                max_pages=min(max_pages, 3), per_page=per_page,
+                pre_filter=pre_filter, seen_ids=seen_ids,
+            )
+            all_opps.extend(opps)
+            self.logger.info("Keyword '%s': %d opportunities", kw_group[:30], len(opps))
+            time.sleep(1)
+
+        # Strategy 3: Broad recent postings with pre-filtering
+        broad_opps = self._search_api(
+            extra_params={},
+            date_from=date_from, date_to=date_to,
+            max_pages=max_pages, per_page=per_page,
+            pre_filter=True, seen_ids=seen_ids,
+        )
+        all_opps.extend(broad_opps)
+        self.logger.info("Broad scan: %d opportunities (pre-filtered)", len(broad_opps))
+
+        self.logger.info("SAM.gov crawl complete: %d total unique opportunities", len(all_opps))
+        return all_opps
+
+    def _search_api(
+        self,
+        extra_params: dict,
+        date_from: str,
+        date_to: str,
+        max_pages: int,
+        per_page: int,
+        pre_filter: bool,
+        seen_ids: set[str],
+    ) -> list[OpportunityCreate]:
+        """Run a single search strategy against the SAM.gov API."""
+        results: list[OpportunityCreate] = []
         total_fetched = 0
 
         for page_offset in range(0, max_pages * per_page, per_page):
@@ -101,6 +179,7 @@ class SamGovCrawler(BaseCrawler):
                 "postedFrom": date_from,
                 "postedTo": date_to,
                 "ptype": _NOTICE_TYPES,
+                **extra_params,
             }
             url = f"{_API_BASE}?{urlencode(params)}"
 
@@ -120,22 +199,19 @@ class SamGovCrawler(BaseCrawler):
             total_fetched += len(records)
 
             for record in records:
+                notice_id = record.get("noticeId", "")
+                if notice_id in seen_ids:
+                    continue
                 opp = self._parse_record(record, pre_filter)
                 if opp:
-                    all_opps.append(opp)
-
-            self.logger.info(
-                "SAM.gov page offset=%d: %d records fetched, %d total opps so far (of %d available)",
-                page_offset, len(records), len(all_opps), total_records,
-            )
+                    seen_ids.add(notice_id)
+                    results.append(opp)
 
             if total_fetched >= total_records:
                 break
-
             time.sleep(2)
 
-        self.logger.info("SAM.gov crawl complete: %d opportunities from %d fetched", len(all_opps), total_fetched)
-        return all_opps
+        return results
 
     def _parse_record(self, record: dict, pre_filter: bool) -> OpportunityCreate | None:
         title = record.get("title", "").strip()[:250]

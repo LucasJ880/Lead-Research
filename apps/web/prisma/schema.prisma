@@ -137,6 +137,7 @@ model Source {
   region           String?        @db.VarChar(100)
   city             String?        @db.VarChar(255)
   crawlConfig      Json           @default("{}") @map("crawl_config")
+  accessMode       String         @default("http") @map("access_mode") @db.VarChar(30)
   frequency        CrawlFrequency @default(daily)
   isActive         Boolean        @default(true) @map("is_active")
   lastCrawledAt    DateTime?      @map("last_crawled_at") @db.Timestamptz()

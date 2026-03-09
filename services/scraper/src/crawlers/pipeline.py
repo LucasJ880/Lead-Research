@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time as _time
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -66,14 +67,28 @@ class CrawlPipeline:
         Returns:
             CrawlResult with aggregate statistics.
         """
+        pipeline_start = _time.monotonic()
+        access_mode = getattr(self._source_config, "access_mode", "http")
+        logger.info(
+            "Pipeline starting for source '%s' [access_mode=%s, triggered_by=%s]",
+            self._source_config.name, access_mode, triggered_by.value,
+        )
+
         source_run_id = self._create_source_run(triggered_by)
 
         try:
             # 1. Crawl
+            t0 = _time.monotonic()
             raw_opportunities = self._crawl()
+            crawl_ms = int((_time.monotonic() - t0) * 1000)
             self._result.opportunities_found = len(raw_opportunities)
+            logger.info(
+                "  Crawl stage: %d opportunities fetched in %dms",
+                len(raw_opportunities), crawl_ms,
+            )
 
             # 2. Normalize + score + dedup + store
+            t0 = _time.monotonic()
             for opp in raw_opportunities:
                 try:
                     opp = self._normalize(opp)
@@ -83,8 +98,24 @@ class CrawlPipeline:
                 except Exception as exc:
                     self._result.errors.append(f"Processing error: {exc}")
                     logger.exception("Error processing opportunity: %s", opp.title)
+            process_ms = int((_time.monotonic() - t0) * 1000)
 
-            self._finalize_source_run(source_run_id, RunStatus.COMPLETED)
+            total_ms = int((_time.monotonic() - pipeline_start) * 1000)
+            logger.info(
+                "  Process stage: normalize+score+store in %dms | Total: %dms | "
+                "created=%d updated=%d skipped=%d errors=%d",
+                process_ms, total_ms,
+                self._result.opportunities_created,
+                self._result.opportunities_updated,
+                self._result.opportunities_skipped,
+                len(self._result.errors),
+            )
+
+            self._finalize_source_run(
+                source_run_id, RunStatus.COMPLETED,
+                metadata={"crawl_ms": crawl_ms, "process_ms": process_ms, "total_ms": total_ms,
+                          "access_mode": str(access_mode)},
+            )
 
         except Exception as exc:
             self._result.errors.append(f"Pipeline error: {exc}")
@@ -102,8 +133,16 @@ class CrawlPipeline:
         crawler_key = self._source_config.crawl_config.get("crawler_class")
         if crawler_key and crawler_key in CRAWLER_REGISTRY:
             crawler_cls = CRAWLER_REGISTRY[crawler_key]
+            logger.info(
+                "  Crawler selection: '%s' → %s (from crawl_config)",
+                crawler_key, crawler_cls.__name__,
+            )
             crawler = crawler_cls(self._source_config, self._session)
         else:
+            logger.warning(
+                "  Crawler selection: no crawler_class in crawl_config (got %r) → GenericCrawler fallback",
+                crawler_key,
+            )
             crawler = GenericCrawler(self._source_config, self._session)
 
         opportunities = crawler.crawl()
@@ -373,9 +412,14 @@ class CrawlPipeline:
         run_id: str,
         status: RunStatus,
         error_message: str | None = None,
+        metadata: dict | None = None,
     ) -> None:
         """Update the source_run record with final stats."""
         try:
+            error_details_payload: list = list(self._result.errors) if self._result.errors else []
+            if metadata:
+                error_details_payload.insert(0, {"_pipeline_metadata": metadata})
+
             self._session.execute(
                 text("""
                     UPDATE source_runs SET
@@ -401,7 +445,7 @@ class CrawlPipeline:
                     "updated": self._result.opportunities_updated,
                     "skipped": self._result.opportunities_skipped,
                     "error_message": error_message,
-                    "error_details": json.dumps(self._result.errors) if self._result.errors else None,
+                    "error_details": json.dumps(error_details_payload) if error_details_payload else None,
                 },
             )
 

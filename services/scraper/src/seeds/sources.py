@@ -1,0 +1,174 @@
+"""Canonical source definitions for BidToGo.
+
+Run standalone to upsert sources into the database:
+    python -m src.seeds.sources
+
+Each source is upserted by name — safe to run repeatedly.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime, timezone
+
+from sqlalchemy import text
+
+from src.core.database import get_db_session
+from src.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+SOURCES = [
+    {
+        "name": "MERX Canadian Public Tenders",
+        "source_type": "aggregator",
+        "base_url": "https://www.merx.com",
+        "country": "CA",
+        "region": None,
+        "listing_path": "/public/solicitations/open",
+        "crawl_config": {
+            "crawler_class": "merx",
+            "max_pages_per_search": 5,
+            "fetch_detail": True,
+            "include_broad_keywords": True,
+        },
+        "access_mode": "authenticated_http",
+        "frequency": "daily",
+        "is_active": True,
+        "source_priority": "critical",
+        "industry_fit_score": 85,
+        "health_status": "untested",
+        "notes": "Canada largest e-tendering platform. Authenticated access improves listing quality.",
+    },
+    {
+        "name": "SAM.gov",
+        "source_type": "bid_portal",
+        "base_url": "https://sam.gov",
+        "country": "US",
+        "region": None,
+        "listing_path": "/search",
+        "crawl_config": {
+            "crawler_class": "sam_gov",
+            "max_pages": 10,
+            "per_page": 100,
+            "days_back": 30,
+            "pre_filter_keywords": False,
+        },
+        "access_mode": "api",
+        "frequency": "daily",
+        "is_active": True,
+        "source_priority": "high",
+        "industry_fit_score": 60,
+        "health_status": "untested",
+        "notes": "US federal procurement API. NAICS-targeted + keyword searches.",
+    },
+    {
+        "name": "BidNet Direct",
+        "source_type": "aggregator",
+        "base_url": "https://www.bidnetdirect.com",
+        "country": "US",
+        "region": None,
+        "listing_path": "/",
+        "crawl_config": {},
+        "access_mode": "browser",
+        "frequency": "daily",
+        "is_active": False,
+        "source_priority": "medium",
+        "industry_fit_score": 50,
+        "health_status": "unsupported",
+        "notes": "Requires browser automation. Deactivated until Playwright support is added.",
+    },
+]
+
+
+def seed_sources() -> None:
+    """Upsert all canonical sources into the database."""
+    session = get_db_session()
+    try:
+        for src in SOURCES:
+            existing = session.execute(
+                text("SELECT id FROM sources WHERE name = :name"),
+                {"name": src["name"]},
+            ).fetchone()
+
+            if existing:
+                session.execute(
+                    text("""
+                        UPDATE sources SET
+                            base_url = :base_url,
+                            crawl_config = :crawl_config,
+                            access_mode = :access_mode,
+                            frequency = :frequency,
+                            is_active = :is_active,
+                            source_priority = :source_priority,
+                            industry_fit_score = :industry_fit_score,
+                            health_status = :health_status,
+                            notes = :notes,
+                            listing_path = :listing_path,
+                            updated_at = :now
+                        WHERE name = :name
+                    """),
+                    {
+                        "name": src["name"],
+                        "base_url": src["base_url"],
+                        "crawl_config": json.dumps(src["crawl_config"]),
+                        "access_mode": src["access_mode"],
+                        "frequency": src["frequency"],
+                        "is_active": src["is_active"],
+                        "source_priority": src["source_priority"],
+                        "industry_fit_score": src["industry_fit_score"],
+                        "health_status": src["health_status"],
+                        "notes": src["notes"],
+                        "listing_path": src.get("listing_path"),
+                        "now": datetime.now(timezone.utc),
+                    },
+                )
+                logger.info("Updated source: %s", src["name"])
+            else:
+                session.execute(
+                    text("""
+                        INSERT INTO sources (
+                            name, source_type, base_url, country, region,
+                            listing_path, crawl_config, access_mode, frequency,
+                            is_active, source_priority, industry_fit_score,
+                            health_status, notes
+                        ) VALUES (
+                            :name, :source_type, :base_url, :country, :region,
+                            :listing_path, :crawl_config, :access_mode, :frequency,
+                            :is_active, :source_priority, :industry_fit_score,
+                            :health_status, :notes
+                        )
+                    """),
+                    {
+                        "name": src["name"],
+                        "source_type": src["source_type"],
+                        "base_url": src["base_url"],
+                        "country": src["country"],
+                        "region": src["region"],
+                        "listing_path": src.get("listing_path"),
+                        "crawl_config": json.dumps(src["crawl_config"]),
+                        "access_mode": src["access_mode"],
+                        "frequency": src["frequency"],
+                        "is_active": src["is_active"],
+                        "source_priority": src["source_priority"],
+                        "industry_fit_score": src["industry_fit_score"],
+                        "health_status": src["health_status"],
+                        "notes": src["notes"],
+                    },
+                )
+                logger.info("Inserted source: %s", src["name"])
+
+        session.commit()
+        logger.info("Source seeding complete: %d sources processed", len(SOURCES))
+    except Exception:
+        session.rollback()
+        logger.exception("Source seeding failed")
+        raise
+    finally:
+        session.close()
+
+
+if __name__ == "__main__":
+    seed_sources()
+    sys.exit(0)

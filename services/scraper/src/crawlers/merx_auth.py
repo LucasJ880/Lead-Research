@@ -83,6 +83,11 @@ class MerxAuthSession:
     def is_authenticated(self) -> bool:
         return self._authenticated
 
+    @property
+    def session(self) -> requests.Session:
+        """Expose the underlying requests.Session for cookie sharing."""
+        return self._session
+
     def login(self) -> bool:
         """Authenticate with MERX using environment credentials.
 

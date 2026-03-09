@@ -44,6 +44,7 @@ from urllib.parse import urljoin, quote_plus
 
 from bs4 import BeautifulSoup, Tag
 
+from src.core.config import settings
 from src.crawlers.base import BaseCrawler
 from src.models.opportunity import OpportunityCreate, OpportunityStatus
 
@@ -210,13 +211,39 @@ class MerxCrawler(BaseCrawler):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
         })
-        self.logger.info("Establishing MERX session via homepage")
+
+        self._authenticated = False
+
+        if settings.merx_credentials_available:
+            self._authenticated = self._try_authenticated_session()
+
+        if not self._authenticated:
+            self.logger.info("Using anonymous MERX session (homepage cookies)")
+            try:
+                self._http.get(_BASE_URL, timeout=15)
+                cookies = list(self._http.cookies.keys())
+                self.logger.info("Anonymous session established, cookies: %s", cookies)
+            except Exception as exc:
+                self.logger.warning("Homepage visit failed (%s); continuing without cookies", exc)
+
+    def _try_authenticated_session(self) -> bool:
+        """Attempt to log in via MerxAuthSession and share its cookies."""
         try:
-            self._http.get(_BASE_URL, timeout=15)
-            cookies = list(self._http.cookies.keys())
-            self.logger.info("Session established, cookies: %s", cookies)
+            from src.crawlers.merx_auth import MerxAuthSession
+
+            auth = MerxAuthSession()
+            if auth.login():
+                for key, value in auth.session.cookies.items():
+                    self._http.cookies.set(key, value)
+                self.logger.info("MERX authenticated session established (%d cookies transferred)",
+                                 len(auth.session.cookies))
+                return True
+            else:
+                self.logger.warning("MERX login returned False; falling back to anonymous")
+                return False
         except Exception as exc:
-            self.logger.warning("Homepage visit failed (%s); continuing", exc)
+            self.logger.warning("MERX authenticated login failed: %s; falling back to anonymous", exc)
+            return False
 
     # ─── Search strategies ───────────────────────────────────
 

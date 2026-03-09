@@ -99,6 +99,13 @@ else
   echo "     Admin user must already exist in database."
 fi
 
+# ── 5b. Seed sources ─────────────────────────────────────
+echo ""
+echo "     Seeding sources..."
+docker compose -f docker-compose.prod.yml run --rm scraper-api \
+  python -m src.seeds.sources 2>&1 | tail -10
+echo "     Sources seeded."
+
 # ── 6. Start all services ────────────────────────────────
 echo ""
 echo "5/6  Starting all services..."

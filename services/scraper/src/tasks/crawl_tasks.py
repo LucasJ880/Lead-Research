@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from src.core.database import get_db
 from src.core.logging import get_logger
-from src.models.opportunity import CrawlResult, SourceConfig, SourceType, CrawlFrequency
+from src.models.opportunity import AccessMode, CrawlResult, SourceConfig, SourceType, CrawlFrequency
 from src.tasks.celery_app import celery_app
 
 logger = get_logger(__name__)
@@ -16,6 +16,12 @@ logger = get_logger(__name__)
 
 def _row_to_source_config(row: Any) -> SourceConfig:
     """Convert a database row to a SourceConfig model."""
+    raw_access = getattr(row, "access_mode", "http") or "http"
+    try:
+        access_mode = AccessMode(raw_access)
+    except ValueError:
+        access_mode = AccessMode.HTTP
+
     return SourceConfig(
         id=str(row.id),
         name=row.name,
@@ -25,6 +31,7 @@ def _row_to_source_config(row: Any) -> SourceConfig:
         region=row.region,
         city=row.city,
         crawl_config=row.crawl_config if row.crawl_config else {},
+        access_mode=access_mode,
         frequency=CrawlFrequency(row.frequency),
         is_active=row.is_active,
         category_tags=row.category_tags if row.category_tags else [],

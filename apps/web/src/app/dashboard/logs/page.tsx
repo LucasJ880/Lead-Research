@@ -97,9 +97,20 @@ export default function LogsPage() {
     }
   }, []);
 
+  // Auto-refresh: poll every 10s while any run is in progress
+  const hasRunning = runs.some(
+    (r) => r.status === "running" || r.status === "pending"
+  );
+
   useEffect(() => {
     fetchRuns(1);
   }, [fetchRuns]);
+
+  useEffect(() => {
+    if (!hasRunning) return;
+    const interval = setInterval(() => fetchRuns(page), 10_000);
+    return () => clearInterval(interval);
+  }, [hasRunning, page, fetchRuns]);
 
   const triggerCrawl = useCallback(async () => {
     setCrawlRunning(true);
@@ -110,8 +121,13 @@ export default function LogsPage() {
         const body = await res.json().catch(() => ({}));
         setCrawlMessage(`Error: ${body.error || res.statusText}`);
       } else {
-        setCrawlMessage("Crawler dispatched. Refresh to see new runs.");
-        setTimeout(() => fetchRuns(1), 5000);
+        setCrawlMessage(
+          "Crawler dispatched — this page will auto-refresh while runs are in progress."
+        );
+        // Quick poll cycle: 3s, 6s, 15s, then the interval takes over
+        setTimeout(() => fetchRuns(1), 3000);
+        setTimeout(() => fetchRuns(1), 6000);
+        setTimeout(() => fetchRuns(1), 15000);
       }
     } catch {
       setCrawlMessage("Failed to connect to crawler service.");

@@ -58,6 +58,13 @@ class TriggerType(str, Enum):
 # ─── Source Config ──────────────────────────────────────────
 
 
+class AccessMode(str, Enum):
+    HTTP = "http"
+    API = "api"
+    AUTHENTICATED_HTTP = "authenticated_http"
+    BROWSER = "browser"
+
+
 class SourceConfig(BaseModel):
     """Configuration for a crawl source."""
 
@@ -69,6 +76,7 @@ class SourceConfig(BaseModel):
     region: str | None = None
     city: str | None = None
     crawl_config: dict[str, Any] = Field(default_factory=dict)
+    access_mode: AccessMode = AccessMode.HTTP
     frequency: CrawlFrequency = CrawlFrequency.DAILY
     is_active: bool = True
     category_tags: list[str] = Field(default_factory=list)

@@ -49,26 +49,7 @@ export default function DashboardPage() {
   const [crawlRunning, setCrawlRunning] = useState(false);
   const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
 
-  const triggerCrawl = useCallback(async () => {
-    setCrawlRunning(true);
-    setCrawlMessage(null);
-    try {
-      const res = await fetch("/api/crawler/trigger", { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setCrawlMessage(`Error: ${body.error || res.statusText}`);
-      } else {
-        setCrawlMessage("Crawler dispatched. Check Logs page to track progress.");
-      }
-    } catch {
-      setCrawlMessage("Failed to connect to crawler service.");
-    } finally {
-      setCrawlRunning(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
+  const fetchStats = useCallback(() => {
     fetch("/api/stats")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load dashboard stats");
@@ -81,6 +62,33 @@ export default function DashboardPage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const triggerCrawl = useCallback(async () => {
+    setCrawlRunning(true);
+    setCrawlMessage(null);
+    try {
+      const res = await fetch("/api/crawler/trigger", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setCrawlMessage(`Error: ${body.error || res.statusText}`);
+      } else {
+        setCrawlMessage("Crawler dispatched. Check Logs page to track progress.");
+        // Auto-refresh stats after a delay so the last-run card updates
+        setTimeout(fetchStats, 5000);
+        setTimeout(fetchStats, 15000);
+        setTimeout(fetchStats, 30000);
+      }
+    } catch {
+      setCrawlMessage("Failed to connect to crawler service.");
+    } finally {
+      setCrawlRunning(false);
+    }
+  }, [fetchStats]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchStats();
+  }, [fetchStats]);
 
   if (loading) {
     return (
