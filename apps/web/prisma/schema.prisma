@@ -77,6 +77,7 @@ enum TriggerType {
   schedule
   manual
   retry
+  local_agent
 }
 
 enum SourcePriority {

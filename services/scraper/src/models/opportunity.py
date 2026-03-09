@@ -53,6 +53,7 @@ class TriggerType(str, Enum):
     SCHEDULE = "schedule"
     MANUAL = "manual"
     RETRY = "retry"
+    LOCAL_AGENT = "local_agent"
 
 
 # ─── Source Config ──────────────────────────────────────────
@@ -63,6 +64,7 @@ class AccessMode(str, Enum):
     API = "api"
     AUTHENTICATED_HTTP = "authenticated_http"
     BROWSER = "browser"
+    LOCAL_CONNECTOR = "local_authenticated_connector"
 
 
 class SourceConfig(BaseModel):
@@ -180,3 +182,44 @@ class CrawlResult(BaseModel):
     opportunities_skipped: int = 0
     errors: list[str] = Field(default_factory=list)
     pages_crawled: int = 0
+
+
+# ─── Agent Sync Models ──────────────────────────────────────
+
+
+class AgentJobResponse(BaseModel):
+    """A pending crawl job for the local agent to pick up."""
+    run_id: str
+    source_id: str
+    source_name: str
+    base_url: str
+    crawl_config: dict[str, Any] = Field(default_factory=dict)
+    access_mode: str = "local_authenticated_connector"
+
+
+class AgentStatusUpdate(BaseModel):
+    """Status report from the local agent."""
+    run_id: str
+    status: RunStatus
+    pages_crawled: int = 0
+    opportunities_found: int = 0
+    opportunities_created: int = 0
+    opportunities_updated: int = 0
+    opportunities_skipped: int = 0
+    error_message: str | None = None
+    error_details: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentOpportunityUpload(BaseModel):
+    """Batch of opportunities uploaded by the local agent."""
+    run_id: str
+    source_id: str
+    opportunities: list[OpportunityCreate]
+
+
+class AgentDocumentUpload(BaseModel):
+    """Document metadata uploaded by the local agent."""
+    opportunity_external_id: str
+    source_id: str
+    documents: list[dict[str, Any]]

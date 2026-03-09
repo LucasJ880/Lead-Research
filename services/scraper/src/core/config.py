@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     SCRAPER_API_KEY: str = ""
+    AGENT_API_KEY: str = ""
 
     # MERX authenticated access (never log or expose these)
     MERX_EMAIL: str = ""

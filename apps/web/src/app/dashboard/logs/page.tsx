@@ -280,8 +280,15 @@ export default function LogsPage() {
                           <td className="py-3 pr-4 font-medium max-w-[180px] truncate">
                             {run.sourceName}
                           </td>
-                          <td className="py-3 pr-4 text-muted-foreground capitalize text-xs">
-                            {run.triggeredBy}
+                          <td className="py-3 pr-4 text-muted-foreground text-xs">
+                            {run.triggeredBy === "local_agent" ? (
+                              <span className="inline-flex items-center gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                                Local Agent
+                              </span>
+                            ) : (
+                              <span className="capitalize">{run.triggeredBy}</span>
+                            )}
                           </td>
                           <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap text-xs">
                             {formatTime(run.startedAt || run.createdAt)}

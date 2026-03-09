@@ -35,6 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from src.api.agent_sync import router as agent_router
+app.include_router(agent_router)
+
 
 # ─── Auth Dependency ────────────────────────────────────────
 

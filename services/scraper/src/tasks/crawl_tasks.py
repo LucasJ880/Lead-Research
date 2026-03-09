@@ -105,23 +105,34 @@ def crawl_source(self: Any, source_id: str) -> dict[str, Any]:
 
 @celery_app.task(name="src.tasks.crawl_tasks.crawl_all_active_sources")
 def crawl_all_active_sources() -> dict[str, Any]:
-    """Query all active sources and dispatch individual crawl tasks."""
+    """Query all active sources and dispatch individual crawl tasks.
+
+    Sources with access_mode='local_authenticated_connector' are skipped —
+    those are handled by the local agent, not the cloud worker.
+    """
     logger.info("Dispatching crawl tasks for all active sources")
     task_ids: list[dict[str, str]] = []
+    skipped_local: list[str] = []
 
     with get_db() as session:
         rows = session.execute(
-            text("SELECT id, name FROM sources WHERE is_active = true")
+            text("SELECT id, name, access_mode FROM sources WHERE is_active = true")
         ).fetchall()
 
     for row in rows:
+        access = getattr(row, "access_mode", "http") or "http"
+        if access == "local_authenticated_connector":
+            skipped_local.append(row.name)
+            logger.info("Skipping local-agent source: %s", row.name)
+            continue
+
         source_id = str(row.id)
         task = crawl_source.delay(source_id)
         task_ids.append({"source_id": source_id, "task_id": task.id})
         logger.info("Dispatched crawl task %s for source %s (%s)", task.id, source_id, row.name)
 
-    logger.info("Dispatched %d crawl tasks", len(task_ids))
-    return {"dispatched": task_ids, "count": len(task_ids)}
+    logger.info("Dispatched %d crawl tasks (skipped %d local-agent sources)", len(task_ids), len(skipped_local))
+    return {"dispatched": task_ids, "count": len(task_ids), "skipped_local_agent": skipped_local}
 
 
 # Tier thresholds for industry_fit_score
