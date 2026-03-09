@@ -132,12 +132,12 @@ def seed_sources() -> None:
                             name, source_type, base_url, country, region,
                             listing_path, crawl_config, access_mode, frequency,
                             is_active, source_priority, industry_fit_score,
-                            health_status, notes
+                            health_status, notes, updated_at
                         ) VALUES (
                             :name, :source_type, :base_url, :country, :region,
                             :listing_path, :crawl_config, :access_mode, :frequency,
                             :is_active, :source_priority, :industry_fit_score,
-                            :health_status, :notes
+                            :health_status, :notes, :now
                         )
                     """),
                     {
@@ -155,6 +155,7 @@ def seed_sources() -> None:
                         "industry_fit_score": src["industry_fit_score"],
                         "health_status": src["health_status"],
                         "notes": src["notes"],
+                        "now": datetime.now(timezone.utc),
                     },
                 )
                 logger.info("Inserted source: %s", src["name"])
