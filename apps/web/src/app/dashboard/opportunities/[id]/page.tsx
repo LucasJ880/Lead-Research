@@ -292,102 +292,28 @@ export default function OpportunityDetailPage() {
         </div>
       )}
 
-      {/* AI Intelligence Banner */}
-      {!intelLoading && !intelError && (
-        <Card className={`border-2 ${intel?.intelligence ? "border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50" : "border-dashed border-muted-foreground/30 bg-muted/20"}`}>
-          <CardContent className="p-4">
-            {intel?.intelligence ? (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-full border-2 text-lg font-bold ${
-                    (intel.intelligence.feasibilityScore ?? intel.intelligence.feasibility_score ?? 0) >= 70
-                      ? "border-emerald-400 text-emerald-600 bg-emerald-50"
-                      : (intel.intelligence.feasibilityScore ?? intel.intelligence.feasibility_score ?? 0) >= 40
-                      ? "border-amber-400 text-amber-600 bg-amber-50"
-                      : "border-red-400 text-red-600 bg-red-50"
-                  }`}>
-                    {intel.intelligence.feasibilityScore ?? intel.intelligence.feasibility_score ?? "—"}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm font-semibold text-blue-900">AI Intelligence Report</span>
-                      {(() => {
-                        const rec = intel.intelligence.recommendationStatus ?? intel.intelligence.recommendation_status;
-                        if (!rec) return null;
-                        const colors: Record<string, string> = {
-                          strongly_pursue: "bg-emerald-100 text-emerald-800",
-                          pursue: "bg-green-100 text-green-800",
-                          review_carefully: "bg-amber-100 text-amber-800",
-                          low_probability: "bg-orange-100 text-orange-800",
-                          skip: "bg-red-100 text-red-800",
-                        };
-                        return (
-                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${colors[rec] || "bg-gray-100"}`}>
-                            {rec.replace(/_/g, " ").toUpperCase()}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                    {(() => {
-                      const summ = intel.intelligence.intelligenceSummary ?? intel.intelligence.intelligence_summary;
-                      const v = summ?.one_line_verdict;
-                      return v
-                        ? <p className="text-xs text-blue-800 mt-0.5 font-medium">{v}</p>
-                        : <p className="text-xs text-blue-700 mt-0.5">
-                            {(intel.intelligence.analysisModel ?? intel.intelligence.analysis_model) === "fallback_rule_based"
-                              ? "Rule-based analysis"
-                              : "AI-powered analysis"} — feasibility scoring, scope, recommendations
-                          </p>;
-                    })()}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={handleAnalyze}
-                    disabled={analyzing}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                  >
-                    {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    Re-analyze
-                  </button>
-                  <a
-                    href="#ai-intelligence"
-                    className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    View Report
-                  </a>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/30 bg-muted/30">
-                    <Sparkles className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold">No AI Analysis Yet</span>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Run Quick Analysis to get feasibility scoring, scope extraction, qualification requirements, and business recommendations.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleAnalyze}
-                  disabled={analyzing}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shrink-0"
-                >
-                  {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  {analyzing ? "Analyzing..." : "Run Quick Analysis"}
-                </button>
-              </div>
-            )}
-            {analysisError && (
-              <p className="mt-2 text-xs text-destructive">{analysisError}</p>
-            )}
-          </CardContent>
-        </Card>
+      {/* AI Analysis CTA — only shown when no analysis exists */}
+      {!intelLoading && !intelError && !intel?.intelligence && (
+        <div className="flex items-center justify-between rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/10 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <div>
+              <span className="text-xs font-semibold">No AI Analysis Yet</span>
+              <p className="text-2xs text-muted-foreground">Get feasibility scoring, scope extraction, and business recommendations.</p>
+            </div>
+          </div>
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing}
+            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shrink-0"
+          >
+            {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {analyzing ? "Analyzing..." : "Analyze"}
+          </button>
+        </div>
+      )}
+      {analysisError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{analysisError}</div>
       )}
 
       {intelError && !intelLoading && (
@@ -407,7 +333,7 @@ export default function OpportunityDetailPage() {
           {/* Intelligence Panel — shown first when available */}
           {intel?.intelligence && (
             <div id="ai-intelligence">
-              <IntelligencePanel data={intel.intelligence} />
+              <IntelligencePanel data={intel.intelligence} onReanalyze={handleAnalyze} reanalyzing={analyzing} />
             </div>
           )}
 
@@ -429,16 +355,8 @@ export default function OpportunityDetailPage() {
               <div className="prose prose-sm max-w-none text-foreground">
                 {(() => {
                   const desc = opp.descriptionFull || opp.descriptionSummary || "";
-                  if (!desc) return <p className="text-muted-foreground">No description available.</p>;
-                  if (desc.startsWith("http://") || desc.startsWith("https://")) {
-                    return (
-                      <div className="rounded-md border border-dashed p-3 text-center">
-                        <p className="text-xs text-muted-foreground mb-1.5">Full description available on the source website</p>
-                        <a href={opp.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1">
-                          <ExternalLink className="h-3 w-3" /> View Original Listing
-                        </a>
-                      </div>
-                    );
+                  if (!desc || desc.startsWith("http://") || desc.startsWith("https://")) {
+                    return <p className="text-xs text-muted-foreground italic">Description not available — see the original listing for details.</p>;
                   }
                   return desc.split("\n").map((line, i) => (
                     <p key={i} className={line.startsWith("-") ? "ml-4" : ""}>
@@ -767,7 +685,7 @@ function MetaRow({
 }
 
 // eslint-disable-next-line
-function IntelligencePanel({ data }: { data: any }) {
+function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onReanalyze?: () => void; reanalyzing?: boolean }) {
   const [showDetails, setShowDetails] = useState(false);
 
   if (!data) return null;
@@ -815,9 +733,10 @@ function IntelligencePanel({ data }: { data: any }) {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Sparkles className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-semibold text-blue-900">AI Intelligence Report</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Sparkles className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-semibold text-blue-900">AI Intelligence Report</span>
               {recommendation && (
                 <span className={`rounded-md border px-2.5 py-0.5 text-xs font-bold ${recColors[recommendation] || "bg-gray-100"}`}>
                   {recommendation.replace(/_/g, " ").toUpperCase()}
@@ -827,6 +746,17 @@ function IntelligencePanel({ data }: { data: any }) {
                 <Badge variant="outline" className="text-[10px]">
                   {scopeType.replace(/_/g, " ")}
                 </Badge>
+              )}
+              </div>
+              {onReanalyze && (
+                <button
+                  onClick={onReanalyze}
+                  disabled={reanalyzing}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-2.5 py-1.5 text-2xs font-medium text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50 shrink-0"
+                >
+                  {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Re-analyze
+                </button>
               )}
             </div>
             {verdict && (

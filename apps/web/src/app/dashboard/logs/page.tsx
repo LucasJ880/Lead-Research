@@ -188,7 +188,7 @@ export default function LogsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Total Runs (page)</p>
+            <p className="text-xs font-medium text-muted-foreground">Runs on Page</p>
             <p className="mt-1 text-2xl font-bold">{summary.total}</p>
           </CardContent>
         </Card>

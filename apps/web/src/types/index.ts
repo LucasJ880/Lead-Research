@@ -367,8 +367,8 @@ export interface SavedSearch {
   id: string;
   name: string;
   filters: Record<string, string | number>;
-  notify: boolean;
+  notifyEnabled?: boolean;
   resultCount?: number;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }

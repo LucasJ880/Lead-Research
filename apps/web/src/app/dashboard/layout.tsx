@@ -166,18 +166,35 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Top header */}
         <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-5">
           {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm">
-            <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors text-xs font-medium">
+          <div className="flex items-center gap-1.5 text-xs min-w-0">
+            <Link href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors font-medium shrink-0">
               BidToGo
             </Link>
-            {pathname !== "/dashboard" && (
-              <>
-                <span className="text-muted-foreground/40">/</span>
-                <span className="text-xs font-medium capitalize">
-                  {pathname.split("/").filter(Boolean).pop()?.replace(/-/g, " ")}
-                </span>
-              </>
-            )}
+            {(() => {
+              const segments = pathname.replace("/dashboard", "").split("/").filter(Boolean);
+              if (segments.length === 0) return null;
+              const labels: Record<string, string> = {
+                opportunities: "Opportunities", intelligence: "AI Analysis", sources: "Sources",
+                logs: "Crawl Logs", settings: "Settings", "saved-searches": "Saved Searches",
+              };
+              const isDetailPage = segments.length >= 2 && segments[0] === "opportunities";
+              return (
+                <>
+                  <span className="text-muted-foreground/40">/</span>
+                  {isDetailPage ? (
+                    <>
+                      <Link href="/dashboard/opportunities" className="text-muted-foreground hover:text-foreground transition-colors font-medium shrink-0">
+                        Opportunities
+                      </Link>
+                      <span className="text-muted-foreground/40">/</span>
+                      <span className="font-medium truncate max-w-[300px]">Detail</span>
+                    </>
+                  ) : (
+                    <span className="font-medium">{labels[segments[0]] || segments[0].replace(/-/g, " ")}</span>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Search */}

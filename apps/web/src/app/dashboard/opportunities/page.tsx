@@ -123,7 +123,19 @@ function OpportunitiesPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
   const pageSize = 15;
-  const [businessFocus, setBusinessFocus] = useState(false);
+  const [businessFocus, setBusinessFocus] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("bidtogo_business_focus") !== "false";
+    }
+    return true;
+  });
+
+  function toggleBusinessFocus() {
+    const next = !businessFocus;
+    setBusinessFocus(next);
+    localStorage.setItem("bidtogo_business_focus", String(next));
+    setPage(1);
+  }
 
   const [data, setData] = useState<PaginatedResponse<OpportunitySummary> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -244,6 +256,7 @@ function OpportunitiesPage() {
       status: statusFilter,
       country: countryFilter,
       bucket: effectiveBucket,
+      workflow: workflowFilter,
       tag: tagFilter,
       minRelevance,
       closingAfter,
@@ -266,7 +279,7 @@ function OpportunitiesPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setBusinessFocus(!businessFocus); setPage(1); }}
+            onClick={toggleBusinessFocus}
             className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium border transition-colors ${
               businessFocus ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input text-muted-foreground hover:text-foreground"
             }`}

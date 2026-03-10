@@ -10,7 +10,6 @@ import {
   Tags,
   Filter,
   Globe,
-  RotateCcw,
   ToggleLeft,
   ToggleRight,
   Database,
@@ -63,8 +62,6 @@ export default function SettingsPage() {
   const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
   const [recalcRunning, setRecalcRunning] = useState(false);
   const [recalcMessage, setRecalcMessage] = useState<string | null>(null);
-  const [reindexRunning, setReindexRunning] = useState(false);
-  const [reindexMessage, setReindexMessage] = useState<string | null>(null);
   const [businessFocus, setBusinessFocus] = useState(true);
 
   useEffect(() => {
@@ -109,21 +106,6 @@ export default function SettingsPage() {
     }
   }, []);
 
-  const reindexOpportunities = useCallback(async () => {
-    setReindexRunning(true);
-    setReindexMessage(null);
-    try {
-      const res = await fetch("/api/crawler/trigger", { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      setReindexMessage(res.ok
-        ? "Crawl triggered. This will re-fetch sources and re-score opportunities."
-        : `Error: ${body.error || res.statusText}`);
-    } catch {
-      setReindexMessage("Failed to trigger re-crawl.");
-    } finally {
-      setReindexRunning(false);
-    }
-  }, []);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -175,11 +157,11 @@ export default function SettingsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border p-4 space-y-3">
               <h3 className="text-sm font-semibold">Run Crawlers</h3>
               <p className="text-xs text-muted-foreground">
-                Dispatch crawlers for all active sources with working parsers.
+                Dispatch crawlers for all active sources. Opportunities are auto-scored against the current keyword model.
               </p>
               <Button onClick={triggerCrawl} disabled={crawlRunning} size="sm">
                 {crawlRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
@@ -198,18 +180,6 @@ export default function SettingsPage() {
                 Recalculate
               </Button>
               {recalcMessage && <p className="text-xs text-muted-foreground">{recalcMessage}</p>}
-            </div>
-
-            <div className="rounded-lg border p-4 space-y-3">
-              <h3 className="text-sm font-semibold">Re-crawl &amp; Re-score</h3>
-              <p className="text-xs text-muted-foreground">
-                Triggers a full crawl cycle. All fetched opportunities are scored against the latest keyword model.
-              </p>
-              <Button onClick={reindexOpportunities} disabled={reindexRunning} variant="outline" size="sm">
-                {reindexRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
-                Re-crawl All
-              </Button>
-              {reindexMessage && <p className="text-xs text-muted-foreground">{reindexMessage}</p>}
             </div>
           </div>
         </CardContent>
