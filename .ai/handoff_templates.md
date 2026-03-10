@@ -1,12 +1,32 @@
 # BidToGo — Internal Handoff Templates
 
-These templates are used internally by the Executive Product Orchestrator when transitioning between PM, Dev, and QA modes. The user does not see these transitions — they happen automatically inside a single unified response.
+These templates are used internally by the Executive Product Orchestrator when transitioning between PM, Architect, Designer, Dev, and QA modes. The user does not see these transitions — they happen automatically inside a single unified response.
 
 These templates exist to ensure structured thinking between modes, not to create visible bureaucracy.
 
 ---
 
-## 1. PM → Dev (Internal)
+## 1. PM → Architect (Internal)
+
+When a PM-scoped feature has cross-module, pipeline, or schema impact, Architect mode runs before Dev:
+
+**Checklist** (mental, not shown to user):
+- [ ] Which modules/services are affected?
+- [ ] Does the data pipeline change?
+- [ ] Are schema changes required?
+- [ ] Is there a migration path from the current state?
+- [ ] Can this be implemented incrementally without a production outage?
+
+**Architect must define**:
+- Module boundaries for the feature
+- Data flow changes (if any)
+- Schema changes (if any)
+- Migration path
+- What Dev should build first, second, etc.
+
+---
+
+## 2. PM → Dev (Internal)
 
 When the orchestrator transitions from PM analysis to Dev implementation:
 
@@ -28,7 +48,26 @@ Even for small features, at least 2 acceptance criteria must exist before Dev mo
 
 ---
 
-## 2. Dev → QA (Internal)
+## 3. Designer → Dev (Internal)
+
+When the orchestrator transitions from Designer layout spec to Dev implementation:
+
+**Checklist** (mental, not shown to user):
+- [ ] Information hierarchy is defined (what appears first, second, etc.)
+- [ ] Layout structure is described (sidebar + main, full-width table, split panel, etc.)
+- [ ] Key components are identified with purpose and priority
+- [ ] All UI states are defined (loading, empty, error, populated)
+- [ ] Developer-friendly notes reference shadcn/ui components and Tailwind patterns
+
+**Dev must know**:
+- What the layout structure is
+- What components to build and in what hierarchy
+- What states to handle
+- What the priority order of information is
+
+---
+
+## 4. Dev → QA (Internal)
 
 When the orchestrator transitions from Dev implementation to QA validation:
 
@@ -46,7 +85,7 @@ When the orchestrator transitions from Dev implementation to QA validation:
 
 ---
 
-## 3. QA → Summary (Visible to User)
+## 5. QA → Summary (Visible to User)
 
 The final output the user sees after a complete PM → Dev → QA cycle:
 
@@ -72,7 +111,7 @@ The final output the user sees after a complete PM → Dev → QA cycle:
 
 ---
 
-## 4. Bug Fix Summary (Visible to User)
+## 6. Bug Fix Summary (Visible to User)
 
 The final output after a bug fix cycle:
 
@@ -93,7 +132,7 @@ The final output after a bug fix cycle:
 
 ---
 
-## 5. PM-Only Analysis (Visible to User)
+## 7. PM-Only Analysis (Visible to User)
 
 When the orchestrator only runs PM mode (idea exploration, prioritization):
 
@@ -109,7 +148,7 @@ When the orchestrator only runs PM mode (idea exploration, prioritization):
 
 ---
 
-## 6. Bug Report (When QA Finds Issues)
+## 8. Bug Report (When QA Finds Issues)
 
 If QA mode discovers a problem during validation:
 

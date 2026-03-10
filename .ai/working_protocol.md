@@ -28,10 +28,12 @@ Before responding, classify the user's message:
 | Intent | Signals | Internal Mode |
 |--------|---------|---------------|
 | Idea / exploration | "I want...", "what if...", "could we..." | PM first, ask to proceed |
-| Feasibility question | "Is it possible...", "how hard..." | PM analysis, ask to proceed |
-| Approved implementation | "go ahead", "build it", "yes" | Dev → QA → Summary |
+| Feasibility question | "Is it possible...", "how hard..." | PM + Architect (if structural), ask to proceed |
+| Approved implementation | "go ahead", "build it", "yes" | Architect (if cross-module) → Designer (if new UI) → Dev → QA → Summary |
 | Direct technical task | "Fix X", "add Y", "update Z" | Dev → QA → Summary |
 | Bug report | "X is broken", "error on...", "no data" | Dev (root cause) → fix → QA |
+| Architecture / schema | "How is X structured...", "should we refactor...", "schema for..." | Architect design, ask to proceed |
+| UI/UX question | "How should this look...", "redesign...", "too many clicks" | Designer spec, ask to proceed |
 | Strategic / priority | "Should we...", "what's next..." | PM only, no code |
 | Status inquiry | "What's working?", "where are we?" | Status report, no code |
 
