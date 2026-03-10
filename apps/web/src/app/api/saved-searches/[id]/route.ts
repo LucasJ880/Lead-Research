@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const existing = await prisma.savedSearch.findUnique({
       where: { id: params.id },

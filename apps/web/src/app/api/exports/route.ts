@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 import { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 import type { OpportunityStatus } from "@/types";
@@ -102,6 +103,9 @@ function toPrismaExportRow(
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = request.nextUrl;
 

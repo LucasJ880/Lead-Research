@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 
 const createSavedSearchSchema = z.object({
   name: z.string().min(1).max(255),
@@ -10,6 +11,9 @@ const createSavedSearchSchema = z.object({
 });
 
 export async function GET() {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const adminUser = await prisma.user.findFirst({
       where: { role: "admin" },
@@ -45,6 +49,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const adminUser = await prisma.user.findFirst({
       where: { role: "admin" },

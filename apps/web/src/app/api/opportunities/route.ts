@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 import type {
   OpportunityStatus,
   OpportunitySummary,
@@ -63,6 +64,9 @@ function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
 
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = request.nextUrl;
 

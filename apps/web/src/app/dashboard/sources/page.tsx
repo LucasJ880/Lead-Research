@@ -176,7 +176,7 @@ export default function SourcesPage() {
             <RefreshCw className={`mr-2 h-4 w-4 ${recalculating ? "animate-spin" : ""}`} />
             Recalculate Analytics
           </Button>
-          <Button size="sm">
+          <Button size="sm" disabled title="Source management coming soon">
             <Plus className="mr-2 h-4 w-4" /> Add Source
           </Button>
         </div>

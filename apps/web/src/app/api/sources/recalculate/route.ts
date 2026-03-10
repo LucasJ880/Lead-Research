@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 
-/**
- * POST /api/sources/recalculate
- *
- * Materializes yield analytics from source_runs and opportunities tables
- * into the denormalized counters on each Source row. Also derives
- * health_status from recent crawl history.
- *
- * Designed to be called periodically (after crawl runs) or manually.
- */
 export async function POST() {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const updated = await prisma.$executeRaw`
       WITH opp_stats AS (

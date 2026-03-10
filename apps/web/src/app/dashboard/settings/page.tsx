@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Play,
   Loader2,
@@ -10,12 +10,13 @@ import {
   Tags,
   Filter,
   Globe,
-  AlertTriangle,
   RotateCcw,
   ToggleLeft,
   ToggleRight,
   Database,
   Activity,
+  AlertTriangle,
+  Info,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,17 @@ export default function SettingsPage() {
   const [reindexMessage, setReindexMessage] = useState<string | null>(null);
   const [businessFocus, setBusinessFocus] = useState(true);
 
+  useEffect(() => {
+    const stored = localStorage.getItem("bidtogo_business_focus");
+    if (stored !== null) setBusinessFocus(stored === "true");
+  }, []);
+
+  function toggleBusinessFocus() {
+    const next = !businessFocus;
+    setBusinessFocus(next);
+    localStorage.setItem("bidtogo_business_focus", String(next));
+  }
+
   const triggerCrawl = useCallback(async () => {
     setCrawlRunning(true);
     setCrawlMessage(null);
@@ -101,17 +113,13 @@ export default function SettingsPage() {
     setReindexRunning(true);
     setReindexMessage(null);
     try {
-      const res = await fetch("/api/crawler/trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reindex" }),
-      });
+      const res = await fetch("/api/crawler/trigger", { method: "POST" });
       const body = await res.json().catch(() => ({}));
       setReindexMessage(res.ok
-        ? `Reindex triggered successfully.`
+        ? "Crawl triggered. This will re-fetch sources and re-score opportunities."
         : `Error: ${body.error || res.statusText}`);
     } catch {
-      setReindexMessage("Failed to trigger reindex.");
+      setReindexMessage("Failed to trigger re-crawl.");
     } finally {
       setReindexRunning(false);
     }
@@ -120,9 +128,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Intelligence Platform Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Configure crawlers, keyword intelligence, relevance scoring, and source management
+          Platform configuration, admin actions, and intelligence reference
         </p>
       </div>
 
@@ -135,7 +143,7 @@ export default function SettingsPage() {
               <CardTitle className="text-base font-semibold">Business Focus Mode</CardTitle>
             </div>
             <button
-              onClick={() => setBusinessFocus(!businessFocus)}
+              onClick={toggleBusinessFocus}
               className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
             >
               {businessFocus
@@ -148,8 +156,7 @@ export default function SettingsPage() {
         <CardContent>
           <p className="text-xs text-muted-foreground">
             When enabled, the dashboard suppresses low-relevance noise and emphasizes opportunities matching the
-            window covering, textile, and interior furnishing vertical. All views default to showing only
-            highly relevant and moderately relevant opportunities.
+            window covering, textile, and interior furnishing vertical. This preference is saved in your browser.
           </p>
           <div className="mt-3 flex items-center gap-2 text-xs">
             <Badge className={businessFocus ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}>
@@ -159,12 +166,12 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* ─── Admin Utilities ─── */}
+      {/* ─── Admin Actions ─── */}
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
             <Zap className="h-5 w-5 text-amber-500" />
-            <CardTitle className="text-base font-semibold">Admin Utilities</CardTitle>
+            <CardTitle className="text-base font-semibold">Admin Actions</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
@@ -184,7 +191,7 @@ export default function SettingsPage() {
             <div className="rounded-lg border p-4 space-y-3">
               <h3 className="text-sm font-semibold">Recalculate Source Analytics</h3>
               <p className="text-xs text-muted-foreground">
-                Materialize yield analytics, health, and opportunity counts for all sources.
+                Update yield analytics, health status, and opportunity counts for all sources.
               </p>
               <Button onClick={recalcSources} disabled={recalcRunning} variant="outline" size="sm">
                 {recalcRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -194,13 +201,13 @@ export default function SettingsPage() {
             </div>
 
             <div className="rounded-lg border p-4 space-y-3">
-              <h3 className="text-sm font-semibold">Reindex Opportunities</h3>
+              <h3 className="text-sm font-semibold">Re-crawl &amp; Re-score</h3>
               <p className="text-xs text-muted-foreground">
-                Re-run the relevance engine on all stored opportunities using the latest keyword model.
+                Triggers a full crawl cycle. All fetched opportunities are scored against the latest keyword model.
               </p>
               <Button onClick={reindexOpportunities} disabled={reindexRunning} variant="outline" size="sm">
                 {reindexRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
-                Reindex All
+                Re-crawl All
               </Button>
               {reindexMessage && <p className="text-xs text-muted-foreground">{reindexMessage}</p>}
             </div>
@@ -208,60 +215,56 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* ─── MERX Source Controls ─── */}
+      {/* ─── Source Status Overview ─── */}
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
             <Globe className="h-5 w-5 text-indigo-500" />
-            <CardTitle className="text-base font-semibold">MERX Source Configuration</CardTitle>
-            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] ml-auto">Active</Badge>
+            <CardTitle className="text-base font-semibold">Source Status</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            MERX is Canada&apos;s largest electronic tendering service. The crawler performs targeted keyword and
-            category searches, paginates results, and fetches detail pages for rich field extraction.
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Parser", value: "MerxCrawler v3", color: "text-indigo-700" },
-              { label: "Crawl Frequency", value: "Every 6 hours", color: "text-blue-700" },
-              { label: "Max Pages/Search", value: "5", color: "text-slate-700" },
-              { label: "Detail Fetch", value: "Enabled", color: "text-emerald-700" },
-              { label: "Industry Fit Score", value: "70 / 100", color: "text-orange-700" },
-              { label: "Priority", value: "Critical", color: "text-red-700" },
-              { label: "Rate Limit", value: "3s between requests", color: "text-slate-700" },
-              { label: "Broad Keywords", value: "Enabled", color: "text-emerald-700" },
-            ].map(item => (
-              <div key={item.label} className="rounded-md border p-2.5 space-y-1">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{item.label}</p>
-                <p className={`text-xs font-semibold ${item.color}`}>{item.value}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <h3 className="text-sm font-semibold">SAM.gov</h3>
+                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]">Active</Badge>
               </div>
-            ))}
+              <p className="text-xs text-muted-foreground">
+                Primary working source. API-based extraction via public SAM.gov endpoints. Crawls run automatically.
+              </p>
+            </div>
+            <div className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                <h3 className="text-sm font-semibold">MERX</h3>
+                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">Limited</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Parser and auth framework implemented. Cloud execution limited by source access restrictions.
+                Designed for local authenticated connector mode.
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-indigo-700">Search Strategy</h3>
-            <p className="text-xs text-muted-foreground">
-              {`${PRIMARY_KEYWORDS.length + SECONDARY_KEYWORDS.length + CONTEXT_KEYWORDS.length} keyword searches + 4 MERX category filters (Furniture, Textiles & Apparel, Construction Services, Maintenance & Installation). Each search paginates up to 5 pages (25 rows/page).`}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-indigo-700">Detail Page Extraction</h3>
-            <p className="text-xs text-muted-foreground">
-              For each listing row, the detail page is fetched to extract: full title, description, organization,
-              solicitation number, category, contact information, and a raw text snapshot for relevance scoring.
-              Fields use the MERX <code className="bg-muted px-1 rounded text-[10px]">mets-field-label / mets-field-body</code> DOM pattern.
+          <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/50 p-3">
+            <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+            <p className="text-xs text-blue-800">
+              Source details, crawl history, and health metrics are available on the <a href="/dashboard/sources" className="font-medium underline">Sources</a> page.
             </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* ─── Crawl Schedule ─── */}
+      {/* ─── Crawl Schedule Reference ─── */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-blue-500" />
-            <CardTitle className="text-base font-semibold">Crawl Schedule &amp; Source Priority</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-blue-500" />
+              <CardTitle className="text-base font-semibold">Crawl Schedule Reference</CardTitle>
+            </div>
+            <Badge variant="outline" className="text-[10px]">Read-only</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -269,7 +272,7 @@ export default function SettingsPage() {
             <div className="rounded-md bg-red-50 border border-red-200 p-3">
               <p className="font-semibold text-red-700">Critical / High-Fit (≥60)</p>
               <p className="text-red-600 mt-1">Every 6 hours</p>
-              <p className="text-muted-foreground">MERX, major provincial portals</p>
+              <p className="text-muted-foreground">Major aggregators, provincial portals</p>
             </div>
             <div className="rounded-md bg-blue-50 border border-blue-200 p-3">
               <p className="font-semibold text-blue-700">Medium-Fit (30–59)</p>
@@ -282,48 +285,26 @@ export default function SettingsPage() {
               <p className="text-muted-foreground">Niche portals, experimental</p>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <th className="pb-2 pr-4">Priority</th>
-                  <th className="pb-2 pr-4">Fit Score</th>
-                  <th className="pb-2 pr-4">Frequency</th>
-                  <th className="pb-2">Description</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-xs">
-                {[
-                  { p: "Critical", color: "bg-red-100 text-red-700 border-red-200", fit: "80–100", freq: "6 hours", desc: "Major aggregators (MERX)" },
-                  { p: "High", color: "bg-orange-100 text-orange-700 border-orange-200", fit: "60–79", freq: "6 hours", desc: "Provincial portals, large cities" },
-                  { p: "Medium", color: "bg-blue-100 text-blue-700 border-blue-200", fit: "30–59", freq: "Daily", desc: "Municipal, school board, university" },
-                  { p: "Low", color: "bg-slate-100 text-slate-600 border-slate-200", fit: "10–29", freq: "Weekly", desc: "Niche or unlikely sources" },
-                  { p: "Experimental", color: "bg-purple-100 text-purple-600 border-purple-200", fit: "0–9", freq: "Manual", desc: "Under evaluation" },
-                ].map(r => (
-                  <tr key={r.p}>
-                    <td className="py-2 pr-4"><Badge className={`${r.color} text-xs`}>{r.p}</Badge></td>
-                    <td className="py-2 pr-4 text-muted-foreground">{r.fit}</td>
-                    <td className="py-2 pr-4 text-muted-foreground">{r.freq}</td>
-                    <td className="py-2 text-muted-foreground">{r.desc}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </CardContent>
       </Card>
 
       {/* ─── Industry Keyword Dictionary ─── */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex items-center gap-2">
-            <Tags className="h-5 w-5 text-emerald-500" />
-            <CardTitle className="text-base font-semibold">Industry Keyword Dictionary</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tags className="h-5 w-5 text-emerald-500" />
+              <CardTitle className="text-base font-semibold">Industry Keyword Dictionary</CardTitle>
+            </div>
+            <Badge variant="outline" className="text-[10px]">Read-only</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          <p className="text-xs text-muted-foreground">
+            These keywords are configured in the crawler scoring engine. Contact the admin to modify.
+          </p>
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-emerald-700">Primary Keywords <span className="font-normal text-muted-foreground">(highest weight — direct product match)</span></h3>
+            <h3 className="text-sm font-semibold text-emerald-700">Primary Keywords <span className="font-normal text-muted-foreground">(highest weight)</span></h3>
             <div className="flex flex-wrap gap-1.5">
               {PRIMARY_KEYWORDS.map((kw) => (
                 <Badge key={kw} variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">{kw}</Badge>
@@ -331,7 +312,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-blue-700">Secondary Keywords <span className="font-normal text-muted-foreground">(medium weight — textile, furnishing, FF&amp;E)</span></h3>
+            <h3 className="text-sm font-semibold text-blue-700">Secondary Keywords <span className="font-normal text-muted-foreground">(medium weight)</span></h3>
             <div className="flex flex-wrap gap-1.5">
               {SECONDARY_KEYWORDS.map((kw) => (
                 <Badge key={kw} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{kw}</Badge>
@@ -339,7 +320,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-violet-700">Contextual Terms <span className="font-normal text-muted-foreground">(bonus weight — project context that implies furnishing scope)</span></h3>
+            <h3 className="text-sm font-semibold text-violet-700">Contextual Terms <span className="font-normal text-muted-foreground">(bonus weight)</span></h3>
             <div className="flex flex-wrap gap-1.5">
               {CONTEXT_KEYWORDS.map((kw) => (
                 <Badge key={kw} variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 text-xs">{kw}</Badge>
@@ -352,14 +333,17 @@ export default function SettingsPage() {
       {/* ─── Negative Keyword Filters ─── */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex items-center gap-2">
-            <Filter className="h-5 w-5 text-red-500" />
-            <CardTitle className="text-base font-semibold">Negative Keyword Filters</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-red-500" />
+              <CardTitle className="text-base font-semibold">Negative Keyword Filters</CardTitle>
+            </div>
+            <Badge variant="outline" className="text-[10px]">Read-only</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Opportunities containing these terms receive heavy score penalties. Reduces noise from civil, IT, fleet, and other irrelevant categories.
+            Opportunities containing these terms receive heavy score penalties.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {NEGATIVE_KEYWORDS.map((kw) => (
@@ -369,19 +353,20 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* ─── Relevance Model ─── */}
+      {/* ─── Relevance Scoring Reference ─── */}
       <Card>
         <CardHeader className="pb-4">
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-violet-500" />
-            <CardTitle className="text-base font-semibold">Relevance Scoring Model</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-violet-500" />
+              <CardTitle className="text-base font-semibold">Relevance Scoring Model</CardTitle>
+            </div>
+            <Badge variant="outline" className="text-[10px]">Read-only</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Every opportunity is scored 0–100 using: primary keyword match, secondary keyword match,
-            contextual project terms, semantic phrase patterns, source industry_fit_score bonus,
-            title boost, category bonus, minus negative keyword penalties. Word boundaries prevent false positives.
+            Every opportunity is scored 0–100 using keyword matching, semantic patterns, source fit bonus, title boost, and negative penalties.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -418,7 +403,7 @@ export default function SettingsPage() {
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5 text-slate-500" />
-            <CardTitle className="text-base font-semibold">System Configuration</CardTitle>
+            <CardTitle className="text-base font-semibold">System Information</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -440,9 +425,9 @@ export default function SettingsPage() {
                 <span className="text-muted-foreground">Frontend</span><span className="font-medium">Next.js 14 + shadcn/ui</span>
                 <span className="text-muted-foreground">Auth</span><span className="font-medium">NextAuth.js (Credentials)</span>
                 <span className="text-muted-foreground">Database</span><span className="font-medium">PostgreSQL 16 + Prisma</span>
-                <span className="text-muted-foreground">Scraper</span><span className="font-medium">Python + requests + BeautifulSoup</span>
+                <span className="text-muted-foreground">Scraper</span><span className="font-medium">Python + FastAPI + Celery</span>
                 <span className="text-muted-foreground">Task Queue</span><span className="font-medium">Celery + Redis</span>
-                <span className="text-muted-foreground">Deployment</span><span className="font-medium">Docker Compose (internal)</span>
+                <span className="text-muted-foreground">Deployment</span><span className="font-medium">Docker Compose (DigitalOcean)</span>
               </div>
             </div>
           </div>

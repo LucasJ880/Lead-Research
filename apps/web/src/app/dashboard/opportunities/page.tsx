@@ -124,10 +124,11 @@ function OpportunitiesPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
   const initialBucket = nextSearchParams.get("bucket") || "relevant";
+  const initialSort = nextSearchParams.get("sort") || "relevance";
   const [bucketFilter, setBucketFilter] = useState(initialBucket);
   const [workflowFilter, setWorkflowFilter] = useState(initialWorkflow);
   const [tagFilter, setTagFilter] = useState("");
-  const [sortBy, setSortBy] = useState("relevance");
+  const [sortBy, setSortBy] = useState(initialSort);
   const [minRelevance, setMinRelevance] = useState(0);
   const [closingAfter, setClosingAfter] = useState("");
   const [closingBefore, setClosingBefore] = useState("");
@@ -594,7 +595,7 @@ function OpportunitiesPage() {
                             </Link>
                           ) : (
                             <Link
-                              href={`/dashboard/opportunities/${opp.id}#analyze`}
+                              href={`/dashboard/opportunities/${opp.id}#ai-intelligence`}
                               className="inline-flex items-center gap-1 rounded-md border border-dashed border-muted-foreground/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/50 transition-colors whitespace-nowrap"
                             >
                               <Sparkles className="h-2.5 w-2.5" />

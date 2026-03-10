@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 import type { OpportunityDetail, OpportunityStatus, RelevanceBucket, WorkflowStatus } from "@/types";
 
 const VALID_WORKFLOW: WorkflowStatus[] = [
@@ -10,6 +11,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { id } = params;
 
@@ -107,6 +111,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { id } = params;
     const body = await request.json();

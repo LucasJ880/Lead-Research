@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/api-auth";
 import type { Source } from "@prisma/client";
 import type { SourceItem, SourceType, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
@@ -63,6 +64,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const source = await prisma.source.findUnique({
       where: { id: params.id },
@@ -89,6 +93,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const existing = await prisma.source.findUnique({
       where: { id: params.id },
@@ -131,6 +138,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { error: authError } = await requireAuth();
+  if (authError) return authError;
+
   try {
     const existing = await prisma.source.findUnique({
       where: { id: params.id },

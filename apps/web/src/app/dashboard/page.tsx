@@ -35,13 +35,6 @@ import {
 } from "@/lib/utils";
 import type { DashboardStats } from "@/types";
 
-const statusVariant: Record<string, "success" | "warning" | "destructive" | "outline"> = {
-  open: "success",
-  closed: "outline",
-  awarded: "warning",
-  cancelled: "destructive",
-};
-
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +117,15 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-muted-foreground">Window covering &amp; textile opportunity intelligence</p>
         </div>
         <Card>
-          <CardContent className="p-6 text-center text-sm text-destructive">{error}</CardContent>
+          <CardContent className="p-6 text-center space-y-3">
+            <p className="text-sm text-destructive">{error}</p>
+            <button
+              onClick={() => { setError(null); setLoading(true); fetchStats(); }}
+              className="inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Try again
+            </button>
+          </CardContent>
         </Card>
       </div>
     );

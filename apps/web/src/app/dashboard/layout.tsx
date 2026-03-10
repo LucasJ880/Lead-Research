@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useSession, signOut } from "next-auth/react";
 import {
@@ -13,7 +13,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Bell,
   User,
   Search,
   LogOut,
@@ -33,8 +32,18 @@ const NAV_ITEMS = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { data: session } = useSession();
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/dashboard/opportunities?keyword=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery("");
+    }
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -105,21 +114,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Top header */}
         <header className="flex h-16 shrink-0 items-center justify-between border-b bg-background px-6">
-          <div className="flex items-center gap-3">
+          <form onSubmit={handleSearch} className="flex items-center gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search opportunities…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 w-72 rounded-md border border-input bg-muted/50 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-          </div>
+          </form>
           <div className="flex items-center gap-4">
-            <button className="relative rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-500" />
-            </button>
             <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                 <User className="h-4 w-4" />
