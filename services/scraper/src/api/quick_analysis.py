@@ -1,10 +1,8 @@
-"""Quick Analysis API — on-demand AI analysis for any opportunity.
+"""Quick Analysis API — on-demand Tender Intelligence Report for any opportunity.
 
-Triggered manually from the dashboard. Runs GPT analysis using the
-opportunity's title, description, organization, location, and dates.
-Stores the result in tender_intelligence for future retrieval.
-
-Does NOT auto-analyze. Only runs when explicitly requested.
+Triggered manually from the dashboard. Produces a v2.0 structured report
+using opportunity metadata + description text. Stores the full report JSON
+in tender_intelligence.intelligence_summary for the frontend to render.
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.api.auth import verify_api_key
-from src.core.config import settings
 from src.core.database import get_db_session
 from src.core.logging import get_logger
 from src.intelligence.analyzer import TenderAnalyzer
@@ -39,21 +36,22 @@ class _Enc(json.JSONEncoder):
 
 class AnalyzeRequest(BaseModel):
     opportunity_id: str
-    mode: str = "quick"  # quick | deep (only quick for now)
+    mode: str = "quick"
 
 
 class AnalyzeResponse(BaseModel):
     status: str
     opportunity_id: str
-    feasibility_score: int | None = None
+    overall_score: int | None = None
     recommendation: str | None = None
+    confidence: str | None = None
     analysis_model: str | None = None
     message: str | None = None
 
 
 @router.post("/run", dependencies=[Depends(verify_api_key)])
 async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
-    """Run on-demand Quick Analysis for a single opportunity."""
+    """Run on-demand Quick Analysis and produce a Tender Intelligence Report."""
     session = get_db_session()
     try:
         opp = session.execute(
@@ -62,6 +60,8 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
                        o.country, o.region, o.city, o.closing_date, o.source_url,
                        o.relevance_score, o.relevance_bucket, o.keywords_matched,
                        o.industry_tags, o.category, o.project_type,
+                       o.solicitation_number, o.contact_name, o.contact_email,
+                       o.raw_data,
                        s.name as source_name,
                        org.name as organization_name
                 FROM opportunities o
@@ -81,11 +81,18 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
         ).fetchone()
 
         if existing:
-            logger.info("Re-analyzing opportunity %s (previous analysis at %s)", req.opportunity_id, existing.analyzed_at)
+            logger.info("Re-analyzing opportunity %s (previous at %s)", req.opportunity_id, existing.analyzed_at)
 
         description = opp.description_full or opp.description_summary or ""
         location_parts = [p for p in [opp.city, opp.region, opp.country] if p]
-        location = ", ".join(location_parts) if location_parts else "Unknown"
+        location = ", ".join(location_parts) if location_parts else None
+
+        raw = opp.raw_data if opp.raw_data else {}
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = {}
 
         analyzer = TenderAnalyzer(model="gpt-4o-mini")
         result = analyzer.analyze(
@@ -96,13 +103,48 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
             source=opp.source_name or "Unknown",
             description=description,
             document_texts=None,
+            country=opp.country,
+            response_deadline=raw.get("response_deadline"),
+            naics=raw.get("naics_code") or opp.category,
+            category=opp.category,
+            set_aside=raw.get("set_aside"),
+            solicitation_number=opp.solicitation_number,
         )
 
-        feasibility = result.get("feasibility_assessment", {})
-        feas_score = feasibility.get("feasibility_score")
-        recommendation = feasibility.get("recommendation", "review_carefully")
+        verdict = result.get("verdict", {})
+        scores = result.get("feasibility_scores", {})
+        overall = scores.get("overall_score")
+        recommendation = verdict.get("recommendation", "review_carefully")
+        confidence = verdict.get("confidence", "low")
         analysis_model = result.get("analysis_model", "gpt-4o-mini")
         now = datetime.now(timezone.utc)
+
+        # Extract flattened fields for DB columns
+        biz_fit = result.get("business_fit", {})
+        scope = result.get("scope_breakdown", {})
+        tech = result.get("technical_requirements", {})
+        quals = result.get("compliance_risks", {})
+        timeline = result.get("timeline_milestones", {})
+        risks_list = [rf.get("requirement", "") for rf in result.get("compliance_risks", {}).get("red_flags", [])]
+        china = result.get("supply_chain_feasibility", {})
+
+        params = {
+            "opp_id": req.opportunity_id,
+            "overview": result.get("project_summary", {}).get("overview", ""),
+            "scope": json.dumps(scope, cls=_Enc),
+            "scope_type": scope.get("scope_type", "unclear"),
+            "tech_reqs": json.dumps(tech, cls=_Enc),
+            "qual_reqs": json.dumps(quals, cls=_Enc),
+            "dates": json.dumps(timeline, cls=_Enc),
+            "risks": json.dumps(risks_list, cls=_Enc),
+            "feas_score": overall,
+            "recommendation": recommendation,
+            "biz_fit": biz_fit.get("fit_explanation", "")[:500],
+            "china": json.dumps(china, cls=_Enc),
+            "summary": json.dumps(result, cls=_Enc),
+            "model": analysis_model,
+            "now": now,
+        }
 
         if existing:
             session.execute(
@@ -125,7 +167,7 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
                         updated_at = :now
                     WHERE opportunity_id = :opp_id
                 """),
-                _build_intel_params(req.opportunity_id, result, feas_score, recommendation, analysis_model, now),
+                params,
             )
         else:
             session.execute(
@@ -144,34 +186,26 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
                         :summary, :model, :now, :now
                     )
                 """),
-                _build_intel_params(req.opportunity_id, result, feas_score, recommendation, analysis_model, now),
+                params,
             )
 
         session.execute(
-            text("""
-                UPDATE opportunities SET
-                    business_fit_explanation = :biz_fit,
-                    updated_at = :now
-                WHERE id = :opp_id
-            """),
-            {
-                "opp_id": req.opportunity_id,
-                "biz_fit": feasibility.get("business_fit_explanation", "")[:500],
-                "now": now,
-            },
+            text("UPDATE opportunities SET business_fit_explanation = :biz, updated_at = :now WHERE id = :id"),
+            {"id": req.opportunity_id, "biz": biz_fit.get("fit_explanation", "")[:500], "now": now},
         )
-
         session.commit()
+
         logger.info(
-            "Quick analysis complete: opp=%s feas=%s rec=%s model=%s",
-            req.opportunity_id, feas_score, recommendation, analysis_model,
+            "Tender Intelligence Report complete: opp=%s score=%s rec=%s conf=%s model=%s",
+            req.opportunity_id, overall, recommendation, confidence, analysis_model,
         )
 
         return AnalyzeResponse(
             status="completed",
             opportunity_id=req.opportunity_id,
-            feasibility_score=feas_score,
+            overall_score=overall,
             recommendation=recommendation,
+            confidence=confidence,
             analysis_model=analysis_model,
         )
 
@@ -203,7 +237,6 @@ async def analysis_status(opportunity_id: str) -> dict:
             """),
             {"id": opportunity_id},
         ).fetchone()
-
         if row:
             return {
                 "exists": True,
@@ -216,29 +249,3 @@ async def analysis_status(opportunity_id: str) -> dict:
         return {"exists": False}
     finally:
         session.close()
-
-
-def _build_intel_params(
-    opp_id: str, result: dict[str, Any],
-    feas_score: int | None, recommendation: str,
-    model: str, now: datetime,
-) -> dict[str, Any]:
-    feasibility = result.get("feasibility_assessment", {})
-    china = result.get("china_sourcing_analysis", {})
-    return {
-        "opp_id": opp_id,
-        "overview": result.get("project_overview", ""),
-        "scope": result.get("scope_of_work", ""),
-        "scope_type": result.get("scope_type", "unclear"),
-        "tech_reqs": json.dumps(result.get("technical_requirements", {}), cls=_Enc),
-        "qual_reqs": json.dumps(result.get("qualification_requirements", {}), cls=_Enc),
-        "dates": json.dumps(result.get("critical_dates", {}), cls=_Enc),
-        "risks": json.dumps(result.get("risk_factors", []), cls=_Enc),
-        "feas_score": feas_score,
-        "recommendation": recommendation,
-        "biz_fit": feasibility.get("business_fit_explanation", ""),
-        "china": json.dumps(china, cls=_Enc) if china else None,
-        "summary": json.dumps(result, cls=_Enc),
-        "model": model,
-        "now": now,
-    }

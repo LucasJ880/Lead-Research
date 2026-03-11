@@ -710,291 +710,500 @@ function MetaRow({
 
 // eslint-disable-next-line
 function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onReanalyze?: () => void; reanalyzing?: boolean }) {
-  const [showDetails, setShowDetails] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["summary", "fit", "compliance", "supply"]));
 
   if (!data) return null;
 
-  const summary: any = data.intelligenceSummary || data.intelligence_summary || {};
-  const feasibility: any = summary.feasibility_assessment || {};
-  const china: any = summary.china_sourcing_analysis || {};
-  const tech: any = data.technicalRequirements || data.technical_requirements || summary.technical_requirements || {};
-  const quals: any = data.qualificationReqs || data.qualification_reqs || summary.qualification_requirements || {};
-  const dates: any = data.criticalDates || data.critical_dates || summary.critical_dates || {};
-  const risks: string[] = data.riskFactors || data.risk_factors || summary.risk_factors || [];
-  const wcr: any = summary.window_covering_relevance || {};
+  const rpt: any = data.intelligenceSummary || data.intelligence_summary || {};
+  const isV2 = rpt.report_version === "2.0";
+
+  // v2 report fields
+  const verdict = rpt.verdict || {};
+  const projSummary = rpt.project_summary || {};
+  const scope = rpt.scope_breakdown || {};
+  const techReqs = rpt.technical_requirements || {};
+  const timeline = rpt.timeline_milestones || {};
+  const evalStrategy = rpt.evaluation_strategy || {};
+  const bizFit = rpt.business_fit || {};
+  const compliance = rpt.compliance_risks || {};
+  const compat = rpt.compatibility_analysis || {};
+  const supplyChain = rpt.supply_chain_feasibility || {};
+  const participation = rpt.participation_strategy || {};
+  const evidence = rpt.required_evidence || {};
+  const scores = rpt.feasibility_scores || {};
+
+  // v1 fallback
+  const v1feasibility: any = rpt.feasibility_assessment || {};
+  const v1china: any = rpt.china_sourcing_analysis || {};
+
+  const overallScore: number | undefined = isV2
+    ? scores.overall_score
+    : (data.feasibilityScore ?? data.feasibility_score ?? v1feasibility.feasibility_score);
+  const recommendation: string | undefined = isV2
+    ? verdict.recommendation
+    : (data.recommendationStatus ?? data.recommendation_status ?? v1feasibility.recommendation);
+  const confidence: string | undefined = verdict.confidence;
+  const verdictLine: string | undefined = isV2 ? verdict.one_line : rpt.one_line_verdict;
+  const overview: string | undefined = isV2
+    ? projSummary.overview
+    : (data.projectOverview || data.project_overview || rpt.project_overview);
+  const analyzedAt: string | undefined = data.analyzedAt || data.analyzed_at || rpt.analyzed_at;
+  const model: string | undefined = data.analysisModel || data.analysis_model || rpt.analysis_model;
 
   const recColors: Record<string, string> = {
-    strongly_pursue: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    pursue: "bg-green-100 text-green-800 border-green-300",
-    review_carefully: "bg-amber-100 text-amber-800 border-amber-300",
-    low_probability: "bg-orange-100 text-orange-800 border-orange-300",
-    skip: "bg-red-100 text-red-800 border-red-300",
+    strongly_pursue: "bg-emerald-600 text-white",
+    pursue: "bg-emerald-600 text-white",
+    review_carefully: "bg-amber-500 text-white",
+    low_probability: "bg-orange-500 text-white",
+    skip: "bg-red-600 text-white",
   };
 
-  const feasScore: number | undefined = data.feasibilityScore ?? data.feasibility_score ?? feasibility.feasibility_score;
-  const recommendation: string | undefined = data.recommendationStatus ?? data.recommendation_status ?? feasibility.recommendation;
-  const verdict: string | undefined = summary.one_line_verdict;
-  const overview: string | undefined = data.projectOverview || data.project_overview || summary.project_overview;
-  const scopeType: string | undefined = data.scopeType || data.scope_type || summary.scope_type;
-  const advantages: string[] = feasibility.key_advantages || [];
-  const concerns: string[] = feasibility.key_concerns || [];
-  const recAction: string | undefined = summary.recommended_action || data.businessFitExplanation || data.business_fit_explanation;
-  const analyzedAt: string | undefined = data.analyzedAt || data.analyzed_at;
-  const model: string | undefined = data.analysisModel || data.analysis_model;
+  const confColors: Record<string, string> = {
+    high: "text-emerald-700", medium: "text-blue-700", low: "text-amber-700", very_low: "text-red-700",
+  };
+
+  const severityColors: Record<string, string> = {
+    fatal_blocker: "bg-red-100 text-red-800 border-red-300",
+    serious_risk: "bg-orange-100 text-orange-800 border-orange-300",
+    normal_requirement: "bg-slate-100 text-slate-700 border-slate-300",
+  };
+
+  function toggleSection(key: string) {
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  const SectionHeader = ({ id, title, icon }: { id: string; title: string; icon?: React.ReactNode }) => (
+    <button
+      onClick={() => toggleSection(id)}
+      className="flex items-center justify-between w-full py-2.5 text-left group"
+    >
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 group-hover:text-foreground transition-colors">{title}</span>
+      </div>
+      <svg className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.has(id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+      </svg>
+    </button>
+  );
 
   return (
     <Card className="border-2 border-blue-200 overflow-hidden">
-      {/* ── TIER 1: Decision Header ── */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5">
-        <div className="flex items-start gap-5">
-          {feasScore != null && (
-            <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-2 text-2xl font-bold ${
-              feasScore >= 70 ? "border-emerald-400 text-emerald-600 bg-emerald-50"
-              : feasScore >= 40 ? "border-amber-400 text-amber-600 bg-amber-50"
-              : "border-red-400 text-red-600 bg-red-50"
-            }`}>
-              {feasScore}
+      {/* ── DECISION HEADER ── */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-5 text-white">
+        <div className="flex items-start gap-4">
+          {overallScore != null && (
+            <div className="flex flex-col items-center gap-1 shrink-0">
+              <div className={`flex h-14 w-14 items-center justify-center rounded-xl text-xl font-bold ${
+                overallScore >= 65 ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/50"
+                : overallScore >= 40 ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50"
+                : "bg-red-500/20 text-red-300 ring-1 ring-red-400/50"
+              }`}>
+                {overallScore}
+              </div>
+              <span className="text-[9px] text-slate-400 font-medium">SCORE</span>
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Sparkles className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-semibold text-blue-900">AI Intelligence Report</span>
+            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+              <span className="text-xs font-semibold text-slate-300 tracking-wide">TENDER INTELLIGENCE REPORT</span>
               {recommendation && (
-                <span className={`rounded-md border px-2.5 py-0.5 text-xs font-bold ${recColors[recommendation] || "bg-gray-100"}`}>
+                <span className={`rounded px-2 py-0.5 text-[10px] font-bold tracking-wide ${recColors[recommendation] || "bg-gray-600"}`}>
                   {recommendation.replace(/_/g, " ").toUpperCase()}
                 </span>
               )}
-              {scopeType && scopeType !== "unclear" && (
-                <Badge variant="outline" className="text-[10px]">
-                  {scopeType.replace(/_/g, " ")}
-                </Badge>
+              {confidence && (
+                <span className={`text-[10px] font-medium ${confColors[confidence] || "text-slate-400"}`}>
+                  {confidence.replace(/_/g, " ")} confidence
+                </span>
               )}
-              </div>
               {onReanalyze && (
                 <button
                   onClick={onReanalyze}
                   disabled={reanalyzing}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-2.5 py-1.5 text-2xs font-medium text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50 shrink-0"
+                  className="ml-auto inline-flex items-center gap-1 rounded border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50"
                 >
                   {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                   Re-analyze
                 </button>
               )}
             </div>
-            {verdict && (
-              <p className="mt-1.5 text-sm text-blue-800 leading-snug">{verdict}</p>
+            {verdictLine && (
+              <p className="text-sm text-white/90 leading-snug font-medium">{verdictLine}</p>
             )}
-            {!verdict && overview && (
-              <p className="mt-1.5 text-sm text-blue-800 leading-snug line-clamp-2">{overview}</p>
+            {confidence && verdict.confidence_rationale && (
+              <p className="text-[11px] text-slate-400 mt-1">{verdict.confidence_rationale}</p>
             )}
           </div>
         </div>
+
+        {/* Three feasibility scores bar */}
+        {isV2 && (scores.technical_feasibility != null || scores.compliance_feasibility != null || scores.commercial_feasibility != null) && (
+          <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-slate-700">
+            {[
+              { label: "Technical", val: scores.technical_feasibility },
+              { label: "Compliance", val: scores.compliance_feasibility },
+              { label: "Commercial", val: scores.commercial_feasibility },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <div className="text-[10px] text-slate-400 mb-1">{s.label}</div>
+                <div className="w-full bg-slate-700 rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full transition-all ${
+                      (s.val ?? 0) >= 65 ? "bg-emerald-400" : (s.val ?? 0) >= 40 ? "bg-amber-400" : "bg-red-400"
+                    }`}
+                    style={{ width: `${Math.min(s.val ?? 0, 100)}%` }}
+                  />
+                </div>
+                <div className={`text-xs font-bold mt-0.5 ${
+                  (s.val ?? 0) >= 65 ? "text-emerald-300" : (s.val ?? 0) >= 40 ? "text-amber-300" : "text-red-300"
+                }`}>{s.val ?? "—"}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <CardContent className="p-5 space-y-5">
-        {/* ── TIER 2: Key Intelligence ── */}
-        {verdict && overview && (
-          <div className="rounded-lg border bg-white p-4">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Project Summary</h4>
-            <p className="text-sm leading-relaxed">{overview}</p>
-          </div>
-        )}
-
-        {/* Advantages vs Concerns — side by side */}
-        {(advantages.length > 0 || concerns.length > 0) && (
-          <div className="grid gap-4 md:grid-cols-2">
-            {advantages.length > 0 && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
-                <h4 className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2">Why It Fits</h4>
-                <ul className="space-y-1.5">
-                  {advantages.map((a, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-emerald-800">
-                      <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {a}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {concerns.length > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-                <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wider mb-2">Key Concerns</h4>
-                <ul className="space-y-1.5">
-                  {concerns.map((c, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-amber-800">
-                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {c}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── TIER 3: Decision Factors ── */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Timeline */}
-          {(dates.site_visit_date || dates.pre_bid_meeting || dates.project_start || dates.project_completion || dates.timeline_notes) && (
-            <div className="rounded-lg border bg-white p-4">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Timeline</h4>
-              <div className="space-y-1 text-sm">
-                {dates.site_visit_date && <p><span className="text-muted-foreground">Site Visit:</span> {dates.site_visit_date}</p>}
-                {dates.pre_bid_meeting && <p><span className="text-muted-foreground">Pre-Bid:</span> {dates.pre_bid_meeting}</p>}
-                {dates.project_start && <p><span className="text-muted-foreground">Start:</span> {dates.project_start}</p>}
-                {dates.project_completion && <p><span className="text-muted-foreground">Completion:</span> {dates.project_completion}</p>}
-                {dates.timeline_notes && (
-                  <p className="text-xs text-amber-700 mt-1 flex items-start gap-1">
-                    <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                    {dates.timeline_notes}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* China Sourcing */}
-          {china.explanation && (
-            <div className="rounded-lg border bg-white p-4">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">China Sourcing</h4>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className={`inline-block h-2.5 w-2.5 rounded-full ${china.viable ? "bg-green-500" : "bg-red-500"}`} />
-                <span className="text-sm font-medium">{china.viable ? "Viable" : "Not Viable"}</span>
-              </div>
-              <p className="text-sm text-muted-foreground">{china.explanation}</p>
-              {china.lead_time_concern && (
-                <p className="text-xs text-muted-foreground mt-1">{china.lead_time_concern}</p>
+      <CardContent className="p-0 divide-y">
+        {/* ── 1. Project Summary ── */}
+        <div className="px-5">
+          <SectionHeader id="summary" title="Project Summary" />
+          {expandedSections.has("summary") && (
+            <div className="pb-4 space-y-3">
+              {overview && <p className="text-sm leading-relaxed">{overview}</p>}
+              {isV2 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {projSummary.issuing_body && <span>Issuing: <strong className="text-foreground">{projSummary.issuing_body}</strong></span>}
+                  {projSummary.project_type && projSummary.project_type !== "other" && (
+                    <span>Type: <strong className="text-foreground">{projSummary.project_type.replace(/_/g, " ")}</strong></span>
+                  )}
+                  {scope.scope_type && scope.scope_type !== "unclear" && (
+                    <span>Scope: <strong className="text-foreground">{scope.scope_type.replace(/_/g, " ")}</strong></span>
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Industry Relevance */}
-        {wcr.relevance_explanation && (
-          <div className="rounded-lg border bg-white p-4">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Industry Relevance</h4>
-            <p className="text-sm">{wcr.relevance_explanation}</p>
-            {wcr.specific_products?.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {wcr.specific_products.map((p: string) => (
-                  <Badge key={p} variant="default" className="text-xs">{p}</Badge>
-                ))}
+        {/* ── 2. Scope Breakdown ── */}
+        {isV2 && (scope.main_deliverables?.length > 0 || scope.quantities || scope.intended_use) && (
+          <div className="px-5">
+            <SectionHeader id="scope" title="Scope Breakdown" />
+            {expandedSections.has("scope") && (
+              <div className="pb-4 space-y-2 text-sm">
+                {scope.main_deliverables?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">Deliverables:</span>
+                    <ul className="mt-1 space-y-0.5">
+                      {scope.main_deliverables.map((d: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />{d}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {scope.quantities && scope.quantities !== "Not specified" && <p><span className="text-muted-foreground">Quantities:</span> {scope.quantities}</p>}
+                {scope.intended_use && scope.intended_use !== "Not specified" && <p><span className="text-muted-foreground">Intended use:</span> {scope.intended_use}</p>}
+                {scope.service_scope && scope.service_scope !== "Not specified" && <p><span className="text-muted-foreground">Service scope:</span> {scope.service_scope}</p>}
               </div>
             )}
-            {wcr.estimated_scope_percentage != null && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Est. scope: {wcr.estimated_scope_percentage}% window coverings/textiles
-              </p>
+          </div>
+        )}
+
+        {/* ── 3. Technical Requirements ── */}
+        {isV2 && (techReqs.product_requirements?.length > 0 || techReqs.standards_certifications?.length > 0 || techReqs.environmental_requirements?.length > 0) && (
+          <div className="px-5">
+            <SectionHeader id="tech" title="Technical Requirements" />
+            {expandedSections.has("tech") && (
+              <div className="pb-4 space-y-3 text-sm">
+                {techReqs.product_requirements?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">Product specs:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {techReqs.product_requirements.map((r: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs">{r}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {techReqs.standards_certifications?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">Standards / certifications:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {techReqs.standards_certifications.map((s: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">{s}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {techReqs.environmental_requirements?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">Environmental:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {techReqs.environmental_requirements.map((e: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">{e}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {techReqs.control_systems && techReqs.control_systems !== "Not specified" && (
+                  <p><span className="text-muted-foreground">Controls:</span> {techReqs.control_systems}</p>
+                )}
+                {techReqs.installation_requirements?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">Installation:</span>
+                    <ul className="mt-1 space-y-0.5">{techReqs.installation_requirements.map((r: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-slate-400 shrink-0" />{r}</li>
+                    ))}</ul>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
 
-        {/* Recommended Action */}
-        {recAction && (
-          <div className="rounded-lg border-2 border-blue-300 bg-blue-50 p-4">
-            <h4 className="text-xs font-semibold text-blue-800 uppercase tracking-wider mb-1">Next Step</h4>
-            <p className="text-sm text-blue-900">{recAction}</p>
-          </div>
-        )}
-
-        {/* Risk Factors (compact) */}
-        {(Array.isArray(risks) ? risks : []).length > 0 && (
-          <div className="rounded-lg border bg-white p-4">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Risk Factors</h4>
-            <ul className="space-y-1">
-              {(Array.isArray(risks) ? risks : []).map((risk, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm">
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                  {risk}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* ── TIER 4: Expandable Details ── */}
-        <button
-          onClick={() => setShowDetails(!showDetails)}
-          className="flex items-center gap-2 text-xs font-medium text-blue-700 hover:text-blue-900 transition-colors w-full justify-center py-2 rounded-md border border-dashed border-blue-300 hover:bg-blue-50"
-        >
-          {showDetails ? "Hide" : "Show"} Full Details
-          <svg className={`h-3.5 w-3.5 transition-transform ${showDetails ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-          </svg>
-        </button>
-
-        {showDetails && (
-          <div className="space-y-4 animate-fade-in">
-            {/* Scope of Work */}
-            {(data.scopeOfWork || data.scope_of_work || summary.scope_of_work) && (
-              <DetailSection title="Scope of Work">
-                <p className="text-sm">{data.scopeOfWork || data.scope_of_work || summary.scope_of_work}</p>
-              </DetailSection>
+        {/* ── 4. Timeline ── */}
+        {isV2 && (timeline.bid_closing || timeline.project_start || timeline.delivery_deadline || timeline.schedule_notes) && (
+          <div className="px-5">
+            <SectionHeader id="timeline" title="Timeline & Milestones" />
+            {expandedSections.has("timeline") && (
+              <div className="pb-4 space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {timeline.bid_closing && <p><span className="text-muted-foreground">Closing:</span> {timeline.bid_closing}</p>}
+                  {timeline.response_due && <p><span className="text-muted-foreground">Response due:</span> {timeline.response_due}</p>}
+                  {timeline.site_visit && <p><span className="text-muted-foreground">Site visit:</span> {timeline.site_visit}</p>}
+                  {timeline.pre_bid_meeting && <p><span className="text-muted-foreground">Pre-bid:</span> {timeline.pre_bid_meeting}</p>}
+                  {timeline.project_start && <p><span className="text-muted-foreground">Start:</span> {timeline.project_start}</p>}
+                  {timeline.delivery_deadline && <p><span className="text-muted-foreground">Delivery:</span> {timeline.delivery_deadline}</p>}
+                </div>
+                {timeline.schedule_pressure && timeline.schedule_pressure !== "realistic" && (
+                  <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
+                    timeline.schedule_pressure === "very_tight" ? "bg-red-100 text-red-700" :
+                    timeline.schedule_pressure === "tight" ? "bg-orange-100 text-orange-700" :
+                    "bg-amber-100 text-amber-700"
+                  }`}>
+                    <Clock className="h-3 w-3" />
+                    {timeline.schedule_pressure.replace(/_/g, " ")} schedule
+                  </div>
+                )}
+                {timeline.schedule_notes && <p className="text-xs text-muted-foreground">{timeline.schedule_notes}</p>}
+              </div>
             )}
+          </div>
+        )}
 
-            {/* Technical Requirements */}
-            {tech.materials?.length > 0 && (
-              <DetailSection title="Technical Requirements">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1">
-                    {tech.materials.map((m: string) => (
-                      <Badge key={m} variant="outline" className="text-xs">{m}</Badge>
+        {/* ── 5. Evaluation Strategy ── */}
+        {isV2 && (evalStrategy.pricing_weight || evalStrategy.likely_evaluator_focus) && evalStrategy.pricing_weight !== "Not specified" && (
+          <div className="px-5">
+            <SectionHeader id="eval" title="Evaluation Strategy" />
+            {expandedSections.has("eval") && (
+              <div className="pb-4 space-y-2 text-sm">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {evalStrategy.pricing_weight && evalStrategy.pricing_weight !== "Not specified" && <p><span className="text-muted-foreground">Price:</span> {evalStrategy.pricing_weight}</p>}
+                  {evalStrategy.technical_weight && evalStrategy.technical_weight !== "Not specified" && <p><span className="text-muted-foreground">Technical:</span> {evalStrategy.technical_weight}</p>}
+                  {evalStrategy.experience_weight && evalStrategy.experience_weight !== "Not specified" && <p><span className="text-muted-foreground">Experience:</span> {evalStrategy.experience_weight}</p>}
+                </div>
+                {evalStrategy.likely_evaluator_focus && evalStrategy.likely_evaluator_focus !== "Not specified" && (
+                  <p className="text-xs text-blue-700 bg-blue-50 rounded p-2">{evalStrategy.likely_evaluator_focus}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 6. Business Fit ── */}
+        <div className="px-5">
+          <SectionHeader id="fit" title="Fit for Our Business" />
+          {expandedSections.has("fit") && (
+            <div className="pb-4 space-y-2">
+              {isV2 && bizFit.fit_assessment && (
+                <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
+                  bizFit.fit_assessment === "strong_fit" ? "bg-emerald-100 text-emerald-700" :
+                  bizFit.fit_assessment === "moderate_fit" ? "bg-blue-100 text-blue-700" :
+                  bizFit.fit_assessment === "weak_fit" ? "bg-amber-100 text-amber-700" :
+                  "bg-red-100 text-red-700"
+                }`}>
+                  {bizFit.fit_assessment.replace(/_/g, " ")}
+                </div>
+              )}
+              {(isV2 ? bizFit.fit_explanation : v1feasibility.business_fit_explanation) && (
+                <p className="text-sm">{isV2 ? bizFit.fit_explanation : v1feasibility.business_fit_explanation}</p>
+              )}
+              {isV2 && bizFit.recommended_role && bizFit.recommended_role !== "not_recommended" && (
+                <p className="text-xs text-muted-foreground">Recommended role: <strong className="text-foreground">{bizFit.recommended_role.replace(/_/g, " ")}</strong></p>
+              )}
+              {isV2 && bizFit.capability_gaps?.length > 0 && (
+                <div>
+                  <span className="text-xs text-muted-foreground font-medium">Capability gaps:</span>
+                  <ul className="mt-1 space-y-0.5 text-sm">
+                    {bizFit.capability_gaps.map((g: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2 text-amber-700"><AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />{g}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── 7. Compliance Red Flags ── */}
+        {isV2 && (compliance.red_flags?.length > 0 || compliance.mandatory_certifications?.length > 0 || (compliance.bonding_insurance && compliance.bonding_insurance !== "Not specified")) && (
+          <div className="px-5">
+            <SectionHeader id="compliance" title="Compliance Red Flags" />
+            {expandedSections.has("compliance") && (
+              <div className="pb-4 space-y-3">
+                {compliance.red_flags?.length > 0 && (
+                  <div className="space-y-2">
+                    {compliance.red_flags.map((rf: any, i: number) => (
+                      <div key={i} className={`rounded-md border px-3 py-2 ${severityColors[rf.severity] || "bg-slate-50 border-slate-200"}`}>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wide">{(rf.severity || "").replace(/_/g, " ")}</span>
+                        </div>
+                        <p className="text-sm font-medium">{rf.requirement}</p>
+                        {rf.explanation && <p className="text-xs mt-0.5 opacity-80">{rf.explanation}</p>}
+                      </div>
                     ))}
                   </div>
-                  {tech.measurements && <p className="text-sm"><span className="text-muted-foreground">Measurements:</span> {tech.measurements}</p>}
-                  {tech.compliance?.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {tech.compliance.map((c: string) => (
-                        <Badge key={c} variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">{c}</Badge>
-                      ))}
-                    </div>
-                  )}
+                )}
+                {compliance.mandatory_certifications?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {compliance.mandatory_certifications.map((c: string, i: number) => (
+                      <Badge key={i} variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">{c}</Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="text-sm space-y-1">
+                  {compliance.experience_thresholds && compliance.experience_thresholds !== "Not specified" && <p><span className="text-muted-foreground">Experience:</span> {compliance.experience_thresholds}</p>}
+                  {compliance.bonding_insurance && compliance.bonding_insurance !== "Not specified" && <p><span className="text-muted-foreground">Bonding/Insurance:</span> {compliance.bonding_insurance}</p>}
+                  {compliance.local_requirements && compliance.local_requirements !== "Not specified" && <p><span className="text-muted-foreground">Local reqs:</span> {compliance.local_requirements}</p>}
                 </div>
-              </DetailSection>
-            )}
-
-            {/* Qualification Requirements */}
-            {(quals.certifications?.length > 0 || quals.bonding || (quals.experience_years && quals.experience_years !== "not specified")) && (
-              <DetailSection title="Qualification Requirements">
-                <div className="space-y-1 text-sm">
-                  {quals.experience_years && quals.experience_years !== "not specified" && (
-                    <p><span className="text-muted-foreground">Experience:</span> {quals.experience_years}</p>
-                  )}
-                  {quals.bonding && <p><span className="text-muted-foreground">Bonding:</span> {quals.bonding}</p>}
-                  {quals.insurance_min && quals.insurance_min !== "not specified" && (
-                    <p><span className="text-muted-foreground">Insurance:</span> {quals.insurance_min}</p>
-                  )}
-                  {quals.labor_requirements && <p><span className="text-muted-foreground">Labor:</span> {quals.labor_requirements}</p>}
-                  {quals.certifications?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {quals.certifications.map((c: string) => (
-                        <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </DetailSection>
-            )}
-
-            {/* China Sourcing Restrictions */}
-            {china.restrictions?.length > 0 && (
-              <DetailSection title="China Sourcing Restrictions">
-                <ul className="text-sm space-y-1">
-                  {china.restrictions.map((r: string, i: number) => <li key={i} className="flex items-start gap-2"><span className="mt-1.5 h-1 w-1 rounded-full bg-red-400 shrink-0" />{r}</li>)}
-                </ul>
-              </DetailSection>
+              </div>
             )}
           </div>
         )}
 
-        {/* Footer metadata */}
-        <div className="flex items-center justify-between pt-2 border-t text-[10px] text-muted-foreground">
+        {/* ── 8. Compatibility Analysis ── */}
+        {isV2 && compat.compatibility_risk && compat.compatibility_risk !== "none" && (
+          <div className="px-5">
+            <SectionHeader id="compat" title="Compatibility Analysis" />
+            {expandedSections.has("compat") && (
+              <div className="pb-4 space-y-2 text-sm">
+                <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
+                  compat.compatibility_risk === "high" ? "bg-red-100 text-red-700" :
+                  compat.compatibility_risk === "medium" ? "bg-amber-100 text-amber-700" :
+                  "bg-blue-100 text-blue-700"
+                }`}>
+                  {compat.compatibility_risk} risk
+                </div>
+                {compat.existing_system && compat.existing_system !== "Not specified" && <p><span className="text-muted-foreground">Existing system:</span> {compat.existing_system}</p>}
+                {compat.brand_compatibility && compat.brand_compatibility !== "Not specified" && <p><span className="text-muted-foreground">Brand compat:</span> {compat.brand_compatibility}</p>}
+                {compat.proof_required && compat.proof_required !== "Not specified" && <p><span className="text-muted-foreground">Proof needed:</span> {compat.proof_required}</p>}
+                {compat.compatibility_notes && <p className="text-xs text-muted-foreground">{compat.compatibility_notes}</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 9. Supply Chain Feasibility ── */}
+        <div className="px-5">
+          <SectionHeader id="supply" title="Supply Chain & China Sourcing" />
+          {expandedSections.has("supply") && (
+            <div className="pb-4 space-y-2 text-sm">
+              {isV2 ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${supplyChain.china_sourcing_viable ? "bg-green-500" : "bg-red-500"}`} />
+                    <span className="font-medium">{supplyChain.china_sourcing_viable ? "China Sourcing Viable" : "China Sourcing Not Viable"}</span>
+                  </div>
+                  {supplyChain.sourcing_explanation && <p>{supplyChain.sourcing_explanation}</p>}
+                  {supplyChain.buy_domestic_restrictions?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {supplyChain.buy_domestic_restrictions.map((r: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">{r}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  {supplyChain.shipping_lead_time && supplyChain.shipping_lead_time !== "Not assessed" && <p><span className="text-muted-foreground">Lead time:</span> {supplyChain.shipping_lead_time}</p>}
+                  {supplyChain.local_installation && supplyChain.local_installation !== "Not specified" && <p><span className="text-muted-foreground">Local install:</span> {supplyChain.local_installation}</p>}
+                </>
+              ) : v1china.explanation ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${v1china.viable ? "bg-green-500" : "bg-red-500"}`} />
+                    <span className="font-medium">{v1china.viable ? "Viable" : "Not Viable"}</span>
+                  </div>
+                  <p>{v1china.explanation}</p>
+                </>
+              ) : <p className="text-muted-foreground">Not assessed.</p>}
+            </div>
+          )}
+        </div>
+
+        {/* ── 10. Participation Strategy ── */}
+        {isV2 && participation.recommended_approach && (
+          <div className="px-5">
+            <SectionHeader id="strategy" title="Participation Strategy" />
+            {expandedSections.has("strategy") && (
+              <div className="pb-4 space-y-2 text-sm">
+                <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
+                  participation.recommended_approach.includes("prime") ? "bg-emerald-100 text-emerald-700" :
+                  participation.recommended_approach === "skip" ? "bg-red-100 text-red-700" :
+                  "bg-blue-100 text-blue-700"
+                }`}>
+                  {participation.recommended_approach.replace(/_/g, " ")}
+                </div>
+                {participation.strategy_rationale && <p>{participation.strategy_rationale}</p>}
+                {participation.potential_partners && participation.potential_partners !== "Not assessed" && <p><span className="text-muted-foreground">Partners:</span> {participation.potential_partners}</p>}
+                {participation.competitive_positioning && participation.competitive_positioning !== "Not assessed" && <p><span className="text-muted-foreground">Positioning:</span> {participation.competitive_positioning}</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 11. Required Evidence ── */}
+        {isV2 && (evidence.before_bidding?.length > 0 || evidence.with_submission?.length > 0) && (
+          <div className="px-5">
+            <SectionHeader id="evidence" title="Required Evidence & Next Actions" />
+            {expandedSections.has("evidence") && (
+              <div className="pb-4 space-y-3 text-sm">
+                {evidence.before_bidding?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">Before bidding:</span>
+                    <ul className="mt-1 space-y-1">
+                      {evidence.before_bidding.map((e: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-500" />{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {evidence.with_submission?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">With submission:</span>
+                    <ul className="mt-1 space-y-1">
+                      {evidence.with_submission.map((e: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2"><FileText className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-500" />{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Footer ── */}
+        <div className="px-5 py-3 flex items-center justify-between text-[10px] text-muted-foreground bg-slate-50">
           <span>
             {analyzedAt && `Analyzed ${new Date(analyzedAt).toLocaleDateString()}`}
             {model && ` · ${model === "fallback_rule_based" ? "Rule-based" : model}`}
+            {isV2 && " · v2.0"}
           </span>
-          <span className="flex items-center gap-1">
-            <Sparkles className="h-3 w-3" /> BidToGo AI
+          <span className="flex items-center gap-1 font-medium">
+            <Sparkles className="h-3 w-3" /> BidToGo Intelligence
           </span>
         </div>
       </CardContent>
