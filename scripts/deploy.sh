@@ -150,16 +150,25 @@ $COMPOSE exec -T postgres psql -U "$PG_USER" -d "$PG_DB" -c "
     updated_at = NOW();
 " > /dev/null 2>&1 && echo "     Admin: ${ADMIN_EMAIL}" || echo "     WARNING: Admin seed failed (user may already exist)"
 
-# ── 7. Start all services ───────────────────────────────
+# ── 7. Seed sources ─────────────────────────────────────
 echo ""
-echo "6/7  Starting all services..."
-$COMPOSE up -d
+echo "6/8  Seeding sources..."
+$COMPOSE up -d scraper-api
+sleep 3
+$COMPOSE exec -T scraper-api python -m src.seeds.sources 2>&1 | tail -5 \
+  && echo "     Sources seeded." \
+  || echo "     WARNING: Source seeding failed (non-critical if sources already exist)"
+
+# ── 8. Start all services ───────────────────────────────
+echo ""
+echo "7/8  Starting all services..."
+$COMPOSE up -d --remove-orphans
 
 echo ""
-echo "7/7  Waiting for services to stabilize..."
+echo "8/8  Waiting for services to stabilize..."
 sleep 10
 
-# ── 8. Health checks ────────────────────────────────────
+# ── 9. Health checks ────────────────────────────────────
 echo ""
 echo "Running health checks..."
 

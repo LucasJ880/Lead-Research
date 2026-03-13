@@ -41,6 +41,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatDate,
   formatCurrency,
@@ -196,8 +200,8 @@ export default function OpportunityDetailPage() {
   }
 
   const backLink = (
-    <Link href="/dashboard/opportunities" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-      <ArrowLeft className="h-3.5 w-3.5" /> Opportunities
+    <Link href="/dashboard/opportunities" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <ArrowLeft className="h-4 w-4" /> Back to Opportunities
     </Link>
   );
 
@@ -205,8 +209,13 @@ export default function OpportunityDetailPage() {
     return (
       <div className="space-y-4">
         {backLink}
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Skeleton className="h-20 w-full rounded-xl" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-40 rounded-lg" />
+            <Skeleton className="h-64 rounded-lg" />
+          </div>
+          <Skeleton className="h-60 rounded-lg" />
         </div>
       </div>
     );
@@ -274,36 +283,39 @@ export default function OpportunityDetailPage() {
 
       {/* ════════════════════ DECISION BAR — sticky ════════════════════ */}
       <div className="sticky top-0 z-30 -mx-1 px-1">
-        <div className={`rounded-xl border-2 p-4 shadow-sm ${
+        <div className={`rounded-xl border p-4 shadow-sm backdrop-blur-sm ${
           hasIntel && !isFallback
-            ? "bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700 text-white"
-            : "bg-gradient-to-r from-slate-100 to-slate-50 border-slate-200 text-foreground"
+            ? "bg-slate-900/95 border-slate-700 text-white"
+            : "bg-card/95 border-border text-foreground"
         }`}>
           <div className="flex items-center gap-4 flex-wrap">
-            {/* Score */}
+            {/* Circular Score Gauge */}
             {overallScore != null && (
-              <div className={`flex h-12 w-12 items-center justify-center rounded-lg text-lg font-bold shrink-0 ${
-                hasIntel && !isFallback
-                  ? overallScore >= 65 ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/50"
-                    : overallScore >= 40 ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50"
-                    : "bg-red-500/20 text-red-300 ring-1 ring-red-400/50"
-                  : overallScore >= 65 ? "bg-emerald-100 text-emerald-700"
-                    : overallScore >= 40 ? "bg-amber-100 text-amber-700"
-                    : "bg-red-100 text-red-700"
-              }`}>
-                {overallScore}
+              <div className="relative h-14 w-14 shrink-0">
+                <svg className="h-14 w-14 -rotate-90" viewBox="0 0 56 56">
+                  <circle cx="28" cy="28" r="24" fill="none" strokeWidth="4"
+                    className={hasIntel && !isFallback ? "stroke-slate-700" : "stroke-muted"} />
+                  <circle cx="28" cy="28" r="24" fill="none" strokeWidth="4" strokeLinecap="round"
+                    className={
+                      overallScore >= 65 ? "stroke-emerald-500" : overallScore >= 40 ? "stroke-amber-500" : "stroke-red-500"
+                    }
+                    strokeDasharray={`${(overallScore / 100) * 150.8} 150.8`} />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-base font-bold">{overallScore}</span>
+                </div>
               </div>
             )}
 
-            {/* Verdict line */}
+            {/* Title + Verdict */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-sm font-bold truncate max-w-[400px]">{opp.title}</h1>
-                <Badge variant={statusVariant[opp.status] ?? "outline"} className="text-2xs shrink-0">
+                <Badge variant={statusVariant[opp.status] ?? "outline"} className="text-[10px] shrink-0">
                   {opp.status.toUpperCase()}
                 </Badge>
                 {recommendation && (
-                  <span className={`rounded px-2 py-0.5 text-[10px] font-bold tracking-wide shrink-0 ${recColors[recommendation] || "bg-gray-600 text-white"}`}>
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wide shrink-0 ${recColors[recommendation] || "bg-gray-600 text-white"}`}>
                     {recommendation.replace(/_/g, " ").toUpperCase()}
                   </span>
                 )}
@@ -318,9 +330,35 @@ export default function OpportunityDetailPage() {
                 )}
               </div>
               {verdict.one_line && (
-                <p className={`text-xs mt-0.5 truncate ${hasIntel && !isFallback ? "text-white/80" : "text-muted-foreground"}`}>
+                <p className={`text-xs mt-0.5 truncate ${hasIntel && !isFallback ? "text-white/70" : "text-muted-foreground"}`}>
                   {verdict.one_line}
                 </p>
+              )}
+
+              {/* Feasibility sub-scores inline */}
+              {isV2 && !isFallback && (scores.technical_feasibility != null || scores.compliance_feasibility != null || scores.commercial_feasibility != null) && (
+                <div className="flex items-center gap-4 mt-2">
+                  {[
+                    { label: "Tech", val: scores.technical_feasibility },
+                    { label: "Compliance", val: scores.compliance_feasibility },
+                    { label: "Commercial", val: scores.commercial_feasibility },
+                  ].map((s) => (
+                    <div key={s.label} className="flex items-center gap-1.5">
+                      <span className={`text-[10px] ${hasIntel && !isFallback ? "text-slate-400" : "text-muted-foreground"}`}>{s.label}</span>
+                      <div className={`w-12 h-1.5 rounded-full overflow-hidden ${hasIntel && !isFallback ? "bg-slate-700" : "bg-muted"}`}>
+                        <div
+                          className={`h-full rounded-full ${
+                            (s.val ?? 0) >= 65 ? "bg-emerald-500" : (s.val ?? 0) >= 40 ? "bg-amber-500" : "bg-red-500"
+                          }`}
+                          style={{ width: `${Math.min(s.val ?? 0, 100)}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-bold ${
+                        (s.val ?? 0) >= 65 ? "text-emerald-500" : (s.val ?? 0) >= 40 ? "text-amber-500" : "text-red-500"
+                      }`}>{s.val ?? "—"}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
@@ -333,12 +371,14 @@ export default function OpportunityDetailPage() {
                     key={action.value}
                     onClick={() => handleWorkflowChange(action.value)}
                     disabled={updatingWorkflow || isActive}
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium transition-all disabled:opacity-50 ${
                       isActive
-                        ? "bg-white/20 ring-1 ring-white/30 text-white"
+                        ? hasIntel && !isFallback
+                          ? "bg-white/15 ring-1 ring-white/30 text-white"
+                          : "bg-primary/10 ring-1 ring-primary/30 text-primary"
                         : hasIntel && !isFallback
                           ? "border border-slate-600 text-slate-300 hover:bg-slate-700"
-                          : "border border-input text-muted-foreground hover:bg-muted"
+                          : "border text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
                     <action.icon className="h-3 w-3" />
@@ -348,32 +388,6 @@ export default function OpportunityDetailPage() {
               })}
             </div>
           </div>
-
-          {/* Three feasibility scores bar in decision bar */}
-          {isV2 && !isFallback && (scores.technical_feasibility != null || scores.compliance_feasibility != null || scores.commercial_feasibility != null) && (
-            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-slate-700">
-              {[
-                { label: "Technical", val: scores.technical_feasibility },
-                { label: "Compliance", val: scores.compliance_feasibility },
-                { label: "Commercial", val: scores.commercial_feasibility },
-              ].map((s) => (
-                <div key={s.label} className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 w-16 shrink-0">{s.label}</span>
-                  <div className="flex-1 bg-slate-700 rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full transition-all ${
-                        (s.val ?? 0) >= 65 ? "bg-emerald-400" : (s.val ?? 0) >= 40 ? "bg-amber-400" : "bg-red-400"
-                      }`}
-                      style={{ width: `${Math.min(s.val ?? 0, 100)}%` }}
-                    />
-                  </div>
-                  <span className={`text-xs font-bold w-6 text-right ${
-                    (s.val ?? 0) >= 65 ? "text-emerald-300" : (s.val ?? 0) >= 40 ? "text-amber-300" : "text-red-300"
-                  }`}>{s.val ?? "—"}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -420,33 +434,26 @@ export default function OpportunityDetailPage() {
       )}
 
       {/* ════════════════════ TABS ════════════════════ */}
-      <div className="border-b flex items-center gap-0.5 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === tab.id
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
-            }`}
-          >
-            <tab.icon className="h-3.5 w-3.5" />
-            {tab.label}
-            {tab.count != null && tab.count > 0 && (
-              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">{tab.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
+        <TabsList className="w-full justify-start h-10 bg-muted/50 rounded-lg p-1">
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 data-[state=active]:shadow-sm text-xs">
+              <tab.icon className="h-3.5 w-3.5" />
+              {tab.label}
+              {tab.count != null && tab.count > 0 && (
+                <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{tab.count}</span>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
       {/* ════════════════════ TAB CONTENT ════════════════════ */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3 mt-4">
         <div className="lg:col-span-2 space-y-4">
           {/* ── SUMMARY TAB ── */}
           {activeTab === "summary" && (
             <>
-              {/* Metadata overview */}
+              {/* Metadata grid */}
               <Card>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
@@ -704,6 +711,7 @@ export default function OpportunityDetailPage() {
           )}
         </div>
       </div>
+      </Tabs>
     </div>
   );
 }
@@ -871,11 +879,11 @@ function MetaRow({
   value?: string | null;
 }) {
   return (
-    <div className="flex items-start gap-2">
-      <Icon className="mt-px h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+    <div className="flex items-start gap-2.5">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60" />
       <div className="min-w-0 flex-1">
-        <p className="text-2xs text-muted-foreground">{label}</p>
-        <p className="text-xs font-medium break-words">{value || "—"}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-sm font-medium break-words">{value || "—"}</p>
       </div>
     </div>
   );

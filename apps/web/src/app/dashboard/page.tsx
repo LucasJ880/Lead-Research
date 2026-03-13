@@ -8,7 +8,6 @@ import {
   CalendarClock,
   TrendingUp,
   ArrowUpRight,
-  ExternalLink,
   Play,
   Loader2,
   Sparkles,
@@ -21,8 +20,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Server,
+  RefreshCw,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import {
   formatDate,
   getRelevanceColor,
@@ -63,7 +65,7 @@ export default function DashboardPage() {
         const body = await res.json().catch(() => ({}));
         setCrawlMessage(`Error: ${body.error || res.statusText}`);
       } else {
-        setCrawlMessage("Crawler dispatched. Check logs to track progress.");
+        setCrawlMessage("Crawler dispatched. Check logs for progress.");
         setTimeout(fetchStats, 5000);
         setTimeout(fetchStats, 15000);
         setTimeout(fetchStats, 30000);
@@ -82,20 +84,22 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-5">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Overview</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Loading intelligence data...</p>
+            <Skeleton className="h-6 w-32 mb-1" />
+            <Skeleton className="h-4 w-48" />
           </div>
+          <Skeleton className="h-8 w-28" />
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-lg border bg-card p-4">
-              <div className="h-3 w-24 animate-pulse rounded bg-muted mb-3" />
-              <div className="h-7 w-16 animate-pulse rounded bg-muted" />
-            </div>
+            <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Skeleton className="h-64 rounded-lg lg:col-span-2" />
+          <Skeleton className="h-64 rounded-lg" />
         </div>
       </div>
     );
@@ -103,14 +107,16 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="space-y-5">
+      <div className="space-y-4">
         <h1 className="text-xl font-bold tracking-tight">Overview</h1>
-        <div className="rounded-lg border bg-card p-6 text-center space-y-3">
+        <div className="rounded-lg border bg-card p-8 text-center space-y-3">
+          <AlertTriangle className="mx-auto h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-destructive">{error}</p>
           <button
             onClick={() => { setError(null); setLoading(true); fetchStats(); }}
             className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
           >
+            <RefreshCw className="h-3.5 w-3.5" />
             Try again
           </button>
         </div>
@@ -127,10 +133,10 @@ export default function DashboardPage() {
   const intel = stats.intelligence;
 
   const METRICS = [
-    { label: "Relevant Leads", value: stats.openOpportunities, icon: FolderOpen, accent: "text-emerald-600", bg: "bg-emerald-500/10", href: "/dashboard/opportunities" },
-    { label: "Highly Relevant", value: stats.highRelevanceLeads, icon: TrendingUp, accent: "text-blue-600", bg: "bg-blue-500/10", href: "/dashboard/opportunities?bucket=highly_relevant" },
-    { label: "New (24h)", value: stats.newLast24h, icon: Sparkles, accent: "text-violet-600", bg: "bg-violet-500/10", href: "/dashboard/opportunities?sort=newest" },
-    { label: "Closing Soon", value: stats.closingThisWeek, icon: CalendarClock, accent: "text-amber-600", bg: "bg-amber-500/10", href: "/dashboard/opportunities?sort=closing_soon" },
+    { label: "Total Leads", value: stats.openOpportunities, icon: FolderOpen, color: "text-emerald-600 bg-emerald-50", href: "/dashboard/opportunities" },
+    { label: "Highly Relevant", value: stats.highRelevanceLeads, icon: TrendingUp, color: "text-blue-600 bg-blue-50", href: "/dashboard/opportunities?bucket=highly_relevant" },
+    { label: "New (24h)", value: stats.newLast24h, icon: Sparkles, color: "text-violet-600 bg-violet-50", href: "/dashboard/opportunities?sort=newest" },
+    { label: "Closing Soon", value: stats.closingThisWeek, icon: CalendarClock, color: "text-amber-600 bg-amber-50", href: "/dashboard/opportunities?sort=closing_soon" },
   ];
 
   const pipelineStages = [
@@ -143,23 +149,23 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Overview</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {sn ? `${sn.activeSources} active sources` : "Procurement intelligence"}
+          <h1 className="text-xl font-bold tracking-tight">Command Center</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {sn ? `${sn.activeSources} active source${sn.activeSources !== 1 ? "s" : ""}` : "Procurement intelligence"}
             {stats.totalOpportunities > 0 && ` · ${stats.totalOpportunities.toLocaleString()} total opportunities`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {crawlMessage && (
-            <span className="text-2xs text-muted-foreground max-w-[200px] truncate">{crawlMessage}</span>
+            <span className="rounded-md border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground max-w-[240px] truncate">{crawlMessage}</span>
           )}
           <button
             onClick={triggerCrawl}
             disabled={crawlRunning}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm"
           >
             {crawlRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
             Run Crawler
@@ -167,16 +173,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Last crawl status — compact bar */}
+      {/* Last crawl status */}
       {stats.lastCrawlRun && (
-        <div className={`flex items-center justify-between rounded-md border px-3 py-2 text-xs ${
-          stats.lastCrawlRun.status === "completed" ? "border-emerald-200 bg-emerald-50/50" :
-          stats.lastCrawlRun.status === "failed" ? "border-red-200 bg-red-50/50" :
-          stats.lastCrawlRun.status === "running" ? "border-blue-200 bg-blue-50/50" :
-          "border-amber-200 bg-amber-50/50"
+        <div className={`flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm ${
+          stats.lastCrawlRun.status === "completed" ? "border-emerald-200 bg-emerald-50/60" :
+          stats.lastCrawlRun.status === "failed" ? "border-red-200 bg-red-50/60" :
+          stats.lastCrawlRun.status === "running" ? "border-blue-200 bg-blue-50/60" :
+          "border-amber-200 bg-amber-50/60"
         }`}>
-          <div className="flex items-center gap-2">
-            <Activity className={`h-3.5 w-3.5 ${
+          <div className="flex items-center gap-2.5">
+            <Activity className={`h-4 w-4 ${
               stats.lastCrawlRun.status === "completed" ? "text-emerald-600" :
               stats.lastCrawlRun.status === "failed" ? "text-red-600" :
               stats.lastCrawlRun.status === "running" ? "text-blue-600 animate-pulse" :
@@ -187,7 +193,7 @@ export default function DashboardPage() {
               {stats.lastCrawlRun.sourceName} · {stats.lastCrawlRun.opportunitiesFound} found, {stats.lastCrawlRun.opportunitiesCreated} new
             </span>
           </div>
-          <Link href="/dashboard/logs" className="font-medium text-primary hover:underline">Logs</Link>
+          <Link href="/dashboard/logs" className="text-sm font-medium text-primary hover:underline">View logs</Link>
         </div>
       )}
 
@@ -195,73 +201,68 @@ export default function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {METRICS.map((m) => (
           <Link key={m.label} href={m.href}>
-            <div className="group rounded-lg border bg-card p-4 hover:border-primary/30 transition-all cursor-pointer">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
-                <div className={`rounded-md p-1.5 ${m.bg}`}>
-                  <m.icon className={`h-3.5 w-3.5 ${m.accent}`} />
+            <div className="group rounded-lg border bg-card p-4 hover:shadow-md hover:border-primary/20 transition-all cursor-pointer">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{m.label}</span>
+                <div className={`rounded-lg p-1.5 ${m.color}`}>
+                  <m.icon className="h-4 w-4" />
                 </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold tracking-tight text-tabular">{m.value.toLocaleString()}</span>
-              </div>
+              <span className="text-3xl font-bold tracking-tight text-tabular">{m.value.toLocaleString()}</span>
             </div>
           </Link>
         ))}
       </div>
 
-      {/* Main content: 2-column layout */}
-      <div className="grid gap-5 lg:grid-cols-3">
-        {/* Left column: Opportunities feed */}
-        <div className="lg:col-span-2 space-y-5">
+      {/* Main grid */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Left: Opportunities + Relevance */}
+        <div className="lg:col-span-2 space-y-4">
           {/* Top Opportunities */}
-          <Card>
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Top Relevant Opportunities</CardTitle>
-              <Link href="/dashboard/opportunities" className="text-2xs font-medium text-primary hover:underline flex items-center gap-0.5">
+          <div className="rounded-lg border bg-card">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="text-sm font-semibold">Top Opportunities</h3>
+              <Link href="/dashboard/opportunities" className="text-xs font-medium text-primary hover:underline flex items-center gap-0.5">
                 View all <ArrowUpRight className="h-3 w-3" />
               </Link>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {stats.recentOpportunities.map((opp) => (
-                  <Link
-                    key={opp.id}
-                    href={`/dashboard/opportunities/${opp.id}`}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors group"
-                  >
-                    <span className={`shrink-0 inline-flex items-center justify-center rounded-md w-8 h-6 text-2xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
-                      {opp.relevanceScore}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{opp.title}</p>
-                      <p className="text-2xs text-muted-foreground truncate">
-                        {opp.organization || "Unknown"} · {opp.sourceName}
-                        {opp.closingDate && ` · Closes ${formatDate(opp.closingDate)}`}
-                      </p>
-                    </div>
-                    <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-2xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
-                      {getBucketLabel(opp.relevanceBucket)}
-                    </span>
-                  </Link>
-                ))}
-                {stats.recentOpportunities.length === 0 && (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    No relevant opportunities found yet. Run the crawler to start collecting.
+            </div>
+            <div className="divide-y">
+              {stats.recentOpportunities.map((opp) => (
+                <Link
+                  key={opp.id}
+                  href={`/dashboard/opportunities/${opp.id}`}
+                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors group"
+                >
+                  <div className={`shrink-0 flex items-center justify-center rounded-md w-9 h-7 text-xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
+                    {opp.relevanceScore}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{opp.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {opp.organization || "Unknown"} · {opp.sourceName}
+                      {opp.closingDate && ` · Closes ${formatDate(opp.closingDate)}`}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
+                    {getBucketLabel(opp.relevanceBucket)}
+                  </span>
+                </Link>
+              ))}
+              {stats.recentOpportunities.length === 0 && (
+                <div className="px-4 py-10 text-center">
+                  <FileSearch className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">No opportunities yet. Run the crawler to start collecting.</p>
+                </div>
+              )}
+            </div>
+          </div>
 
-          {/* Relevance distribution + Top sources side-by-side */}
-          <div className="grid gap-5 sm:grid-cols-2">
+          {/* Relevance + Sources row */}
+          <div className="grid gap-4 sm:grid-cols-2">
             {bd && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">Relevance Breakdown</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2.5">
+              <div className="rounded-lg border bg-card p-4">
+                <h3 className="text-sm font-semibold mb-3">Relevance Distribution</h3>
+                <div className="space-y-3">
                   {(["highly_relevant", "moderately_relevant", "low_relevance", "irrelevant"] as const).map((bucket) => {
                     const count = bd[bucket];
                     const total = stats.totalOpportunities || 1;
@@ -274,157 +275,148 @@ export default function DashboardPage() {
                     return (
                       <div key={bucket}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-2xs font-medium text-muted-foreground">{getBucketLabel(bucket)}</span>
-                          <span className="text-xs font-bold text-tabular">{count}</span>
+                          <span className="text-xs text-muted-foreground">{getBucketLabel(bucket)}</span>
+                          <span className="text-xs font-semibold text-tabular">{count} <span className="text-muted-foreground font-normal">({pct}%)</span></span>
                         </div>
-                        <div className="h-1 rounded-full bg-muted overflow-hidden">
-                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                         </div>
                       </div>
                     );
                   })}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
             {topSources.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">Top Sources</CardTitle>
-                  <Link href="/dashboard/sources" className="text-2xs font-medium text-primary hover:underline">
-                    All
-                  </Link>
-                </CardHeader>
-                <CardContent className="space-y-2">
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold">Source Performance</h3>
+                  <Link href="/dashboard/sources" className="text-xs font-medium text-primary hover:underline">All</Link>
+                </div>
+                <div className="space-y-2.5">
                   {topSources.slice(0, 5).map((s) => {
                     const pct = s.total > 0 ? Math.round((s.relevant / s.total) * 100) : 0;
                     return (
-                      <div key={s.name} className="flex items-center gap-2">
-                        <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="text-xs font-medium truncate flex-1">{s.name}</span>
-                        <span className="text-2xs text-muted-foreground text-tabular">{s.relevant}/{s.total}</span>
-                        <span className="text-2xs font-bold text-tabular w-8 text-right">{pct}%</span>
+                      <div key={s.name} className="flex items-center gap-2.5">
+                        <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium truncate flex-1">{s.name}</span>
+                        <span className="text-xs text-muted-foreground text-tabular">{s.relevant}/{s.total}</span>
+                        <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs font-semibold text-tabular w-9 text-right">{pct}%</span>
                       </div>
                     );
                   })}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Right column: Intelligence + Pipeline + Source Health */}
-        <div className="space-y-5">
-          {/* AI Intelligence summary */}
+        {/* Right column */}
+        <div className="space-y-4">
+          {/* AI Intelligence */}
           {intel && intel.analyzedCount > 0 && (
-            <Card className="border-blue-200/60">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                  <CardTitle className="text-sm font-semibold">AI Intelligence</CardTitle>
+            <div className="rounded-lg border border-blue-200/60 bg-card p-4">
+              <div className="flex items-center gap-1.5 mb-3">
+                <Sparkles className="h-4 w-4 text-blue-600" />
+                <h3 className="text-sm font-semibold">AI Intelligence</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="rounded-md bg-blue-50 p-2.5 text-center">
+                  <p className="text-xl font-bold text-blue-600 text-tabular">{intel.analyzedCount}</p>
+                  <p className="text-[10px] text-blue-600/60 font-medium uppercase tracking-wide">Analyzed</p>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border p-2.5 text-center">
-                    <p className="text-lg font-bold text-blue-600 text-tabular">{intel.analyzedCount}</p>
-                    <p className="text-2xs text-muted-foreground">Analyzed</p>
-                  </div>
-                  <div className="rounded-md border p-2.5 text-center">
-                    <p className="text-lg font-bold text-tabular">{intel.avgFeasibility}</p>
-                    <p className="text-2xs text-muted-foreground">Avg Score</p>
-                  </div>
+                <div className="rounded-md bg-muted/50 p-2.5 text-center">
+                  <p className="text-xl font-bold text-tabular">{intel.avgFeasibility}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Avg Score</p>
                 </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    Pursue <span className="font-bold text-tabular">{intel.pursueCount}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-amber-500" />
-                    Review <span className="font-bold text-tabular">{intel.reviewCount}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-slate-400" />
-                    Skip <span className="font-bold text-tabular">{intel.skipCount}</span>
-                  </span>
-                </div>
-                <Link href="/dashboard/intelligence" className="block text-center text-2xs font-medium text-primary hover:underline">
-                  View all reports
-                </Link>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex items-center justify-between text-xs mb-3">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Pursue <span className="font-bold text-tabular">{intel.pursueCount}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  Review <span className="font-bold text-tabular">{intel.reviewCount}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-slate-400" />
+                  Skip <span className="font-bold text-tabular">{intel.skipCount}</span>
+                </span>
+              </div>
+              <Link href="/dashboard/intelligence" className="block text-center text-xs font-medium text-primary hover:underline py-1">
+                View all reports →
+              </Link>
+            </div>
           )}
 
           {/* Pipeline */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Pipeline</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold mb-3">Pipeline</h3>
+            <div className="space-y-1">
               {pipelineStages.map(({ key, icon: Icon, label }) => {
                 const count = wd[key] ?? 0;
                 return (
                   <Link
                     key={key}
                     href={`/dashboard/opportunities?workflow=${key}`}
-                    className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between rounded-md px-2.5 py-2 hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-center gap-2">
-                      <div className={`rounded p-1 ${getWorkflowColor(key)}`}>
-                        <Icon className="h-3 w-3" />
+                    <div className="flex items-center gap-2.5">
+                      <div className={`rounded-md p-1 ${getWorkflowColor(key)}`}>
+                        <Icon className="h-3.5 w-3.5" />
                       </div>
-                      <span className="text-xs font-medium">{label}</span>
+                      <span className="text-sm font-medium">{label}</span>
                     </div>
                     <span className="text-sm font-bold text-tabular">{count}</span>
                   </Link>
                 );
               })}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Source health */}
+          {/* Source Health */}
           {sn && (
-            <Card>
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-semibold">Source Health</CardTitle>
-                <Link href="/dashboard/sources" className="text-2xs font-medium text-primary hover:underline">
-                  Details
-                </Link>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="rounded-md border p-2">
-                    <p className="text-lg font-bold text-tabular">{sn.activeSources}</p>
-                    <p className="text-2xs text-muted-foreground">Active</p>
-                  </div>
-                  <div className="rounded-md border p-2">
-                    <p className="text-lg font-bold text-tabular">{sn.crawlRunsLast24h}</p>
-                    <p className="text-2xs text-muted-foreground">Crawls (24h)</p>
-                  </div>
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Source Health</h3>
+                <Link href="/dashboard/sources" className="text-xs font-medium text-primary hover:underline">Details</Link>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="rounded-md bg-muted/50 p-2.5 text-center">
+                  <p className="text-xl font-bold text-tabular">{sn.activeSources}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Active</p>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(["healthy", "degraded", "failing", "untested"] as const).map((h) => {
-                    const count = sn.healthCounts[h] ?? 0;
-                    if (count === 0) return null;
-                    const icons: Record<string, typeof CheckCircle2> = {
-                      healthy: CheckCircle2, degraded: AlertTriangle, failing: AlertTriangle, untested: Server,
-                    };
-                    const colors: Record<string, string> = {
-                      healthy: "text-emerald-600", degraded: "text-amber-500", failing: "text-red-500", untested: "text-slate-400",
-                    };
-                    const HIcon = icons[h];
-                    return (
-                      <span key={h} className="inline-flex items-center gap-1 text-2xs">
-                        <HIcon className={`h-3 w-3 ${colors[h]}`} />
-                        <span className="capitalize">{h}</span>
-                        <span className="font-bold">{count}</span>
-                      </span>
-                    );
-                  })}
+                <div className="rounded-md bg-muted/50 p-2.5 text-center">
+                  <p className="text-xl font-bold text-tabular">{sn.crawlRunsLast24h}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Crawls 24h</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(["healthy", "degraded", "failing", "untested"] as const).map((h) => {
+                  const count = sn.healthCounts[h] ?? 0;
+                  if (count === 0) return null;
+                  const icons: Record<string, typeof CheckCircle2> = {
+                    healthy: CheckCircle2, degraded: AlertTriangle, failing: AlertTriangle, untested: Server,
+                  };
+                  const colors: Record<string, string> = {
+                    healthy: "text-emerald-600", degraded: "text-amber-500", failing: "text-red-500", untested: "text-slate-400",
+                  };
+                  const HIcon = icons[h];
+                  return (
+                    <span key={h} className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-1 text-xs">
+                      <HIcon className={`h-3.5 w-3.5 ${colors[h]}`} />
+                      <span className="capitalize">{h}</span>
+                      <span className="font-bold">{count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       </div>

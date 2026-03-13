@@ -23,6 +23,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils";
 import type { SourceItem, RunStatus, SourcePriority, SourceHealthStatus, AccessMode } from "@/types";
 
@@ -37,12 +39,12 @@ const runStatusConfig: Record<
   cancelled: { icon: XCircle, color: "text-slate-400", label: "Cancelled" },
 };
 
-const healthConfig: Record<SourceHealthStatus, { icon: typeof CheckCircle2; color: string; label: string }> = {
-  healthy: { icon: CheckCircle2, color: "text-emerald-600", label: "Healthy" },
-  degraded: { icon: AlertTriangle, color: "text-amber-500", label: "Degraded" },
-  failing: { icon: XCircle, color: "text-red-500", label: "Failing" },
-  unsupported: { icon: AlertCircle, color: "text-slate-400", label: "Unsupported" },
-  untested: { icon: HelpCircle, color: "text-slate-400", label: "Untested" },
+const healthConfig: Record<SourceHealthStatus, { icon: typeof CheckCircle2; color: string; label: string; dotColor: string }> = {
+  healthy: { icon: CheckCircle2, color: "text-emerald-600", label: "Healthy", dotColor: "bg-emerald-500" },
+  degraded: { icon: AlertTriangle, color: "text-amber-500", label: "Degraded", dotColor: "bg-amber-500" },
+  failing: { icon: XCircle, color: "text-red-500", label: "Failing", dotColor: "bg-red-500" },
+  unsupported: { icon: AlertCircle, color: "text-slate-400", label: "Unsupported", dotColor: "bg-slate-400" },
+  untested: { icon: HelpCircle, color: "text-slate-400", label: "Untested", dotColor: "bg-slate-400" },
 };
 
 const priorityBadge: Record<SourcePriority, string> = {
@@ -164,10 +166,10 @@ export default function SourcesPage() {
   }, [sources]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Source Intelligence</h1>
+          <h1 className="text-xl font-bold tracking-tight">Sources</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {sources.length} sources registered &middot;{" "}
             {priorityCounts["critical"] ?? 0} critical &middot;{" "}
@@ -194,11 +196,11 @@ export default function SourcesPage() {
           { label: "Avg Fit Score", value: avgFit, icon: Zap, color: "text-amber-600 bg-amber-50" },
         ].map((c) => (
           <Card key={c.label}>
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{c.label}</p>
-                  <p className="mt-2 text-3xl font-bold tracking-tight">{c.value.toLocaleString()}</p>
+                  <p className="mt-2 text-2xl font-bold tracking-tight">{c.value.toLocaleString()}</p>
                 </div>
                 <div className={`rounded-lg p-2.5 ${c.color}`}>
                   <c.icon className="h-5 w-5" />
@@ -281,59 +283,59 @@ export default function SourcesPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           )}
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-3">
+          <Table className="w-full text-sm">
+            <TableHeader>
+              <TableRow className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
+                <TableHead className="px-4 py-3">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("name")}>
                     Source <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3 text-center">
+                </TableHead>
+                <TableHead className="px-4 py-3 text-center">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("priority")}>
                     Priority <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Access</th>
-                <th className="px-4 py-3">Region</th>
-                <th className="px-4 py-3 text-center">
+                </TableHead>
+                <TableHead className="px-4 py-3">Type</TableHead>
+                <TableHead className="px-4 py-3">Access</TableHead>
+                <TableHead className="px-4 py-3">Region</TableHead>
+                <TableHead className="px-4 py-3 text-center">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("fit")}>
                     Fit <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3 text-right">
+                </TableHead>
+                <TableHead className="px-4 py-3 text-right">
                   <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("total")}>
                     Opps <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3 text-right">
+                </TableHead>
+                <TableHead className="px-4 py-3 text-right">
                   <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("relevant")}>
                     Relevant <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3 text-right">
+                </TableHead>
+                <TableHead className="px-4 py-3 text-right">
                   <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("yield")}>
                     Yield% <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3 text-center">Runs</th>
-                <th className="px-4 py-3">
+                </TableHead>
+                <TableHead className="px-4 py-3 text-center">Runs</TableHead>
+                <TableHead className="px-4 py-3">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("health")}>
                     Health <ArrowUpDown className="h-3 w-3" />
                   </button>
-                </th>
-                <th className="px-4 py-3 whitespace-nowrap">Last Crawled</th>
-                <th className="px-4 py-3 text-center">Active</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+                </TableHead>
+                <TableHead className="px-4 py-3 whitespace-nowrap">Last Crawled</TableHead>
+                <TableHead className="px-4 py-3 text-center">Active</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y">
               {filtered.map((source) => {
                 const hi = healthConfig[source.healthStatus] ?? healthConfig.untested;
                 const HealthIcon = hi.icon;
                 return (
-                  <tr key={source.id} className="hover:bg-muted/50 transition-colors">
-                    <td className="px-4 py-3">
+                  <TableRow key={source.id}>
+                    <TableCell className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
                           <Globe className="h-4 w-4 text-muted-foreground" />
@@ -345,18 +347,18 @@ export default function SourcesPage() {
                           </p>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold capitalize ${priorityBadge[source.sourcePriority] ?? priorityBadge.medium}`}>
                         {source.sourcePriority}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       <Badge variant="outline" className="text-xs capitalize whitespace-nowrap">
                         {source.sourceType.replace("_", " ")}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       {(() => {
                         const am = accessModeConfig[source.accessMode] ?? accessModeConfig.http_scrape;
                         return (
@@ -365,22 +367,22 @@ export default function SourcesPage() {
                           </span>
                         );
                       })()}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                       {source.region ?? source.country}
-                    </td>
-                    <td className="px-4 py-3 text-center">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${fitBadge(source.industryFitScore)}`}>
                         {source.industryFitScore}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-right font-medium tabular-nums">
                       {source.totalOpportunities}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium tabular-nums text-emerald-600">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-right font-medium tabular-nums text-emerald-600">
                       {source.relevantOpportunities}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-right tabular-nums">
                       {source.totalOpportunities > 0 ? (
                         <span className={source.sourceYieldPct >= 20 ? "text-emerald-600 font-medium" : "text-muted-foreground"}>
                           {source.sourceYieldPct}%
@@ -388,22 +390,23 @@ export default function SourcesPage() {
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-center tabular-nums">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-center tabular-nums">
                       <span className="text-xs text-muted-foreground">
                         {source.successfulCrawlRuns}/{source.totalCrawlRuns}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${hi.color}`}>
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${hi.dotColor}`} />
                         <HealthIcon className="h-3.5 w-3.5" />
                         {hi.label}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                       {formatDate(source.lastCrawledAt, "MMM d, h:mm a")}
-                    </td>
-                    <td className="px-4 py-3 text-center">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-center">
                       {source.isActive ? (
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100">
                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -413,19 +416,19 @@ export default function SourcesPage() {
                           <Pause className="h-3.5 w-3.5 text-slate-400" />
                         </span>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
               {!loading && filtered.length === 0 && (
-                <tr>
-                  <td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
                     {search ? "No sources match your search." : "No sources configured yet."}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </Card>
     </div>

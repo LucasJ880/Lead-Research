@@ -20,6 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const PRIMARY_KEYWORDS = [
   "blinds", "blind", "roller shade", "roller shades", "roller blind", "roller blinds",
@@ -110,12 +111,21 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-xl font-bold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Platform configuration, admin actions, and intelligence reference
         </p>
       </div>
 
+      <Tabs defaultValue="general">
+        <TabsList className="w-full justify-start mb-4">
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="crawling">Crawling</TabsTrigger>
+          <TabsTrigger value="keywords">Keywords</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="general" className="space-y-4">
       {/* ─── Business Focus Mode ─── */}
       <Card>
         <CardHeader className="pb-4">
@@ -184,7 +194,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="crawling" className="space-y-4">
       {/* ─── Source Status Overview ─── */}
       <Card>
         <CardHeader className="pb-4">
@@ -257,7 +269,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="keywords" className="space-y-4">
       {/* ─── Industry Keyword Dictionary ─── */}
       <Card>
         <CardHeader className="pb-4">
@@ -322,7 +336,9 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="system" className="space-y-4">
       {/* ─── Relevance Scoring Reference ─── */}
       <Card>
         <CardHeader className="pb-4">
@@ -403,6 +419,8 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

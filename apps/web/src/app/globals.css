@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99%;
+    --background: 210 20% 98%;
     --foreground: 220 20% 10%;
     --card: 0 0% 100%;
     --card-foreground: 220 20% 10%;
@@ -16,14 +16,14 @@
     --secondary-foreground: 220 20% 10%;
     --muted: 216 18% 95%;
     --muted-foreground: 215 14% 46%;
-    --accent: 215 20% 95%;
+    --accent: 215 25% 93%;
     --accent-foreground: 220 20% 10%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     --border: 216 12% 90%;
-    --input: 216 12% 90%;
+    --input: 216 12% 84%;
     --ring: 217 91% 60%;
-    --radius: 0.375rem;
+    --radius: 0.5rem;
 
     --sidebar: 222 47% 6%;
     --sidebar-foreground: 214 32% 91%;
@@ -34,6 +34,12 @@
     --brand-navy: 222 47% 6%;
     --brand-blue: 217 91% 60%;
     --brand-gold: 38 92% 50%;
+
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 262 83% 58%;
+    --chart-5: 0 72% 51%;
   }
 
   .dark {
@@ -64,6 +70,11 @@
     --brand-navy: 222 47% 4%;
     --brand-blue: 217 91% 60%;
     --brand-gold: 38 92% 50%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 262 83% 58%;
+    --chart-5: 0 72% 51%;
   }
 }
 
@@ -72,10 +83,9 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
-  /* Tighter heading tracking for data-dense feel */
   h1, h2, h3, h4, h5, h6 {
     letter-spacing: -0.025em;
   }

@@ -15,6 +15,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CrawlLogEntry, PaginatedResponse, RunStatus } from "@/types";
 
 const STATUS_CONFIG: Record<
@@ -146,11 +147,11 @@ export default function LogsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Crawl Logs</h1>
+          <h1 className="text-xl font-bold tracking-tight">Crawl Logs</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Source-level crawl execution history &middot; {total} total runs
           </p>
@@ -189,31 +190,31 @@ export default function LogsPage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-muted-foreground">Runs on Page</p>
-            <p className="mt-1 text-2xl font-bold">{summary.total}</p>
+            <p className="mt-1 text-xl font-bold">{summary.total}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-emerald-600">Completed</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-600">{summary.completed}</p>
+            <p className="mt-1 text-xl font-bold text-emerald-600">{summary.completed}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-red-600">Failed</p>
-            <p className="mt-1 text-2xl font-bold text-red-600">{summary.failed}</p>
+            <p className="mt-1 text-xl font-bold text-red-600">{summary.failed}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-blue-600">Running / Pending</p>
-            <p className="mt-1 text-2xl font-bold text-blue-600">{summary.running}</p>
+            <p className="mt-1 text-xl font-bold text-blue-600">{summary.running}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-muted-foreground">Opps Found / Inserted</p>
-            <p className="mt-1 text-2xl font-bold">
+            <p className="mt-1 text-xl font-bold">
               {summary.totalFound}{" "}
               <span className="text-sm font-normal text-muted-foreground">
                 / {summary.totalInserted} new
@@ -246,28 +247,28 @@ export default function LogsPage() {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      <th className="pb-3 pr-4">Status</th>
-                      <th className="pb-3 pr-4">Source</th>
-                      <th className="pb-3 pr-4">Trigger</th>
-                      <th className="pb-3 pr-4">Started</th>
-                      <th className="pb-3 pr-4">Duration</th>
-                      <th className="pb-3 pr-4 text-right">Pages</th>
-                      <th className="pb-3 pr-4 text-right">Found</th>
-                      <th className="pb-3 pr-4 text-right">New</th>
-                      <th className="pb-3 pr-4 text-right">Updated</th>
-                      <th className="pb-3">Error</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
+                      <TableHead className="pb-3 pr-4">Status</TableHead>
+                      <TableHead className="pb-3 pr-4">Source</TableHead>
+                      <TableHead className="pb-3 pr-4">Trigger</TableHead>
+                      <TableHead className="pb-3 pr-4">Started</TableHead>
+                      <TableHead className="pb-3 pr-4">Duration</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">Pages</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">Found</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">New</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">Updated</TableHead>
+                      <TableHead className="pb-3">Error</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {runs.map((run) => {
                       const cfg = STATUS_CONFIG[run.status] || STATUS_CONFIG.pending;
                       const StatusIcon = cfg.icon;
                       return (
-                        <tr key={run.id} className="hover:bg-muted/50 transition-colors">
-                          <td className="py-3 pr-4">
+                        <TableRow key={run.id} className="hover:bg-muted/50 transition-colors">
+                          <TableCell className="py-3 pr-4">
                             <span
                               className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium ${cfg.color}`}
                             >
@@ -276,11 +277,11 @@ export default function LogsPage() {
                               />
                               {cfg.label}
                             </span>
-                          </td>
-                          <td className="py-3 pr-4 font-medium max-w-[180px] truncate">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 font-medium max-w-[180px] truncate">
                             {run.sourceName}
-                          </td>
-                          <td className="py-3 pr-4 text-muted-foreground text-xs">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-muted-foreground text-xs">
                             {run.triggeredBy === "local_agent" ? (
                               <span className="inline-flex items-center gap-1">
                                 <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
@@ -289,20 +290,20 @@ export default function LogsPage() {
                             ) : (
                               <span className="capitalize">{run.triggeredBy}</span>
                             )}
-                          </td>
-                          <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap text-xs">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-muted-foreground whitespace-nowrap text-xs">
                             {formatTime(run.startedAt || run.createdAt)}
-                          </td>
-                          <td className="py-3 pr-4 text-muted-foreground whitespace-nowrap text-xs">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-muted-foreground whitespace-nowrap text-xs">
                             {formatDuration(run.durationMs)}
-                          </td>
-                          <td className="py-3 pr-4 text-right tabular-nums">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-right tabular-nums">
                             {run.pagesCrawled}
-                          </td>
-                          <td className="py-3 pr-4 text-right tabular-nums">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-right tabular-nums">
                             {run.opportunitiesFound}
-                          </td>
-                          <td className="py-3 pr-4 text-right tabular-nums font-medium">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-right tabular-nums font-medium">
                             {run.opportunitiesCreated > 0 ? (
                               <span className="text-emerald-600">
                                 +{run.opportunitiesCreated}
@@ -310,11 +311,11 @@ export default function LogsPage() {
                             ) : (
                               run.opportunitiesCreated
                             )}
-                          </td>
-                          <td className="py-3 pr-4 text-right tabular-nums">
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-right tabular-nums">
                             {run.opportunitiesUpdated}
-                          </td>
-                          <td className="py-3 max-w-[200px]">
+                          </TableCell>
+                          <TableCell className="py-3 max-w-[200px]">
                             {run.errorMessage ? (
                               <span
                                 className="text-xs text-red-600 line-clamp-2"
@@ -325,12 +326,12 @@ export default function LogsPage() {
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
 
               {/* Pagination */}

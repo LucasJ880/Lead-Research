@@ -14,7 +14,19 @@ import {
   Loader2,
   Eye,
   Sparkles,
+  FileSearch,
+  ChevronDown,
 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatDate,
   getRelevanceColor,
@@ -25,23 +37,11 @@ import type {
   OpportunitySummary,
   OpportunityStatus,
   PaginatedResponse,
-  RelevanceBucket,
-  WorkflowStatus,
 } from "@/types";
-import { getWorkflowLabel, getWorkflowColor } from "@/lib/utils";
 
 const QUICK_FILTERS = [
-  "Blinds",
-  "Shades",
-  "Curtains",
-  "Fabric",
-  "Linen",
-  "Bedding",
-  "Window Coverings",
-  "FF&E",
-  "Hospitality",
-  "Healthcare",
-  "School",
+  "Blinds", "Shades", "Curtains", "Fabric", "Linen", "Bedding",
+  "Window Coverings", "FF&E", "Hospitality", "Healthcare", "School",
 ] as const;
 
 const BUCKET_OPTIONS: { label: string; value: string }[] = [
@@ -95,11 +95,65 @@ function buildQueryString(params: Record<string, string | number>): string {
   return searchParams.toString();
 }
 
+function ScoreBar({ score }: { score: number }) {
+  const color = score >= 80 ? "bg-emerald-500" : score >= 60 ? "bg-blue-500" : score >= 40 ? "bg-amber-400" : score >= 20 ? "bg-orange-400" : "bg-slate-300";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-bold text-tabular w-6 text-right">{score}</span>
+      <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${score}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function AnalysisBadge({ opp }: { opp: OpportunitySummary }) {
+  if (!opp.hasIntelligence) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
+        <Sparkles className="h-3 w-3" /> None
+      </span>
+    );
+  }
+  if (opp.analysisMode === "deep") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-medium text-emerald-700">
+        <Sparkles className="h-3 w-3" /> Deep
+      </span>
+    );
+  }
+  if (opp.analysisModel === "fallback_rule_based") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+        <Sparkles className="h-3 w-3" /> Rule
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-medium text-blue-700">
+      <Sparkles className="h-3 w-3" /> Quick
+    </span>
+  );
+}
+
 export default function OpportunitiesPageWrapper() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading…</div>}>
+    <Suspense fallback={<OpportunitiesLoadingSkeleton />}>
       <OpportunitiesPage />
     </Suspense>
+  );
+}
+
+function OpportunitiesLoadingSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-8 w-24" />
+      </div>
+      <Skeleton className="h-9 w-full" />
+      <Skeleton className="h-[400px] w-full rounded-lg" />
+    </div>
   );
 }
 
@@ -120,9 +174,9 @@ function OpportunitiesPage() {
   const [minRelevance, setMinRelevance] = useState(0);
   const [closingAfter, setClosingAfter] = useState("");
   const [closingBefore, setClosingBefore] = useState("");
-  const [showFilters, setShowFilters] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [page, setPage] = useState(1);
-  const pageSize = 15;
+  const pageSize = 20;
   const [businessFocus, setBusinessFocus] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("bidtogo_business_focus") !== "false";
@@ -183,20 +237,7 @@ function OpportunitiesPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [
-    debouncedKeyword,
-    statusFilter,
-    workflowFilter,
-    countryFilter,
-    effectiveBucket,
-    tagFilter,
-    minRelevance,
-    closingAfter,
-    closingBefore,
-    sortBy,
-    page,
-    pageSize,
-  ]);
+  }, [debouncedKeyword, statusFilter, workflowFilter, countryFilter, effectiveBucket, tagFilter, minRelevance, closingAfter, closingBefore, sortBy, page, pageSize]);
 
   useEffect(() => {
     fetchOpportunities();
@@ -206,16 +247,7 @@ function OpportunitiesPage() {
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 1;
 
-  const activeFilterCount = [
-    statusFilter,
-    workflowFilter,
-    countryFilter,
-    bucketFilter !== "relevant" ? bucketFilter : "",
-    tagFilter,
-    closingAfter,
-    closingBefore,
-    minRelevance > 0 ? String(minRelevance) : "",
-  ].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, workflowFilter, countryFilter, bucketFilter !== "relevant" ? bucketFilter : "", tagFilter, closingAfter, closingBefore, minRelevance > 0 ? String(minRelevance) : ""].filter(Boolean).length;
 
   function clearFilters() {
     setStatusFilter("");
@@ -232,17 +264,9 @@ function OpportunitiesPage() {
 
   function handleQuickFilter(label: string) {
     const tagMap: Record<string, string> = {
-      Blinds: "blinds",
-      Shades: "shades",
-      Curtains: "curtains",
-      Fabric: "fabric",
-      Linen: "linen",
-      Bedding: "bedding",
-      "Window Coverings": "window coverings",
-      "FF&E": "FF&E",
-      Hospitality: "hospitality",
-      Healthcare: "healthcare",
-      School: "school",
+      Blinds: "blinds", Shades: "shades", Curtains: "curtains", Fabric: "fabric", Linen: "linen",
+      Bedding: "bedding", "Window Coverings": "window coverings", "FF&E": "FF&E",
+      Hospitality: "hospitality", Healthcare: "healthcare", School: "school",
     };
     const newTag = tagMap[label] ?? label.toLowerCase();
     setTagFilter(tagFilter === newTag ? "" : newTag);
@@ -265,237 +289,219 @@ function OpportunitiesPage() {
     window.open(`/api/exports?${qs}`, "_blank");
   }
 
-  const selectClass = "h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring";
+  const selectClass = "h-8 rounded-md border border-input bg-card px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none cursor-pointer";
 
   return (
     <div className="space-y-4">
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Opportunities</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {loading ? "Loading…" : `${total.toLocaleString()} results`}
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {loading ? "Loading…" : `${total.toLocaleString()} result${total !== 1 ? "s" : ""}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={toggleBusinessFocus}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium border transition-colors ${
-              businessFocus ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input text-muted-foreground hover:text-foreground"
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium border transition-colors ${
+              businessFocus ? "bg-primary text-primary-foreground border-primary shadow-sm" : "bg-card border-input text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Eye className="h-3 w-3" />
-            Focus
+            <Eye className="h-3.5 w-3.5" />
+            Focus Mode
           </button>
-          <button onClick={handleExport} className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-            <Download className="h-3 w-3" />
+          <button onClick={handleExport} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <Download className="h-3.5 w-3.5" />
             Export
           </button>
         </div>
       </div>
 
-      {/* Search + horizontal filter toolbar */}
-      <div className="space-y-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            placeholder="Search blinds, curtains, shades, linen…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          placeholder="Search blinds, curtains, shades, linen…"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          className="h-10 w-full rounded-lg border bg-card pl-10 pr-4 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
 
-        {/* Filter toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <select value={businessFocus ? "relevant" : bucketFilter} onChange={(e) => { setBucketFilter(e.target.value); setBusinessFocus(false); setPage(1); }} className={selectClass}>
-            {BUCKET_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }} className={selectClass}>
-            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className={selectClass}>
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setPage(1); }} className={selectClass}>
-            {COUNTRY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select value={workflowFilter} onChange={(e) => { setWorkflowFilter(e.target.value); setPage(1); }} className={selectClass}>
-            {WORKFLOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-medium transition-colors ${showFilters ? "bg-muted border-input text-foreground" : "border-input text-muted-foreground hover:text-foreground"}`}
-          >
-            <SlidersHorizontal className="h-3 w-3" />
-            More
+      {/* Primary filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={businessFocus ? "relevant" : bucketFilter} onChange={(e) => { setBucketFilter(e.target.value); setBusinessFocus(false); setPage(1); }} className={selectClass}>
+          {BUCKET_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }} className={selectClass}>
+          {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className={selectClass}>
+          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setPage(1); }} className={selectClass}>
+          {COUNTRY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select value={workflowFilter} onChange={(e) => { setWorkflowFilter(e.target.value); setPage(1); }} className={selectClass}>
+          {WORKFLOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors ${showAdvanced ? "bg-muted text-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          More
+          <ChevronDown className={`h-3 w-3 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+        </button>
+        {activeFilterCount > 0 && (
+          <button onClick={clearFilters} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <X className="h-3.5 w-3.5" /> Clear ({activeFilterCount})
           </button>
-          {activeFilterCount > 0 && (
-            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground">
-              <X className="h-3 w-3" /> Clear
-            </button>
-          )}
-        </div>
-
-        {/* Extended filters (date, relevance slider) */}
-        {showFilters && (
-          <div className="flex items-center gap-3 flex-wrap rounded-md border bg-muted/30 px-3 py-2">
-            <div className="flex items-center gap-1.5">
-              <label className="text-2xs text-muted-foreground whitespace-nowrap">Min Score: {minRelevance}</label>
-              <input type="range" min={0} max={100} step={5} value={minRelevance} onChange={(e) => { setMinRelevance(Number(e.target.value)); setPage(1); }} className="w-20 accent-primary" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-2xs text-muted-foreground">After</label>
-              <input type="date" value={closingAfter} onChange={(e) => { setClosingAfter(e.target.value); setPage(1); }} className="h-6 rounded border border-input bg-background px-1.5 text-2xs" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-2xs text-muted-foreground">Before</label>
-              <input type="date" value={closingBefore} onChange={(e) => { setClosingBefore(e.target.value); setPage(1); }} className="h-6 rounded border border-input bg-background px-1.5 text-2xs" />
-            </div>
-          </div>
         )}
+      </div>
 
-        {/* Quick-filter chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {QUICK_FILTERS.map((label) => {
-            const tagMap: Record<string, string> = {
-              Blinds: "blinds", Shades: "shades", Curtains: "curtains", Fabric: "fabric", Linen: "linen",
-              Bedding: "bedding", "Window Coverings": "window coverings", "FF&E": "FF&E",
-              Hospitality: "hospitality", Healthcare: "healthcare", School: "school",
-            };
-            const isActive = tagFilter === (tagMap[label] ?? label.toLowerCase());
-            return (
-              <button
-                key={label}
-                onClick={() => handleQuickFilter(label)}
-                className={`rounded-md border px-2 py-0.5 text-2xs font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
+      {/* Advanced filters */}
+      {showAdvanced && (
+        <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/30 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground whitespace-nowrap">Min Score:</label>
+            <input type="range" min={0} max={100} step={5} value={minRelevance} onChange={(e) => { setMinRelevance(Number(e.target.value)); setPage(1); }} className="w-24 accent-primary" />
+            <span className="text-sm font-medium text-tabular w-6">{minRelevance}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">After</label>
+            <input type="date" value={closingAfter} onChange={(e) => { setClosingAfter(e.target.value); setPage(1); }} className="h-8 rounded-md border bg-card px-2 text-sm" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">Before</label>
+            <input type="date" value={closingBefore} onChange={(e) => { setClosingBefore(e.target.value); setPage(1); }} className="h-8 rounded-md border bg-card px-2 text-sm" />
+          </div>
         </div>
+      )}
+
+      {/* Quick-filter chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {QUICK_FILTERS.map((label) => {
+          const tagMap: Record<string, string> = {
+            Blinds: "blinds", Shades: "shades", Curtains: "curtains", Fabric: "fabric", Linen: "linen",
+            Bedding: "bedding", "Window Coverings": "window coverings", "FF&E": "FF&E",
+            Hospitality: "hospitality", Healthcare: "healthcare", School: "school",
+          };
+          const isActive = tagFilter === (tagMap[label] ?? label.toLowerCase());
+          return (
+            <button
+              key={label}
+              onClick={() => handleQuickFilter(label)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                isActive
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-card text-muted-foreground border-input hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {error && (
-        <div className="rounded-md border bg-destructive/5 p-4 text-center text-xs text-destructive">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center text-sm text-destructive">
           {error}
         </div>
       )}
 
-      {/* Dense table */}
+      {/* Table */}
       <div className="rounded-lg border bg-card overflow-hidden">
-        <div className="overflow-x-auto relative">
+        <div className="relative">
           {loading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           )}
-          <table className="w-full">
-            <thead>
-              <tr className="border-b bg-muted/30">
-                <th className="px-3 py-2 text-left text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Opportunity</th>
-                <th className="px-2 py-2 text-center text-2xs font-semibold uppercase tracking-wider text-muted-foreground w-12">Score</th>
-                <th className="px-2 py-2 text-left text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Bucket</th>
-                <th className="px-2 py-2 text-left text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Organization</th>
-                <th className="px-2 py-2 text-left text-2xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Closing</th>
-                <th className="px-2 py-2 text-left text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Source</th>
-                <th className="px-2 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground w-24">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {opportunities.map((opp, idx) => (
-                <tr key={opp.id} className={`hover:bg-blue-50/50 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/15"}`}>
-                  <td className="px-3 py-2 max-w-[320px]">
-                    <Link href={`/dashboard/opportunities/${opp.id}`} className="text-xs font-medium line-clamp-1 hover:text-primary transition-colors">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="font-semibold">Opportunity</TableHead>
+                <TableHead className="font-semibold w-28">Score</TableHead>
+                <TableHead className="font-semibold">Bucket</TableHead>
+                <TableHead className="font-semibold">Organization</TableHead>
+                <TableHead className="font-semibold whitespace-nowrap">Closing</TableHead>
+                <TableHead className="font-semibold">Analysis</TableHead>
+                <TableHead className="font-semibold w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {opportunities.map((opp) => (
+                <TableRow key={opp.id} className="group">
+                  <TableCell className="max-w-[340px]">
+                    <Link href={`/dashboard/opportunities/${opp.id}`} className="text-sm font-medium line-clamp-1 hover:text-primary transition-colors">
                       {opp.title}
                     </Link>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1 mt-0.5">
                       {opp.keywordsMatched.slice(0, 2).map((kw) => (
-                        <span key={kw} className="inline-block rounded bg-emerald-50 px-1 py-px text-2xs text-emerald-700">{kw}</span>
+                        <span key={kw} className="inline-block rounded bg-emerald-50 px-1.5 py-px text-[10px] text-emerald-700 font-medium">{kw}</span>
                       ))}
                       {opp.industryTags.slice(0, 1).map((tag) => (
-                        <span key={tag} className="inline-block rounded bg-accent px-1 py-px text-2xs text-accent-foreground">{tag}</span>
+                        <span key={tag} className="inline-block rounded bg-accent px-1.5 py-px text-[10px] text-accent-foreground font-medium">{tag}</span>
                       ))}
+                      <span className="text-[10px] text-muted-foreground">{opp.sourceName}</span>
                     </div>
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <span className={`inline-flex items-center justify-center rounded w-7 h-5 text-2xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
-                      {opp.relevanceScore}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2">
-                    <span className={`inline-flex items-center rounded border px-1.5 py-px text-2xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
+                  </TableCell>
+                  <TableCell>
+                    <ScoreBar score={opp.relevanceScore} />
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={`text-xs ${getBucketColor(opp.relevanceBucket)}`}>
                       {getBucketLabel(opp.relevanceBucket)}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground max-w-[150px]">
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground max-w-[160px]">
                     <span className="line-clamp-1">{opp.organization || "—"}</span>
-                  </td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground whitespace-nowrap text-tabular">
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap text-tabular">
                     {formatDate(opp.closingDate)}
-                  </td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                    {opp.sourceName}
-                  </td>
-                  <td className="px-2 py-2">
-                    <div className="flex items-center gap-1">
-                      {opp.hasIntelligence ? (
-                        <Link
-                          href={`/dashboard/opportunities/${opp.id}`}
-                          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-px text-2xs font-semibold transition-colors ${
-                            opp.analysisMode === "deep"
-                              ? "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-                              : opp.analysisModel === "fallback_rule_based"
-                                ? "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
-                                : "bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100"
-                          }`}
-                          title={`${opp.analysisMode === "deep" ? "Deep" : opp.analysisModel === "fallback_rule_based" ? "Rule-based" : "Quick"} analysis · ${opp.recommendationStatus?.replace(/_/g, " ") || "analyzed"}`}
-                        >
-                          <Sparkles className="h-2.5 w-2.5" />
-                          {opp.analysisMode === "deep" ? "Deep" : opp.analysisModel === "fallback_rule_based" ? "Rule" : "Quick"}
-                        </Link>
-                      ) : (
-                        <Link href={`/dashboard/opportunities/${opp.id}`} className="inline-flex items-center gap-0.5 rounded border border-dashed border-muted-foreground/30 px-1.5 py-px text-2xs text-muted-foreground hover:bg-muted/50 transition-colors" title="No AI analysis — click to view">
-                          <Sparkles className="h-2.5 w-2.5" /> —
-                        </Link>
-                      )}
-                      <Link href={`/dashboard/opportunities/${opp.id}`} className="inline-flex items-center gap-0.5 text-2xs font-medium text-primary hover:underline">
-                        View <ExternalLink className="h-2.5 w-2.5" />
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                  <TableCell>
+                    <AnalysisBadge opp={opp} />
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/dashboard/opportunities/${opp.id}`}
+                      className="invisible group-hover:visible inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      Open
+                    </Link>
+                  </TableCell>
+                </TableRow>
               ))}
               {!loading && opportunities.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center text-xs text-muted-foreground">
-                    No opportunities match your filters.
-                  </td>
-                </tr>
+                <TableRow>
+                  <TableCell colSpan={7} className="py-16 text-center">
+                    <FileSearch className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
+                    <p className="text-sm font-medium text-muted-foreground">No opportunities match your filters</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filter criteria</p>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
 
       {/* Pagination */}
       {total > 0 && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground text-tabular">
-            {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total.toLocaleString()}
+          <p className="text-sm text-muted-foreground text-tabular">
+            Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total.toLocaleString()}
           </p>
-          <div className="flex items-center gap-1.5">
-            <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-md border px-2 py-1 text-xs disabled:opacity-30 hover:bg-muted transition-colors">
-              <ChevronLeft className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-1">
+            <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-md border px-2.5 py-1.5 text-sm disabled:opacity-30 hover:bg-muted transition-colors">
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-xs font-medium text-tabular px-2">{page}/{totalPages}</span>
-            <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded-md border px-2 py-1 text-xs disabled:opacity-30 hover:bg-muted transition-colors">
-              <ChevronRight className="h-3.5 w-3.5" />
+            <span className="text-sm font-medium text-tabular px-3">{page} / {totalPages}</span>
+            <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded-md border px-2.5 py-1.5 text-sm disabled:opacity-30 hover:bg-muted transition-colors">
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>

@@ -15,9 +15,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Filter,
   Globe,
 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -109,12 +109,12 @@ function IntelligencePage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
           <Sparkles className="h-6 w-6 text-blue-600" />
-          <h1 className="text-2xl font-bold tracking-tight">AI Intelligence Reports</h1>
+          <h1 className="text-xl font-bold tracking-tight">AI Intelligence Reports</h1>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           AI-powered tender analysis with feasibility scoring, scope extraction, and business recommendations.
@@ -123,23 +123,16 @@ function IntelligencePage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        {FILTER_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => handleFilterChange(tab.value)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
-              filter === tab.value
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-background text-muted-foreground border-input hover:bg-accent hover:text-foreground"
-            }`}
-          >
-            <tab.icon className="h-3.5 w-3.5" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={filter} onValueChange={handleFilterChange}>
+        <TabsList>
+          {FILTER_TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
+              <tab.icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {error && (
         <Card>

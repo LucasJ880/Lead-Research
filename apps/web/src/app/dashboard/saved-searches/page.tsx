@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate } from "@/lib/utils";
 import type { SavedSearch } from "@/types";
 
@@ -57,6 +58,7 @@ export default function SavedSearchesPage() {
   const [newCountry, setNewCountry] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetchSearches = useCallback(() => {
     setLoading(true);
@@ -79,6 +81,7 @@ export default function SavedSearchesPage() {
 
   async function handleSave() {
     if (!newName.trim()) return;
+    setSaveError(null);
     setSaving(true);
     const filters: Record<string, string> = {};
     if (newKeyword.trim()) filters.keyword = newKeyword.trim();
@@ -98,20 +101,21 @@ export default function SavedSearchesPage() {
       setShowForm(false);
       fetchSearches();
     } catch {
-      alert("Failed to save search. Please try again.");
+      setSaveError("Failed to save search. Please try again.");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
+    setSaveError(null);
     setDeletingId(id);
     try {
       const res = await fetch(`/api/saved-searches/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete search");
       fetchSearches();
     } catch {
-      alert("Failed to delete search. Please try again.");
+      setSaveError("Failed to delete search. Please try again.");
     } finally {
       setDeletingId(null);
     }
@@ -126,7 +130,7 @@ export default function SavedSearchesPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Saved Searches</h1>
+          <h1 className="text-xl font-bold tracking-tight">Saved Searches</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Save filter combinations to quickly access them later
           </p>
@@ -197,6 +201,13 @@ export default function SavedSearchesPage() {
         </Card>
       )}
 
+      {saveError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center justify-between">
+          <span>{saveError}</span>
+          <button onClick={() => setSaveError(null)} className="text-xs font-medium hover:underline">Dismiss</button>
+        </div>
+      )}
+
       {error && (
         <Card>
           <CardContent className="p-6 text-center text-sm text-destructive">{error}</CardContent>
@@ -210,27 +221,27 @@ export default function SavedSearchesPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           )}
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Filters</th>
-                <th className="px-4 py-3 whitespace-nowrap">Created</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+                <TableHead className="px-4 py-3">Name</TableHead>
+                <TableHead className="px-4 py-3">Filters</TableHead>
+                <TableHead className="px-4 py-3 whitespace-nowrap">Created</TableHead>
+                <TableHead className="px-4 py-3 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y">
               {searches.map((search) => {
                 const chips = formatFilterDisplay(search.filters);
                 return (
-                  <tr key={search.id} className="hover:bg-muted/50 transition-colors group">
-                    <td className="px-4 py-3 font-medium">
+                  <TableRow key={search.id} className="hover:bg-muted/50 transition-colors group">
+                    <TableCell className="px-4 py-3 font-medium">
                       <div className="flex items-center gap-2">
                         <Bookmark className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         {search.name}
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       {chips.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {chips.map((c, i) => (
@@ -242,11 +253,11 @@ export default function SavedSearchesPage() {
                       ) : (
                         <span className="text-xs text-muted-foreground">All opportunities</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                       {formatDate(search.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
@@ -271,21 +282,21 @@ export default function SavedSearchesPage() {
                           )}
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
               {!loading && searches.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center">
+                <TableRow>
+                  <TableCell colSpan={4} className="px-4 py-12 text-center">
                     <Search className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
                     <p className="text-sm text-muted-foreground">No saved searches yet.</p>
                     <p className="text-xs text-muted-foreground mt-1">Create a search above with your common filter combinations.</p>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </Card>
     </div>
