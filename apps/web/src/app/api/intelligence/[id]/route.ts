@@ -98,11 +98,19 @@ export async function GET(
         downloadedAt: d.downloadedAt ?? null,
         docCategory: d.docCategory ?? null,
         textExtracted: d.textExtracted ?? false,
+        extractedTextPreview: d.textExtracted && d.extractedText
+          ? (d.extractedText as string).slice(0, 800)
+          : null,
+        extractedTextLength: d.textExtracted && d.extractedText
+          ? (d.extractedText as string).length
+          : null,
       }));
     } catch {
       const rawDocs = await prisma.$queryRaw<Record<string, unknown>[]>`
         SELECT id, title, url, file_type, file_size_bytes, page_count,
-               downloaded_at, doc_category, text_extracted
+               downloaded_at, doc_category, text_extracted,
+               LEFT(extracted_text, 800) as text_preview,
+               LENGTH(extracted_text) as text_length
         FROM opportunity_documents
         WHERE opportunity_id = ${id}::uuid
         ORDER BY created_at DESC
@@ -117,10 +125,16 @@ export async function GET(
         downloadedAt: d.downloaded_at,
         docCategory: d.doc_category,
         textExtracted: d.text_extracted ?? false,
+        extractedTextPreview: d.text_preview ?? null,
+        extractedTextLength: d.text_length ? Number(d.text_length) : null,
       }));
     }
 
-    return NextResponse.json({ opportunity, intelligence, documents });
+    const analysisMetadata = intelligence?.intelligenceSummary
+      ? (intelligence.intelligenceSummary as Record<string, unknown>)?._analysis_metadata ?? null
+      : null;
+
+    return NextResponse.json({ opportunity, intelligence, documents, analysisMetadata });
   } catch (error) {
     console.error("GET /api/intelligence/[id] error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

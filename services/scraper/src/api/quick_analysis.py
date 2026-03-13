@@ -1,20 +1,29 @@
 """Quick Analysis API — on-demand Tender Intelligence Report for any opportunity.
 
 Triggered manually from the dashboard. Produces a v2.0 structured report
-using opportunity metadata + description text. Stores the full report JSON
-in tender_intelligence.intelligence_summary for the frontend to render.
+using opportunity metadata + description text + document content.
+Stores the full report JSON in tender_intelligence.intelligence_summary.
 
-Cost control: AI analysis is ONLY user-triggered, never automatic.
-Budget limits are enforced per-day and per-month.
+Key behaviour:
+  - On-demand document extraction: un-extracted documents are extracted
+    inline BEFORE calling OpenAI so the AI always sees all available content.
+  - Web-page content extraction: link-type documents have their page text
+    fetched and stored so the AI can read external resources too.
+  - Cost control: AI analysis is ONLY user-triggered, never automatic.
+    Budget limits are enforced per-day and per-month.
 """
 
 from __future__ import annotations
 
+import io
 import json
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
+import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -115,6 +124,186 @@ def _record_usage(
         logger.warning("Failed to record AI usage: %s", exc)
 
 
+_EXTRACT_TIMEOUT = 45
+_EXTRACT_MAX_SIZE = 20 * 1024 * 1024
+
+
+def _extract_text_from_bytes(content: bytes, file_type: str) -> str:
+    """Extract text from downloaded document bytes. Mirrors extract_documents.py extractors."""
+    ft = file_type.lower().strip(".")
+    if ft == "pdf":
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(content))
+        parts = [p.extract_text() or "" for p in reader.pages]
+        return "\n\n".join(p for p in parts if p)
+    if ft in ("docx", "doc"):
+        import tempfile
+        from docx import Document
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        try:
+            doc = Document(str(tmp_path))
+            return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    if ft in ("xlsx", "xls"):
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        parts: list[str] = []
+        for sheet in wb.worksheets:
+            parts.append(f"--- Sheet: {sheet.title} ---")
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c) if c is not None else "" for c in row]
+                if any(cells):
+                    parts.append("\t".join(cells))
+        wb.close()
+        return "\n".join(parts)
+    if ft == "csv":
+        import csv as csv_mod
+        text_str = content.decode("utf-8", errors="replace")
+        reader = csv_mod.reader(io.StringIO(text_str))
+        return "\n".join("\t".join(row) for row in reader)
+    if ft == "txt":
+        return content.decode("utf-8", errors="replace")
+    return ""
+
+
+def _extract_web_page(url: str) -> str:
+    """Fetch a web page and extract its meaningful text content."""
+    try:
+        from bs4 import BeautifulSoup
+        resp = http_requests.get(url, timeout=_EXTRACT_TIMEOUT, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; BidToGo/1.0)"
+        })
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "")
+        if "pdf" in ct:
+            return _extract_text_from_bytes(resp.content, "pdf")
+        if "html" not in ct and "text" not in ct:
+            return ""
+        soup = BeautifulSoup(resp.text, "lxml")
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            tag.decompose()
+        text_str = soup.get_text(separator="\n", strip=True)
+        lines = [ln.strip() for ln in text_str.splitlines() if ln.strip()]
+        return "\n".join(lines)[:50000]
+    except Exception as exc:
+        logger.warning("Failed to extract web page %s: %s", url[:80], exc)
+        return ""
+
+
+def _ensure_documents_extracted(session: Any, opportunity_id: str) -> dict:
+    """Extract text from all un-extracted documents for an opportunity, inline.
+
+    Returns summary dict with counts.
+    """
+    docs = session.execute(
+        text("""
+            SELECT id, title, url, file_type
+            FROM opportunity_documents
+            WHERE opportunity_id = :opp_id
+              AND (text_extracted = false OR extracted_text IS NULL)
+              AND url IS NOT NULL AND url != ''
+            ORDER BY created_at
+        """),
+        {"opp_id": opportunity_id},
+    ).fetchall()
+
+    if not docs:
+        return {"extracted": 0, "skipped": 0, "failed": 0, "web_pages": 0}
+
+    extracted = skipped = failed = web_pages = 0
+
+    for doc in docs:
+        file_type = (doc.file_type or "").lower().strip(".")
+        is_link = file_type in ("link", "html", "htm", "")
+
+        try:
+            if is_link and doc.url:
+                page_text = _extract_web_page(doc.url)
+                if page_text and len(page_text.strip()) > 20:
+                    page_text = page_text[:200000]
+                    session.execute(
+                        text("""
+                            UPDATE opportunity_documents SET
+                                extracted_text = :txt,
+                                text_extracted = true,
+                                page_count = 1
+                            WHERE id = :id
+                        """),
+                        {"id": doc.id, "txt": page_text},
+                    )
+                    session.commit()
+                    web_pages += 1
+                    logger.info("Extracted %d chars from web page '%s'", len(page_text), (doc.title or doc.url)[:60])
+                else:
+                    session.execute(
+                        text("UPDATE opportunity_documents SET text_extracted = true WHERE id = :id"),
+                        {"id": doc.id},
+                    )
+                    session.commit()
+                    skipped += 1
+                continue
+
+            supported = {"pdf", "docx", "doc", "txt", "xlsx", "xls", "csv"}
+            if file_type not in supported:
+                skipped += 1
+                continue
+
+            resp = http_requests.get(doc.url, timeout=_EXTRACT_TIMEOUT, stream=True)
+            resp.raise_for_status()
+
+            content_length = int(resp.headers.get("content-length", 0))
+            if content_length > _EXTRACT_MAX_SIZE:
+                skipped += 1
+                continue
+
+            content = resp.content
+            if len(content) > _EXTRACT_MAX_SIZE:
+                skipped += 1
+                continue
+
+            text_content = _extract_text_from_bytes(content, file_type)
+
+            if not text_content or len(text_content.strip()) < 10:
+                session.execute(
+                    text("UPDATE opportunity_documents SET text_extracted = true WHERE id = :id"),
+                    {"id": doc.id},
+                )
+                session.commit()
+                skipped += 1
+                continue
+
+            text_content = text_content[:200000]
+            session.execute(
+                text("""
+                    UPDATE opportunity_documents SET
+                        extracted_text = :txt,
+                        text_extracted = true,
+                        page_count = :pc
+                    WHERE id = :id
+                """),
+                {
+                    "id": doc.id,
+                    "txt": text_content,
+                    "pc": text_content.count("\n\n") + 1,
+                },
+            )
+            session.commit()
+            extracted += 1
+            logger.info("On-demand extracted %d chars from '%s' (%s)",
+                        len(text_content), doc.title or doc.id, file_type)
+
+        except Exception as exc:
+            logger.warning("On-demand extraction failed for doc %s: %s", doc.id, exc)
+            failed += 1
+
+    result = {"extracted": extracted, "skipped": skipped, "failed": failed, "web_pages": web_pages}
+    logger.info("On-demand extraction complete for %s: %s", opportunity_id, result)
+    return result
+
+
 class _Enc(json.JSONEncoder):
     def default(self, o: object) -> object:
         if isinstance(o, (datetime, date)):
@@ -137,6 +326,8 @@ class AnalyzeResponse(BaseModel):
     confidence: str | None = None
     analysis_model: str | None = None
     message: str | None = None
+    documents_analyzed: int | None = None
+    total_documents: int | None = None
 
 
 @router.post("/run", dependencies=[Depends(verify_api_key)])
@@ -184,23 +375,42 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
             except Exception:
                 raw = {}
 
+        extraction_result = _ensure_documents_extracted(session, req.opportunity_id)
+        logger.info("Document extraction summary: %s", extraction_result)
+
         doc_rows = session.execute(
             text("""
-                SELECT title, extracted_text FROM opportunity_documents
+                SELECT id, title, url, file_type, file_size_bytes, extracted_text
+                FROM opportunity_documents
                 WHERE opportunity_id = :id AND text_extracted = true
                   AND extracted_text IS NOT NULL AND LENGTH(extracted_text) > 10
-                ORDER BY file_size_bytes DESC NULLS LAST
-                LIMIT 10
+                ORDER BY
+                    CASE WHEN LOWER(file_type) IN ('pdf','docx','doc','xlsx','xls') THEN 0 ELSE 1 END,
+                    file_size_bytes DESC NULLS LAST
+                LIMIT 15
             """),
             {"id": req.opportunity_id},
         ).fetchall()
         document_texts: dict[str, str] | None = None
+        docs_used: list[dict] = []
         if doc_rows:
-            document_texts = {
-                (row.title or f"document_{i}"): row.extracted_text
-                for i, row in enumerate(doc_rows)
-            }
+            document_texts = {}
+            for i, row in enumerate(doc_rows):
+                key = row.title or f"document_{i}"
+                document_texts[key] = row.extracted_text
+                docs_used.append({
+                    "id": str(row.id),
+                    "title": row.title,
+                    "file_type": row.file_type,
+                    "chars": len(row.extracted_text or ""),
+                })
             logger.info("Including %d document(s) with extracted text for analysis", len(document_texts))
+
+        total_docs_count = session.execute(
+            text("SELECT COUNT(*) as cnt FROM opportunity_documents WHERE opportunity_id = :id"),
+            {"id": req.opportunity_id},
+        ).fetchone()
+        total_docs = total_docs_count.cnt if total_docs_count else 0
 
         budget_ok, budget_msg = _check_budget(session, req.mode)
         if not budget_ok:
@@ -212,7 +422,7 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
             )
 
         use_model = "gpt-4o" if req.mode == "deep" else "gpt-4o-mini"
-        max_tok = 6000 if req.mode == "deep" else 3500
+        max_tok = 8000 if req.mode == "deep" else 4000
         analyzer = TenderAnalyzer(model=use_model, max_tokens=max_tok)
         result = analyzer.analyze(
             title=opp.title,
@@ -254,6 +464,14 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
 
         result.pop("_prompt_tokens", None)
         result.pop("_completion_tokens", None)
+
+        result["_analysis_metadata"] = {
+            "documents_used": docs_used,
+            "documents_used_count": len(docs_used),
+            "total_documents": total_docs,
+            "total_doc_chars": sum(d["chars"] for d in docs_used),
+            "extraction_summary": extraction_result,
+        }
 
         biz_fit = result.get("business_fit", {})
         scope = result.get("scope_breakdown", {})
@@ -348,6 +566,8 @@ async def run_quick_analysis(req: AnalyzeRequest) -> AnalyzeResponse:
             recommendation=recommendation,
             confidence=confidence,
             analysis_model=analysis_model,
+            documents_analyzed=len(docs_used),
+            total_documents=total_docs,
         )
 
     except HTTPException:

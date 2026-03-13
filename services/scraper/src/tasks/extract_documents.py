@@ -20,7 +20,7 @@ from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-_SUPPORTED_TYPES = {"pdf", "docx", "doc", "txt"}
+_SUPPORTED_TYPES = {"pdf", "docx", "doc", "txt", "xlsx", "xls", "csv"}
 _MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 _DOWNLOAD_TIMEOUT = 60
 
@@ -52,11 +52,38 @@ def _extract_txt(content: bytes) -> str:
     return content.decode("utf-8", errors="replace")
 
 
+def _extract_xlsx(content: bytes) -> str:
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    parts: list[str] = []
+    for sheet in wb.worksheets:
+        parts.append(f"--- Sheet: {sheet.title} ---")
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            if any(cells):
+                parts.append("\t".join(cells))
+    wb.close()
+    return "\n".join(parts)
+
+
+def _extract_csv(content: bytes) -> str:
+    import csv as csv_mod
+    text = content.decode("utf-8", errors="replace")
+    reader = csv_mod.reader(io.StringIO(text))
+    parts: list[str] = []
+    for row in reader:
+        parts.append("\t".join(row))
+    return "\n".join(parts)
+
+
 _EXTRACTORS = {
     "pdf": _extract_pdf,
     "docx": _extract_docx,
     "doc": _extract_docx,
     "txt": _extract_txt,
+    "xlsx": _extract_xlsx,
+    "xls": _extract_xlsx,
+    "csv": _extract_csv,
 }
 
 
@@ -182,7 +209,7 @@ def extract_pending_documents() -> dict:
                         FROM opportunity_documents
                         WHERE text_extracted = false
                           AND url IS NOT NULL AND url != ''
-                          AND LOWER(file_type) IN ('pdf', 'docx', 'doc', 'txt')
+                          AND LOWER(file_type) IN ('pdf', 'docx', 'doc', 'txt', 'xlsx', 'xls', 'csv')
                         LIMIT 50
             """),
         ).fetchall()

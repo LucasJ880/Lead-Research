@@ -95,6 +95,7 @@ export default function OpportunityDetailPage() {
   const [intel, setIntel] = useState<any>(null);
   const [intelLoading, setIntelLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [intelError, setIntelError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -134,7 +135,9 @@ export default function OpportunityDetailPage() {
   async function handleAnalyze(mode: "quick" | "deep" = "quick") {
     setAnalyzing(true);
     setAnalysisError(null);
+    setAnalysisPhase("Extracting documents...");
     try {
+      setTimeout(() => setAnalysisPhase("Analyzing with AI..."), 3000);
       const res = await fetch("/api/intelligence/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -151,13 +154,15 @@ export default function OpportunityDetailPage() {
       if (result.status === "budget_exceeded") {
         throw new Error(result.message || "AI budget limit reached. Try again later or contact admin.");
       }
-      await new Promise((r) => setTimeout(r, 1200));
+      setAnalysisPhase("Loading results...");
+      await new Promise((r) => setTimeout(r, 800));
       fetchIntelligence();
       setActiveTab("analysis");
     } catch (err) {
       setAnalysisError(err instanceof Error ? err.message : "Analysis failed");
     } finally {
       setAnalyzing(false);
+      setAnalysisPhase(null);
     }
   }
 
@@ -415,6 +420,8 @@ export default function OpportunityDetailPage() {
         analysisMode={intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode}
         analysisModel={intel?.intelligence?.analysisModel || rpt.analysis_model}
         analyzing={analyzing}
+        analysisPhase={analysisPhase}
+        docCount={(intel?.documents?.length || 0) || opp.documents.length}
         onQuickAnalyze={() => handleAnalyze("quick")}
         onDeepAnalyze={() => handleAnalyze("deep")}
       />
@@ -547,55 +554,10 @@ export default function OpportunityDetailPage() {
 
           {/* ── DOCUMENTS TAB ── */}
           {activeTab === "documents" && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">
-                  Documents ({(intel?.documents?.length || 0) || opp.documents.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const docs = intel?.documents?.length ? intel.documents : opp.documents;
-                  if (!docs || docs.length === 0) {
-                    return <p className="text-sm text-muted-foreground">No documents attached.</p>;
-                  }
-                  return (
-                    <div className="space-y-1.5">
-            
-                      {docs.map((doc: any) => {
-                        const ft = (doc.fileType || "").toLowerCase();
-                        const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "xls" || ft === "xlsx" ? "text-green-600" : "text-muted-foreground";
-                        const extracted = doc.textExtracted || doc.text_extracted;
-                        return (
-                          <a
-                            key={doc.id}
-                            href={doc.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2.5 rounded-md border px-3 py-2 hover:bg-muted/40 transition-colors group"
-                          >
-                            <FileText className={`h-4 w-4 shrink-0 ${typeColor}`} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{doc.title || "Untitled"}</p>
-                              <p className="text-2xs text-muted-foreground">
-                                {doc.fileType?.toUpperCase() || "FILE"}
-                                {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
-                                {doc.pageCount ? ` · ${doc.pageCount}p` : ""}
-                                {doc.docCategory ? ` · ${doc.docCategory.replace(/_/g, " ")}` : ""}
-                              </p>
-                            </div>
-                            {extracted && (
-                              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 shrink-0">Text Extracted</span>
-                            )}
-                            <Download className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground shrink-0" />
-                          </a>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </CardContent>
-            </Card>
+            <DocumentsPanel
+              intel={intel}
+              opp={opp}
+            />
           )}
 
           {/* ── EVIDENCE TAB ── */}
@@ -725,6 +687,8 @@ function AnalysisLevelBanner({
   analysisMode,
   analysisModel,
   analyzing,
+  analysisPhase,
+  docCount,
   onQuickAnalyze,
   onDeepAnalyze,
 }: {
@@ -733,14 +697,28 @@ function AnalysisLevelBanner({
   analysisMode?: string;
   analysisModel?: string;
   analyzing: boolean;
+  analysisPhase?: string | null;
+  docCount?: number;
   onQuickAnalyze: () => void;
   onDeepAnalyze: () => void;
 }) {
   if (analyzing) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
-        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-        <p className="text-xs font-medium text-blue-800">Running AI analysis... This uses OpenAI tokens.</p>
+      <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+          <div>
+            <p className="text-xs font-medium text-blue-800">Running AI analysis...</p>
+            {analysisPhase && (
+              <p className="text-[11px] text-blue-600 mt-0.5">{analysisPhase}</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-4">
+          <div className="flex-1 h-1 bg-blue-200 rounded-full overflow-hidden">
+            <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: "60%" }} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -758,11 +736,11 @@ function AnalysisLevelBanner({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-6 border-t border-dashed pt-3">
+          <div className="flex items-center gap-6 border-t border-dashed pt-3">
           <div className="flex-1 space-y-1">
             <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Upgrade to AI Analysis</p>
             <p className="text-2xs text-muted-foreground">
-              AI generates a professional bid-analysis report with feasibility scores, risk assessment, and recommendations.
+              AI will extract and read all {docCount || 0} document{(docCount || 0) !== 1 ? "s" : ""}, then generate a professional bid report with feasibility scores, cited evidence, and actionable recommendations.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -836,7 +814,7 @@ function AnalysisLevelBanner({
               <span className="text-xs font-semibold text-blue-800">Quick AI Analysis</span>
               <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{analysisModel || "gpt-4o-mini"}</span>
             </div>
-            <p className="text-[11px] text-blue-600">Based on title + description. Upgrade to Deep for document-level analysis.</p>
+            <p className="text-[11px] text-blue-600">Based on title + description + extracted documents. Upgrade to Deep for deeper document analysis with citations.</p>
           </div>
         </div>
         <button
@@ -1080,12 +1058,134 @@ function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
 }
 
 /* ════════════════════════════════════════════════════════════
+ * DocumentsPanel — Documents tab with extraction status, preview
+ * ════════════════════════════════════════════════════════════ */
+
+function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) {
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const docs = intel?.documents?.length ? intel.documents : opp.documents;
+  const analysisMetadata = intel?.analysisMetadata?._analysis_metadata || intel?.analysisMetadata || null;
+  const docsUsedIds = new Set(
+    (analysisMetadata?.documents_used || []).map((d: any) => d.id)
+  );
+
+  const extractedCount = docs?.filter((d: any) => d.textExtracted || d.text_extracted).length || 0;
+  const totalCount = docs?.length || 0;
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold">
+              Documents ({totalCount})
+            </CardTitle>
+            {totalCount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground">
+                  {extractedCount}/{totalCount} extracted
+                </span>
+                <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${totalCount > 0 ? (extractedCount / totalCount) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {(!docs || docs.length === 0) ? (
+            <div className="text-center py-6">
+              <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No documents attached to this opportunity.</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {docs.map((doc: any) => {
+                const ft = (doc.fileType || "").toLowerCase();
+                const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "xls" || ft === "xlsx" ? "text-green-600" : ft === "link" ? "text-violet-500" : "text-muted-foreground";
+                const extracted = doc.textExtracted || doc.text_extracted;
+                const hasPreview = doc.extractedTextPreview || doc.extracted_text_preview;
+                const usedInAnalysis = docsUsedIds.has(doc.id);
+                const textLen = doc.extractedTextLength || doc.extracted_text_length || 0;
+                const isLink = ft === "link" || ft === "html" || ft === "htm" || ft === "";
+
+                return (
+                  <div key={doc.id} className="rounded-md border hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center gap-2.5 px-3 py-2">
+                      {isLink ? (
+                        <Globe className={`h-4 w-4 shrink-0 ${typeColor}`} />
+                      ) : (
+                        <FileText className={`h-4 w-4 shrink-0 ${typeColor}`} />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs font-medium truncate block hover:text-primary transition-colors"
+                        >
+                          {doc.title || "Untitled"}
+                        </a>
+                        <p className="text-[10px] text-muted-foreground">
+                          {isLink ? "WEB LINK" : doc.fileType?.toUpperCase() || "FILE"}
+                          {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
+                          {doc.pageCount ? ` · ${doc.pageCount}p` : ""}
+                          {textLen > 0 ? ` · ${(textLen / 1000).toFixed(0)}K chars` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {usedInAnalysis && (
+                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">ANALYZED</span>
+                        )}
+                        {extracted ? (
+                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Extracted</span>
+                        ) : (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">Pending</span>
+                        )}
+                        {hasPreview && (
+                          <button
+                            onClick={() => setPreviewDoc(previewDoc?.id === doc.id ? null : doc)}
+                            className="rounded border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          >
+                            {previewDoc?.id === doc.id ? "Hide" : "Preview"}
+                          </button>
+                        )}
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                          <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                        </a>
+                      </div>
+                    </div>
+                    {previewDoc?.id === doc.id && hasPreview && (
+                      <div className="border-t bg-slate-50 px-3 py-2.5">
+                        <p className="text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Extracted Text Preview</p>
+                        <pre className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
+                          {doc.extractedTextPreview || doc.extracted_text_preview}
+                        </pre>
+                        {textLen > 800 && (
+                          <p className="text-[10px] text-muted-foreground mt-1.5 italic">
+                            Showing first 800 of {(textLen / 1000).toFixed(0)}K characters
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
  * IntelligencePanel — Full report inside Analysis tab
  * ════════════════════════════════════════════════════════════ */
 
 function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { data: any; onReanalyze?: () => void; onDeepAnalyze?: () => void; reanalyzing?: boolean }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "evidence"])
+    new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "evidence", "quotes"])
   );
 
   if (!data) return null;
@@ -1107,6 +1207,9 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
   const participation = rpt.participation_strategy || {};
   const evidence = rpt.required_evidence || {};
   const scores = rpt.feasibility_scores || {};
+  const docsAnalyzed = rpt.documents_analyzed || {};
+  const evidenceQuotes: any[] = rpt.evidence_quotes || [];
+  const analysisMeta = rpt._analysis_metadata || {};
 
   const overview: string | undefined = isV2
     ? projSummary.overview
@@ -1174,6 +1277,36 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
       </div>
 
       <div className="divide-y">
+        {/* Documents Analyzed Banner */}
+        {(analysisMeta.documents_used_count > 0 || docsAnalyzed.count > 0) && (
+          <div className="px-5 py-3 bg-blue-50/50 border-b">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100">
+                <FileText className="h-4 w-4 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-blue-900">
+                  {analysisMeta.documents_used_count || docsAnalyzed.count || 0} of {analysisMeta.total_documents || "?"} documents analyzed
+                </p>
+                <p className="text-[10px] text-blue-600">
+                  {docsAnalyzed.coverage_note || (analysisMeta.total_doc_chars
+                    ? `${(analysisMeta.total_doc_chars / 1000).toFixed(0)}K characters of document text processed`
+                    : "Document content included in analysis")}
+                </p>
+              </div>
+              {(docsAnalyzed.names?.length > 0 || analysisMeta.documents_used?.length > 0) && (
+                <div className="flex flex-wrap gap-1 max-w-[50%]">
+                  {(docsAnalyzed.names || analysisMeta.documents_used?.map((d: any) => d.title) || []).slice(0, 4).map((name: string, i: number) => (
+                    <span key={i} className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 truncate max-w-[120px]">
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 1. Project Summary */}
         <div className="px-5">
           <SectionHeader id="summary" title="Project Summary" />
@@ -1489,6 +1622,36 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
                     </ul>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Evidence Quotes from Documents */}
+        {evidenceQuotes.length > 0 && (
+          <div className="px-5">
+            <SectionHeader id="quotes" title="Evidence Quotes from Documents" />
+            {expandedSections.has("quotes") && (
+              <div className="pb-4 space-y-2">
+                {evidenceQuotes.map((eq: any, i: number) => (
+                  <div key={i} className="rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText className="h-3 w-3 text-amber-600 shrink-0" />
+                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">
+                        {eq.document || "Document"}
+                      </span>
+                      {eq.section && (
+                        <span className="text-[10px] text-amber-600">· {eq.section}</span>
+                      )}
+                    </div>
+                    <blockquote className="text-xs italic text-foreground border-l-2 border-amber-400 pl-2.5 my-1.5 leading-relaxed">
+                      &ldquo;{eq.quote}&rdquo;
+                    </blockquote>
+                    {eq.relevance && (
+                      <p className="text-[10px] text-muted-foreground mt-1">{eq.relevance}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

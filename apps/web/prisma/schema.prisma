@@ -127,6 +127,7 @@ enum DocCategory {
   our_response
   supplier_quote
   correspondence
+  source_attachment
   other
 }
 

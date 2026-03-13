@@ -254,7 +254,11 @@ class SamGovCrawler(BaseCrawler):
             return ""
 
     def _fetch_attachments(self, notice_id: str) -> list[dict[str, Any]]:
-        """Fetch attachment metadata from the SAM.gov opportunity resources API."""
+        """Fetch attachment metadata from the SAM.gov opportunity resources API.
+
+        Handles the nested _embedded.opportunityAttachmentList structure
+        where each item has an inner `attachments` array with the actual files/links.
+        """
         if not notice_id:
             return []
         url = f"https://sam.gov/api/prod/opps/v3/opportunities/{notice_id}/resources"
@@ -269,13 +273,21 @@ class SamGovCrawler(BaseCrawler):
             if isinstance(data, list):
                 resources = data
             elif isinstance(data, dict):
-                resources = (
+                raw_list = (
                     data.get("resources")
                     or data.get("attachments")
                     or (data.get("_embedded") or {}).get("opportunityAttachmentList")
                     or data.get("opportunityAttachmentList")
                     or []
                 )
+                if isinstance(raw_list, list):
+                    for entry in raw_list:
+                        if isinstance(entry, dict) and "attachments" in entry:
+                            resources.extend(entry["attachments"])
+                        else:
+                            resources.append(entry)
+                else:
+                    resources = []
 
             if not isinstance(resources, list):
                 resources = []
@@ -283,13 +295,32 @@ class SamGovCrawler(BaseCrawler):
             for item in resources:
                 if not isinstance(item, dict):
                     continue
+                if item.get("deletedFlag") == "1" or item.get("deletedDate"):
+                    continue
+
                 name = item.get("name", item.get("fileName", item.get("title", "")))
                 att_type = item.get("type", item.get("mimeType", ""))
                 size = item.get("size", item.get("fileSizeInBytes", item.get("fileSize", None)))
                 access = item.get("accessLevel", item.get("access", ""))
                 resource_id = item.get("resourceId", item.get("attachmentId", item.get("id", "")))
+                description = item.get("description", "")
 
-                # Build download URL
+                is_link = att_type == "link"
+
+                if is_link:
+                    link_url = item.get("uri", item.get("url", item.get("href", "")))
+                    if not link_url:
+                        continue
+                    doc_entry: dict[str, Any] = {
+                        "title": (description or name or "Related Link")[:250],
+                        "url": link_url,
+                        "file_type": "link",
+                    }
+                    if self._is_piee_link(link_url):
+                        doc_entry["title"] = f"PIEE Solicitation: {description or name}"[:250]
+                    docs.append(doc_entry)
+                    continue
+
                 download_url = item.get("downloadUrl", item.get("url", ""))
                 if not download_url and resource_id:
                     download_url = f"https://sam.gov/api/prod/opps/v3/opportunities/resources/files/{resource_id}/download"
@@ -303,8 +334,12 @@ class SamGovCrawler(BaseCrawler):
                     if name_lower.endswith(ext):
                         file_type = ext.lstrip(".")
                         break
+                if not file_type:
+                    mime = (item.get("mimeType") or "").lower()
+                    if ".pdf" in mime or "pdf" in mime:
+                        file_type = "pdf"
 
-                doc_entry: dict[str, Any] = {
+                doc_entry = {
                     "title": (name or "Attachment")[:250],
                     "url": download_url or "",
                     "file_type": file_type or (att_type[:20] if att_type else "file"),
@@ -323,6 +358,10 @@ class SamGovCrawler(BaseCrawler):
         except Exception as exc:
             self.logger.debug("Failed to fetch attachments for %s: %s", notice_id, exc)
             return []
+
+    @staticmethod
+    def _is_piee_link(url: str) -> bool:
+        return "piee.eb.mil" in url.lower()
 
     def _extract_resource_links(self, record: dict, notice_id: str = "") -> list[dict[str, Any]]:
         """Extract document/attachment metadata from the API record + attachments API."""
@@ -482,6 +521,14 @@ class SamGovCrawler(BaseCrawler):
             location_raw = state_code
         location_raw = (location_raw or "")[:200]
 
+        est_value = None
+        raw_est = record.get("estimatedValue") or record.get("baseAndAllOptionsValue")
+        if raw_est:
+            try:
+                est_value = float(str(raw_est).replace(",", "").replace("$", ""))
+            except (ValueError, TypeError):
+                pass
+
         return OpportunityCreate(
             source_id=self.source_config.id,
             external_id=notice_id or sol_number,
@@ -498,6 +545,7 @@ class SamGovCrawler(BaseCrawler):
             project_type=notice_type[:250] if notice_type else None,
             category=(f"NAICS {naics}" if naics else "Federal Procurement")[:250],
             solicitation_number=(sol_number or notice_id)[:250],
+            estimated_value=est_value,
             currency="USD",
             contact_name=contact_name,
             contact_email=contact_email,
@@ -506,7 +554,7 @@ class SamGovCrawler(BaseCrawler):
             has_documents=len(resource_links) > 0,
             organization_name=org_name,
             raw_data={
-                "parser_version": "samgov_v3",
+                "parser_version": "samgov_v4",
                 "notice_id": notice_id,
                 "naics_code": naics,
                 "naics_name": record.get("naicsName", ""),
@@ -524,6 +572,11 @@ class SamGovCrawler(BaseCrawler):
                 "sub_tier": record.get("subtierAgency", record.get("subTier", "")),
                 "office": record.get("office", ""),
                 "set_aside": record.get("typeOfSetAsideDescription", record.get("setAside", "")),
+                "award": record.get("award") or {},
+                "estimated_value": record.get("estimatedValue") or record.get("baseAndAllOptionsValue"),
+                "contract_type": record.get("contractType", ""),
+                "pop_country": pop.get("country", {}).get("code", "") if isinstance(pop.get("country"), dict) else pop.get("country", ""),
+                "pop_zip": pop.get("zip", ""),
                 "resource_links": resource_links,
                 "all_contacts": [
                     {k: v for k, v in c.items() if v}

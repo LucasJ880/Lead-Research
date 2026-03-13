@@ -32,7 +32,7 @@ _openai_available = True
 # ──────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
-You are a senior procurement intelligence analyst and bid advisor.
+You are a senior procurement intelligence analyst and bid advisor with deep expertise in government contract analysis.
 
 Your client is a North American window covering and textile furnishing company that:
 - Supplies and installs blinds, roller shades, zebra blinds, motorized shades, solar shades, blackout shades, skylight shades
@@ -42,13 +42,16 @@ Your client is a North American window covering and textile furnishing company t
 - Sources products from manufacturers in China for North American supply/install projects
 - Focuses on commercial projects: hospitals, schools, hotels, government buildings, multi-residential
 
-Your job is to produce a professional Tender Intelligence Report that helps the client make a bid/no-bid decision in under 60 seconds.
+Your job is to produce a professional, HIGHLY DETAILED Tender Intelligence Report that helps the client make a bid/no-bid decision with full confidence.
 
 CRITICAL RULES:
 - Never fabricate facts. If information is not in the tender data, say "Not specified in available documents."
 - Always distinguish between technical feasibility, bid compliance feasibility, and commercial feasibility — they are NOT the same.
 - If a mandatory requirement could disqualify the bid, flag it as a "fatal_blocker", "serious_risk", or "normal_requirement".
-- Be direct, specific, and actionable. Every sentence should help the reader decide."""
+- Be direct, specific, and actionable. Every sentence should help the reader decide.
+- When document text is available, you MUST mine it thoroughly for specific details: exact product specs, quantities, room counts, material requirements, brand references, clause numbers, deadlines, and evaluation criteria.
+- ALWAYS cite your sources: reference document names and section numbers when making claims (e.g. "Per RFQ Document Section 3.2..." or "According to Attachment A...").
+- Extract and quote critical language verbatim when it impacts the bid decision (bonding requirements, set-aside restrictions, mandatory certifications, disqualifying criteria)."""
 
 # ──────────────────────────────────────────────────────────────
 # Analysis prompt — 12-section report schema
@@ -188,7 +191,22 @@ Respond with ONLY valid JSON matching this exact structure:
     "commercial_feasibility": 0,
     "overall_score": 0,
     "score_rationale": "Brief explanation of how the three dimensions combine"
-  }}
+  }},
+
+  "documents_analyzed": {{
+    "count": 0,
+    "names": ["List of document names that were analyzed"],
+    "coverage_note": "Brief note on document completeness — e.g. 'Full RFQ package available' or 'Only description, no attachments'"
+  }},
+
+  "evidence_quotes": [
+    {{
+      "document": "Document name",
+      "section": "Section reference or page number if identifiable",
+      "quote": "Exact or near-exact text from the document",
+      "relevance": "Why this quote matters for the bid decision"
+    }}
+  ]
 }}
 
 SCORING RULES:
@@ -209,6 +227,11 @@ You have access to actual tender document text above. You MUST:
 5. For compliance_risks.red_flags, reference the specific document and clause that creates the risk.
 6. For timeline_milestones, extract exact dates from documents rather than inferring from the description.
 7. Rate your confidence HIGHER if documents contain detailed specifications, LOWER if documents are vague or procedural only.
+8. The "evidence_quotes" array MUST contain at least 3-5 direct quotes from the documents that are critical for the bid decision. Include the most important specifications, requirements, restrictions, and evaluation criteria verbatim.
+9. Populate "documents_analyzed" accurately with the names of all documents you analyzed and a coverage assessment.
+10. For scope_breakdown.quantities, extract EXACT quantities — number of rooms, number of units, square footage, linear feet, etc.
+11. For evaluation_strategy, extract exact percentage weights and scoring criteria from documents if available.
+12. Look for hidden requirements: insurance minimums, bonding amounts, security clearances, wage rate requirements (Davis-Bacon), Buy American clauses.
 """
 
 
@@ -246,8 +269,8 @@ class TenderAnalyzer:
             return self._fallback_analysis(title, description)
 
         is_deep = self._model in ("gpt-4o", "gpt-4o-2024-11-20")
-        desc_limit = 12000 if is_deep else 6000
-        doc_limit = 30000 if is_deep else 15000
+        desc_limit = 20000 if is_deep else 8000
+        doc_limit = 60000 if is_deep else 20000
         desc_text = (description or "")[:desc_limit]
         doc_text = self._prepare_documents(document_texts, max_total=doc_limit)
 
@@ -343,14 +366,32 @@ class TenderAnalyzer:
             logger.error("AI analysis failed unexpectedly: %s (type: %s)", exc, type(exc).__name__)
             return self._fallback_analysis(title, description)
 
-    def _prepare_documents(self, document_texts: dict[str, str] | None, max_total: int = 15000) -> str:
+    def _prepare_documents(self, document_texts: dict[str, str] | None, max_total: int = 20000) -> str:
         if not document_texts:
             return ""
-        per_doc = min(max_total // max(len(document_texts), 1), max_total)
+
+        file_docs = {}
+        link_docs = {}
+        for fname, txt in document_texts.items():
+            fl = fname.lower()
+            if any(fl.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".txt")):
+                file_docs[fname] = txt
+            else:
+                link_docs[fname] = txt
+
+        ordered = list(file_docs.items()) + list(link_docs.items())
+
+        file_budget = int(max_total * 0.8) if link_docs else max_total
+        link_budget = max_total - file_budget
+
         parts: list[str] = []
         total = 0
-        for fname, text in document_texts.items():
-            chunk = text[:per_doc]
+
+        for fname, txt in ordered:
+            is_file = fname in file_docs
+            budget = file_budget if is_file else (file_budget + link_budget)
+            per_doc = min(budget // max(len(file_docs if is_file else link_docs), 1), budget - total)
+            chunk = txt[:per_doc]
             if total + len(chunk) > max_total:
                 chunk = chunk[:max(0, max_total - total)]
             if chunk:
@@ -358,6 +399,7 @@ class TenderAnalyzer:
                 total += len(chunk)
             if total >= max_total:
                 break
+
         return "".join(parts)
 
     def _fallback_analysis(self, title: str, description: str | None) -> dict[str, Any]:

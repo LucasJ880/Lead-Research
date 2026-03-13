@@ -430,17 +430,25 @@ class CrawlPipeline:
             if existing:
                 continue
             try:
+                size_raw = doc.get("file_size_bytes")
+                file_size = None
+                if size_raw is not None:
+                    try:
+                        file_size = int(size_raw)
+                    except (ValueError, TypeError):
+                        pass
                 self._session.execute(
                     text("""
                         INSERT INTO opportunity_documents (
-                            opportunity_id, title, url, file_type, doc_category
-                        ) VALUES (:oid, :title, :url, :ft, :cat)
+                            opportunity_id, title, url, file_type, file_size_bytes, doc_category
+                        ) VALUES (:oid, :title, :url, :ft, :fsz, :cat)
                     """),
                     {
                         "oid": opp_id,
                         "title": doc.get("title", "")[:250],
                         "url": url,
                         "ft": doc.get("file_type", "")[:50],
+                        "fsz": file_size,
                         "cat": "source_attachment",
                     },
                 )
