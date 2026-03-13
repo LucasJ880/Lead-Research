@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import type { Source } from "@prisma/client";
-import type { SourceItem, SourceType, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
+import type { AccessMode, SourceItem, SourceType, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
 function mapSource(s: Source): SourceItem {
   const total = s.totalOpportunities;
@@ -18,6 +18,7 @@ function mapSource(s: Source): SourceItem {
     region: s.region ?? undefined,
     frequency: s.frequency as CrawlFrequency,
     isActive: s.isActive,
+    accessMode: (s.accessMode ?? "http_scrape") as AccessMode,
     lastCrawledAt: s.lastCrawledAt ? s.lastCrawledAt.toISOString() : undefined,
     lastRunStatus: s.lastRunStatus ? (s.lastRunStatus as RunStatus) : undefined,
     categoryTags: s.categoryTags,

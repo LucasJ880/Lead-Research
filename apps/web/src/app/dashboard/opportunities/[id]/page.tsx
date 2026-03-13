@@ -87,7 +87,7 @@ export default function OpportunityDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const [intel, setIntel] = useState<any>(null);
   const [intelLoading, setIntelLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -235,7 +235,7 @@ export default function OpportunityDetailPage() {
 
   if (!opp) return null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const rpt: any = intel?.intelligence?.intelligenceSummary || intel?.intelligence?.intelligence_summary || {};
   const isV2 = rpt.report_version === "2.0";
   const verdict = rpt.verdict || {};
@@ -248,7 +248,7 @@ export default function OpportunityDetailPage() {
   const hasIntel = !!intel?.intelligence;
 
   const fatalBlockers = (compliance.red_flags || []).filter(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
     (rf: any) => rf.severity === "fatal_blocker"
   );
 
@@ -380,7 +380,7 @@ export default function OpportunityDetailPage() {
       {/* Fatal blockers — persistent red banners */}
       {fatalBlockers.length > 0 && (
         <div className="space-y-2">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+
           {fatalBlockers.map((rf: any, i: number) => (
             <div key={i} className="flex items-start gap-3 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3">
               <Shield className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
@@ -554,7 +554,7 @@ export default function OpportunityDetailPage() {
                   }
                   return (
                     <div className="space-y-1.5">
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            
                       {docs.map((doc: any) => {
                         const ft = (doc.fileType || "").toLowerCase();
                         const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "xls" || ft === "xlsx" ? "text-green-600" : "text-muted-foreground";
@@ -966,7 +966,7 @@ function KeywordGroup({ label, keywords, color }: { label: string; keywords: str
 /* ════════════════════════════════════════════════════════════
  * EvidencePanel — interactive checklist from report
  * ════════════════════════════════════════════════════════════ */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
   const evidence = rpt.required_evidence || {};
   const beforeBidding: string[] = evidence.before_bidding || [];
@@ -1074,7 +1074,7 @@ function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
 /* ════════════════════════════════════════════════════════════
  * IntelligencePanel — Full report inside Analysis tab
  * ════════════════════════════════════════════════════════════ */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { data: any; onReanalyze?: () => void; onDeepAnalyze?: () => void; reanalyzing?: boolean }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "evidence"])
@@ -1082,7 +1082,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
 
   if (!data) return null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const rpt: any = data.intelligenceSummary || data.intelligence_summary || {};
   const isV2 = rpt.report_version === "2.0";
 
@@ -1355,7 +1355,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
               <div className="pb-4 space-y-3">
                 {compliance.red_flags?.length > 0 && (
                   <div className="space-y-2">
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          
                     {compliance.red_flags.map((rf: any, i: number) => (
                       <div key={i} className={`rounded-md border px-3 py-2 ${severityColors[rf.severity] || "bg-slate-50 border-slate-200"}`}>
                         <div className="flex items-center gap-2 mb-0.5">

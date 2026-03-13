@@ -92,7 +92,7 @@ async function logAuthEvent(userId: string, action: string, metadata?: Record<st
         userId,
         action,
         entityType: "session",
-        metadata: metadata ?? {},
+        metadata: (metadata ?? {}) as Record<string, string>,
       },
     });
   } catch {
