@@ -100,6 +100,34 @@ async def diagnostics() -> dict:
         openai_ready = bool(settings.OPENAI_API_KEY) and hasattr(_oai, "OpenAI")
     except ImportError:
         openai_error = "openai package not installed"
+    budget_info = {}
+    db = None
+    try:
+        from src.core.database import get_db_session
+        from sqlalchemy import text as sa_text
+        db = get_db_session()
+        daily = db.execute(sa_text(
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0) as total, COUNT(*) as cnt "
+            "FROM ai_usage_log WHERE created_at >= CURRENT_DATE"
+        )).fetchone()
+        monthly = db.execute(sa_text(
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0) as total, COUNT(*) as cnt "
+            "FROM ai_usage_log WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+        )).fetchone()
+        budget_info = {
+            "daily_spent_usd": float(daily.total) if daily else 0,
+            "daily_analyses": daily.cnt if daily else 0,
+            "daily_budget_usd": settings.AI_DAILY_BUDGET_USD,
+            "monthly_spent_usd": float(monthly.total) if monthly else 0,
+            "monthly_analyses": monthly.cnt if monthly else 0,
+            "monthly_budget_usd": settings.AI_MONTHLY_BUDGET_USD,
+        }
+    except Exception as exc:
+        budget_info = {"error": str(exc)}
+    finally:
+        if db is not None:
+            db.close()
+
     return {
         "scraper_api_key_set": bool(settings.SCRAPER_API_KEY),
         "merx_credentials_available": settings.merx_credentials_available,
@@ -112,6 +140,7 @@ async def diagnostics() -> dict:
         "rate_limit": settings.DEFAULT_RATE_LIMIT_SECONDS,
         "respect_robots": settings.RESPECT_ROBOTS_TXT,
         "log_level": settings.LOG_LEVEL,
+        "ai_budget": budget_info,
     }
 
 

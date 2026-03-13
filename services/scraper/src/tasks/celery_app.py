@@ -63,6 +63,11 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=3, minute=0, day_of_week="sunday"),
         "args": ("low",),
     },
+    "extract-pending-documents": {
+        "task": "src.tasks.extract_documents.extract_pending_documents",
+        "schedule": crontab(hour="*/4", minute=15),
+    },
 }
 
 celery_app.autodiscover_tasks(["src.tasks"], related_name="crawl_tasks")
+celery_app.autodiscover_tasks(["src.tasks"], related_name="extract_documents")

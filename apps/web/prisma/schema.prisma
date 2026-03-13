@@ -102,9 +102,32 @@ enum WorkflowStatus {
   review
   shortlisted
   pursuing
+  bid_submitted
+  won
+  lost
   passed
   not_relevant
   monitor
+  rfq_sent
+  bid_drafted
+}
+
+enum AccessMode {
+  api
+  http_scrape
+  authenticated_browser
+  local_connector
+}
+
+enum DocCategory {
+  tender_document
+  addendum
+  specification
+  drawing
+  our_response
+  supplier_quote
+  correspondence
+  other
 }
 
 // ─── Users ─────────────────────────────────────────────────
@@ -138,7 +161,7 @@ model Source {
   region           String?        @db.VarChar(100)
   city             String?        @db.VarChar(255)
   crawlConfig      Json           @default("{}") @map("crawl_config")
-  accessMode       String         @default("http") @map("access_mode") @db.VarChar(30)
+  accessMode       AccessMode     @default(http_scrape) @map("access_mode")
   frequency        CrawlFrequency @default(daily)
   isActive         Boolean        @default(true) @map("is_active")
   lastCrawledAt    DateTime?      @map("last_crawled_at") @db.Timestamptz()
@@ -310,7 +333,7 @@ model OpportunityDocument {
   downloadedAt   DateTime? @map("downloaded_at") @db.Timestamptz()
   textExtracted  Boolean  @default(false) @map("text_extracted")
   extractedText  String?  @map("extracted_text")
-  docCategory    String?  @map("doc_category") @db.VarChar(100)
+  docCategory    DocCategory? @map("doc_category")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
@@ -337,6 +360,8 @@ model TenderIntelligence {
   chinaSourceAnalysis   String?  @map("china_source_analysis")
   intelligenceSummary   Json?    @map("intelligence_summary")
   analysisModel         String?  @map("analysis_model") @db.VarChar(50)
+  analysisMode          String?  @map("analysis_mode") @db.VarChar(20)
+  analysisStatus        String   @default("completed") @map("analysis_status") @db.VarChar(20)
   analyzedAt            DateTime? @map("analyzed_at") @db.Timestamptz()
   createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
@@ -450,4 +475,21 @@ model AuditLog {
   @@index([entityType, entityId], name: "idx_audit_entity")
   @@index([createdAt(sort: Desc)], name: "idx_audit_created")
   @@map("audit_logs")
+}
+
+// ─── AI Usage Log ───────────────────────────────────────────
+
+model AiUsageLog {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  opportunityId     String?  @map("opportunity_id") @db.Uuid
+  model             String   @db.VarChar(50)
+  analysisMode      String   @map("analysis_mode") @db.VarChar(20)
+  promptTokens      Int      @default(0) @map("prompt_tokens")
+  completionTokens  Int      @default(0) @map("completion_tokens")
+  totalTokens       Int      @default(0) @map("total_tokens")
+  estimatedCostUsd  Float    @default(0) @map("estimated_cost_usd")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([createdAt(sort: Desc)], name: "idx_ai_usage_created")
+  @@map("ai_usage_log")
 }

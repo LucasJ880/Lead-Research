@@ -445,12 +445,23 @@ function OpportunitiesPage() {
                   <td className="px-2 py-2">
                     <div className="flex items-center gap-1">
                       {opp.hasIntelligence ? (
-                        <Link href={`/dashboard/opportunities/${opp.id}`} className="inline-flex items-center gap-0.5 rounded bg-blue-50 border border-blue-200 px-1.5 py-px text-2xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors" title={`AI: ${opp.recommendationStatus?.replace(/_/g, " ") || "analyzed"}`}>
-                          <Sparkles className="h-2.5 w-2.5" /> AI
+                        <Link
+                          href={`/dashboard/opportunities/${opp.id}`}
+                          className={`inline-flex items-center gap-0.5 rounded px-1.5 py-px text-2xs font-semibold transition-colors ${
+                            opp.analysisMode === "deep"
+                              ? "bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                              : opp.analysisModel === "fallback_rule_based"
+                                ? "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
+                                : "bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100"
+                          }`}
+                          title={`${opp.analysisMode === "deep" ? "Deep" : opp.analysisModel === "fallback_rule_based" ? "Rule-based" : "Quick"} analysis · ${opp.recommendationStatus?.replace(/_/g, " ") || "analyzed"}`}
+                        >
+                          <Sparkles className="h-2.5 w-2.5" />
+                          {opp.analysisMode === "deep" ? "Deep" : opp.analysisModel === "fallback_rule_based" ? "Rule" : "Quick"}
                         </Link>
                       ) : (
-                        <Link href={`/dashboard/opportunities/${opp.id}#ai-intelligence`} className="inline-flex items-center gap-0.5 rounded border border-dashed border-muted-foreground/30 px-1.5 py-px text-2xs text-muted-foreground hover:bg-muted/50 transition-colors">
-                          <Sparkles className="h-2.5 w-2.5" />
+                        <Link href={`/dashboard/opportunities/${opp.id}`} className="inline-flex items-center gap-0.5 rounded border border-dashed border-muted-foreground/30 px-1.5 py-px text-2xs text-muted-foreground hover:bg-muted/50 transition-colors" title="No AI analysis — click to view">
+                          <Sparkles className="h-2.5 w-2.5" /> —
                         </Link>
                       )}
                       <Link href={`/dashboard/opportunities/${opp.id}`} className="inline-flex items-center gap-0.5 text-2xs font-medium text-primary hover:underline">

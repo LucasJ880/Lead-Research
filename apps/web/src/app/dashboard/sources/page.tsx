@@ -24,7 +24,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
-import type { SourceItem, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
+import type { SourceItem, RunStatus, SourcePriority, SourceHealthStatus, AccessMode } from "@/types";
 
 const runStatusConfig: Record<
   RunStatus,
@@ -51,6 +51,13 @@ const priorityBadge: Record<SourcePriority, string> = {
   medium: "bg-blue-50 text-blue-700 border-blue-200",
   low: "bg-slate-50 text-slate-500 border-slate-200",
   experimental: "bg-purple-50 text-purple-600 border-purple-200",
+};
+
+const accessModeConfig: Record<AccessMode, { label: string; color: string }> = {
+  api: { label: "API", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  http_scrape: { label: "Web Scrape", color: "bg-slate-50 text-slate-600 border-slate-200" },
+  authenticated_browser: { label: "Auth Browser", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  local_connector: { label: "Local Agent", color: "bg-violet-50 text-violet-700 border-violet-200" },
 };
 
 function fitBadge(score: number) {
@@ -288,6 +295,7 @@ export default function SourcesPage() {
                   </button>
                 </th>
                 <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Access</th>
                 <th className="px-4 py-3">Region</th>
                 <th className="px-4 py-3 text-center">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("fit")}>
@@ -348,6 +356,16 @@ export default function SourcesPage() {
                         {source.sourceType.replace("_", " ")}
                       </Badge>
                     </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const am = accessModeConfig[source.accessMode] ?? accessModeConfig.http_scrape;
+                        return (
+                          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold ${am.color}`}>
+                            {am.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                       {source.region ?? source.country}
                     </td>
@@ -401,7 +419,7 @@ export default function SourcesPage() {
               })}
               {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
                     {search ? "No sources match your search." : "No sources configured yet."}
                   </td>
                 </tr>

@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # OpenAI for document intelligence
     OPENAI_API_KEY: str = ""
 
+    # AI cost control
+    AI_DAILY_BUDGET_USD: float = 5.0
+    AI_MONTHLY_BUDGET_USD: float = 100.0
+
     DEFAULT_RATE_LIMIT_SECONDS: int = 3
     DEFAULT_MAX_PAGES_PER_SOURCE: int = 20
     DEFAULT_USER_AGENT: str = (

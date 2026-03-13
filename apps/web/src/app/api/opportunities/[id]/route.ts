@@ -5,6 +5,7 @@ import type { OpportunityDetail, OpportunityStatus, RelevanceBucket, WorkflowSta
 
 const VALID_WORKFLOW: WorkflowStatus[] = [
   "new", "hot", "review", "shortlisted", "pursuing", "passed", "not_relevant", "monitor",
+  "bid_submitted", "won", "lost", "rfq_sent", "bid_drafted",
 ];
 
 export async function GET(

@@ -33,6 +33,8 @@ interface RawOpportunityRow {
   has_intelligence?: boolean;
   recommendation_status?: string | null;
   feasibility_score?: number | null;
+  analysis_mode?: string | null;
+  analysis_model?: string | null;
 }
 
 function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
@@ -59,6 +61,8 @@ function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
     hasIntelligence: row.has_intelligence ?? false,
     recommendationStatus: row.recommendation_status ?? undefined,
     feasibilityScore: row.feasibility_score ? Number(row.feasibility_score) : undefined,
+    analysisMode: row.analysis_mode ?? undefined,
+    analysisModel: row.analysis_model ?? undefined,
   };
 }
 
@@ -263,7 +267,9 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
       ts_rank_cd(o.search_vector, websearch_to_tsquery('english', $1)) AS rank,
       (ti.id IS NOT NULL) AS has_intelligence,
       ti.recommendation_status,
-      ti.feasibility_score
+      ti.feasibility_score,
+      ti.analysis_mode,
+      ti.analysis_model
     FROM opportunities o
     LEFT JOIN organizations org ON o.organization_id = org.id
     JOIN sources s ON o.source_id = s.id
@@ -405,7 +411,9 @@ async function handlePrismaSearch(params: SearchParams) {
       o.estimated_value::text, o.currency,
       (ti.id IS NOT NULL) AS has_intelligence,
       ti.recommendation_status,
-      ti.feasibility_score
+      ti.feasibility_score,
+      ti.analysis_mode,
+      ti.analysis_model
     FROM opportunities o
     LEFT JOIN organizations org ON o.organization_id = org.id
     JOIN sources s ON o.source_id = s.id

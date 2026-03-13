@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
-import type { SourceItem, SourceType, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
+import type { SourceItem, SourceType, AccessMode, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
 const createSourceSchema = z.object({
   name: z.string().min(1).max(255),
@@ -44,6 +44,7 @@ export async function GET() {
         id: s.id,
         name: s.name,
         sourceType: s.sourceType as SourceType,
+        accessMode: s.accessMode as AccessMode,
         baseUrl: s.baseUrl,
         listingPath: s.listingPath ?? undefined,
         country: s.country,
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest) {
       id: source.id,
       name: source.name,
       sourceType: source.sourceType as SourceType,
+      accessMode: source.accessMode as AccessMode,
       baseUrl: source.baseUrl,
       listingPath: source.listingPath ?? undefined,
       country: source.country,

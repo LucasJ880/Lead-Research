@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard,
@@ -58,6 +58,28 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       setSearchQuery("");
     }
   }
+
+  const [showExpiryWarning, setShowExpiryWarning] = useState(false);
+
+  const checkSessionTimeout = useCallback(() => {
+    const s = session as unknown as { lastActivity?: number; inactivityTimeout?: number } | null;
+    if (!s?.lastActivity || !s?.inactivityTimeout) return;
+    const elapsed = Math.floor(Date.now() / 1000) - s.lastActivity;
+    const remaining = s.inactivityTimeout - elapsed;
+    if (remaining <= 5 * 60 && remaining > 0) {
+      setShowExpiryWarning(true);
+    } else {
+      setShowExpiryWarning(false);
+    }
+    if (remaining <= 0) {
+      signOut({ callbackUrl: "/login?expired=inactivity" });
+    }
+  }, [session]);
+
+  useEffect(() => {
+    const interval = setInterval(checkSessionTimeout, 30_000);
+    return () => clearInterval(interval);
+  }, [checkSessionTimeout]);
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -214,6 +236,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
           </form>
         </header>
+
+        {/* Session expiry warning */}
+        {showExpiryWarning && (
+          <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-5 py-2 shrink-0">
+            <p className="text-xs text-amber-800 font-medium">
+              Your session will expire soon due to inactivity. Interact with the page to stay signed in.
+            </p>
+            <button
+              onClick={() => { setShowExpiryWarning(false); fetch("/api/auth/session"); }}
+              className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 transition-colors shrink-0"
+            >
+              Stay Signed In
+            </button>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto bg-muted/20 p-5 scrollbar-thin">

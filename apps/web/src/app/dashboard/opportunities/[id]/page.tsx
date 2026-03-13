@@ -30,6 +30,13 @@ import {
   CheckCircle2,
   Sparkles,
   AlertTriangle,
+  ChevronDown,
+  Shield,
+  Package,
+  ListChecks,
+  MessageSquare,
+  LayoutDashboard,
+  Zap,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,6 +69,8 @@ const WORKFLOW_ACTIONS: { value: WorkflowStatus; label: string; icon: typeof Fla
   { value: "not_relevant", label: "Not Relevant", icon: XCircle, shortLabel: "Not Relevant" },
 ];
 
+type TabId = "summary" | "analysis" | "documents" | "evidence" | "notes";
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -78,13 +87,14 @@ export default function OpportunityDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
-  // eslint-disable-next-line
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [intel, setIntel] = useState<any>(null);
   const [intelLoading, setIntelLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [intelError, setIntelError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("summary");
 
   const fetchDetail = useCallback(() => {
     setLoading(true);
@@ -117,14 +127,14 @@ export default function OpportunityDetailPage() {
     fetchIntelligence();
   }, [fetchDetail, fetchIntelligence]);
 
-  async function handleAnalyze() {
+  async function handleAnalyze(mode: "quick" | "deep" = "quick") {
     setAnalyzing(true);
     setAnalysisError(null);
     try {
       const res = await fetch("/api/intelligence/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ opportunityId: id, mode: "quick" }),
+        body: JSON.stringify({ opportunityId: id, mode }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Analysis failed" }));
@@ -134,8 +144,12 @@ export default function OpportunityDetailPage() {
       if (result.status === "failed") {
         throw new Error(result.message || "Analysis failed — model or API error");
       }
+      if (result.status === "budget_exceeded") {
+        throw new Error(result.message || "AI budget limit reached. Try again later or contact admin.");
+      }
       await new Promise((r) => setTimeout(r, 1200));
       fetchIntelligence();
+      setActiveTab("analysis");
     } catch (err) {
       setAnalysisError(err instanceof Error ? err.message : "Analysis failed");
     } finally {
@@ -221,285 +235,408 @@ export default function OpportunityDetailPage() {
 
   if (!opp) return null;
 
-  const breakdown = opp.relevanceBreakdown ?? {};
-  const primaryMatches: string[] = (breakdown.primary_matches as string[]) ?? [];
-  const secondaryMatches: string[] = (breakdown.secondary_matches as string[]) ?? [];
-  const contextualMatches: string[] = (breakdown.contextual_matches as string[]) ?? [];
-  const semanticMatches: string[] = (breakdown.semantic_matches as string[]) ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rpt: any = intel?.intelligence?.intelligenceSummary || intel?.intelligence?.intelligence_summary || {};
+  const isV2 = rpt.report_version === "2.0";
+  const verdict = rpt.verdict || {};
+  const scores = rpt.feasibility_scores || {};
+  const compliance = rpt.compliance_risks || {};
+  const overallScore: number | undefined = isV2 ? scores.overall_score : intel?.intelligence?.feasibilityScore;
+  const recommendation: string | undefined = isV2 ? verdict.recommendation : intel?.intelligence?.recommendationStatus;
+  const confidence: string | undefined = verdict.confidence;
+  const isFallback: boolean = (intel?.intelligence?.analysisModel || rpt.analysis_model) === "fallback_rule_based" || rpt.fallback_used === true;
+  const hasIntel = !!intel?.intelligence;
+
+  const fatalBlockers = (compliance.red_flags || []).filter(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rf: any) => rf.severity === "fatal_blocker"
+  );
+
+  const recColors: Record<string, string> = {
+    strongly_pursue: "bg-emerald-600 text-white",
+    pursue: "bg-emerald-600 text-white",
+    review_carefully: "bg-amber-500 text-white",
+    low_probability: "bg-orange-500 text-white",
+    skip: "bg-red-600 text-white",
+  };
+
+  const tabs: { id: TabId; label: string; icon: typeof LayoutDashboard; count?: number }[] = [
+    { id: "summary", label: "Summary", icon: LayoutDashboard },
+    { id: "analysis", label: "Analysis", icon: Sparkles },
+    { id: "documents", label: "Documents", icon: FileText, count: intel?.documents?.length || opp.documents.length },
+    { id: "evidence", label: "Evidence", icon: ListChecks },
+    { id: "notes", label: "Notes", icon: MessageSquare, count: opp.notes.length },
+  ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {backLink}
 
-      {/* Header — compact + bold */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-lg font-bold tracking-tight leading-snug">{opp.title}</h1>
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <Badge variant={statusVariant[opp.status] ?? "outline"} className="text-2xs">
-              {opp.status.toUpperCase()}
-            </Badge>
-            <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-2xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
-              {opp.relevanceScore}
-            </span>
-            <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
-              {getBucketLabel(opp.relevanceBucket)}
-            </span>
-            <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-2xs font-medium ${getWorkflowColor(opp.workflowStatus)}`}>
-              {getWorkflowLabel(opp.workflowStatus)}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-1.5">
-            {opp.organization && (
-              <span className="flex items-center gap-1"><Building2 className="h-3 w-3" /> {opp.organization}</span>
-            )}
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3 w-3" /> {[opp.city, opp.region, opp.country].filter(Boolean).join(", ")}
-            </span>
-            <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> {opp.sourceName}</span>
-          </div>
-        </div>
-        <a href={opp.sourceUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-          <ExternalLink className="h-3 w-3" /> Original
-        </a>
-      </div>
-
-      {/* Workflow actions — inline compact */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-2xs font-medium text-muted-foreground mr-1">Stage:</span>
-        {WORKFLOW_ACTIONS.map((action) => {
-          const isActive = opp.workflowStatus === action.value;
-          return (
-            <button
-              key={action.value}
-              onClick={() => handleWorkflowChange(action.value)}
-              disabled={updatingWorkflow || isActive}
-              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-medium transition-colors disabled:opacity-50 ${
-                isActive ? getWorkflowColor(action.value) + " ring-1 ring-offset-1 ring-primary/20" : "bg-background hover:bg-muted border-input text-muted-foreground"
-              }`}
-            >
-              <action.icon className="h-3 w-3" />
-              {action.shortLabel}
-              {isActive && <CheckCircle2 className="h-2.5 w-2.5" />}
-            </button>
-          );
-        })}
-      </div>
-
-      {actionError && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {actionError}
-        </div>
-      )}
-
-      {/* AI Analysis CTA — only shown when no analysis exists */}
-      {!intelLoading && !intelError && !intel?.intelligence && (
-        <div className="flex items-center justify-between rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/10 px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <span className="text-xs font-semibold">No AI Analysis Yet</span>
-              <p className="text-2xs text-muted-foreground">Get feasibility scoring, scope extraction, and business recommendations.</p>
-            </div>
-          </div>
-          <button
-            onClick={handleAnalyze}
-            disabled={analyzing}
-            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shrink-0"
-          >
-            {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {analyzing ? "Analyzing..." : "Analyze"}
-          </button>
-        </div>
-      )}
-      {analysisError && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{analysisError}</div>
-      )}
-
-      {intelError && !intelLoading && (
-        <Card className="border-dashed border-amber-300 bg-amber-50/30">
-          <CardContent className="p-4 flex items-center justify-between">
-            <p className="text-sm text-amber-800">Could not load AI intelligence data.</p>
-            <Button variant="outline" size="sm" onClick={fetchIntelligence}>
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* Main content */}
-        <div className="space-y-4 lg:col-span-2">
-          {/* Intelligence Panel — shown first when available */}
-          {intel?.intelligence && (
-            <div id="ai-intelligence">
-              <IntelligencePanel data={intel.intelligence} onReanalyze={handleAnalyze} reanalyzing={analyzing} />
-            </div>
-          )}
-
-          {/* Description */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Description</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {opp.descriptionSummary && opp.descriptionFull && (
-                <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                  {opp.descriptionSummary.split(". ").filter(Boolean).map((part, i) => (
-                    <span key={i} className="inline-block rounded-md bg-muted px-2 py-1 text-muted-foreground">
-                      {part.replace(/\.$/, "")}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="prose prose-sm max-w-none text-foreground">
-                {(() => {
-                  const desc = opp.descriptionFull || opp.descriptionSummary || "";
-                  if (!desc || desc.startsWith("http://") || desc.startsWith("https://")) {
-                    return <p className="text-xs text-muted-foreground italic">Description not available — see the original listing for details.</p>;
-                  }
-                  return desc.split("\n").map((line, i) => (
-                    <p key={i} className={line.startsWith("-") ? "ml-4" : ""}>
-                      {line || <br />}
-                    </p>
-                  ));
-                })()}
+      {/* ════════════════════ DECISION BAR — sticky ════════════════════ */}
+      <div className="sticky top-0 z-30 -mx-1 px-1">
+        <div className={`rounded-xl border-2 p-4 shadow-sm ${
+          hasIntel && !isFallback
+            ? "bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700 text-white"
+            : "bg-gradient-to-r from-slate-100 to-slate-50 border-slate-200 text-foreground"
+        }`}>
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Score */}
+            {overallScore != null && (
+              <div className={`flex h-12 w-12 items-center justify-center rounded-lg text-lg font-bold shrink-0 ${
+                hasIntel && !isFallback
+                  ? overallScore >= 65 ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/50"
+                    : overallScore >= 40 ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50"
+                    : "bg-red-500/20 text-red-300 ring-1 ring-red-400/50"
+                  : overallScore >= 65 ? "bg-emerald-100 text-emerald-700"
+                    : overallScore >= 40 ? "bg-amber-100 text-amber-700"
+                    : "bg-red-100 text-red-700"
+              }`}>
+                {overallScore}
               </div>
-            </CardContent>
-          </Card>
+            )}
 
-          {/* Documents */}
-          <Card>
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold">
-                Documents ({(intel?.documents?.length || 0) || opp.documents.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const docs = intel?.documents?.length ? intel.documents : opp.documents;
-                if (!docs || docs.length === 0) {
-                  return <p className="text-sm text-muted-foreground">No documents attached.</p>;
-                }
-                return (
-                  <div className="space-y-1.5">
-                    {docs.map((doc: { id: string; title?: string; url: string; fileType?: string; fileSizeBytes?: number; pageCount?: number; downloadedAt?: string; docCategory?: string }) => {
-                      const ft = (doc.fileType || "").toLowerCase();
-                      const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "xls" || ft === "xlsx" ? "text-green-600" : "text-muted-foreground";
-                      return (
-                        <a
-                          key={doc.id}
-                          href={doc.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2.5 rounded-md border px-3 py-2 hover:bg-muted/40 transition-colors group"
-                        >
-                          <FileText className={`h-4 w-4 shrink-0 ${typeColor}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{doc.title || "Untitled"}</p>
-                            <p className="text-2xs text-muted-foreground">
-                              {doc.fileType?.toUpperCase() || "FILE"}
-                              {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
-                              {doc.pageCount ? ` · ${doc.pageCount}p` : ""}
-                            </p>
-                          </div>
-                          <Download className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground shrink-0" />
-                        </a>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </CardContent>
-          </Card>
-
-          {/* Notes */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Notes</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {opp.notes.length === 0 && (
-                <p className="text-sm text-muted-foreground">No notes yet.</p>
+            {/* Verdict line */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-sm font-bold truncate max-w-[400px]">{opp.title}</h1>
+                <Badge variant={statusVariant[opp.status] ?? "outline"} className="text-2xs shrink-0">
+                  {opp.status.toUpperCase()}
+                </Badge>
+                {recommendation && (
+                  <span className={`rounded px-2 py-0.5 text-[10px] font-bold tracking-wide shrink-0 ${recColors[recommendation] || "bg-gray-600 text-white"}`}>
+                    {recommendation.replace(/_/g, " ").toUpperCase()}
+                  </span>
+                )}
+                {confidence && (
+                  <span className={`text-[10px] font-medium shrink-0 ${
+                    hasIntel && !isFallback
+                      ? confidence === "high" ? "text-emerald-300" : confidence === "medium" ? "text-blue-300" : "text-amber-300"
+                      : confidence === "high" ? "text-emerald-700" : confidence === "medium" ? "text-blue-700" : "text-amber-700"
+                  }`}>
+                    {confidence.replace(/_/g, " ")} confidence
+                  </span>
+                )}
+              </div>
+              {verdict.one_line && (
+                <p className={`text-xs mt-0.5 truncate ${hasIntel && !isFallback ? "text-white/80" : "text-muted-foreground"}`}>
+                  {verdict.one_line}
+                </p>
               )}
-              {opp.notes.map((note) => (
-                <div key={note.id} className="rounded-md border p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">{note.userName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(note.createdAt, "MMM d, yyyy h:mm a")}
-                    </span>
+            </div>
+
+            {/* Workflow actions */}
+            <div className="flex items-center gap-1 shrink-0 flex-wrap">
+              {WORKFLOW_ACTIONS.slice(0, 5).map((action) => {
+                const isActive = opp.workflowStatus === action.value;
+                return (
+                  <button
+                    key={action.value}
+                    onClick={() => handleWorkflowChange(action.value)}
+                    disabled={updatingWorkflow || isActive}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                      isActive
+                        ? "bg-white/20 ring-1 ring-white/30 text-white"
+                        : hasIntel && !isFallback
+                          ? "border border-slate-600 text-slate-300 hover:bg-slate-700"
+                          : "border border-input text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    <action.icon className="h-3 w-3" />
+                    {action.shortLabel}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Three feasibility scores bar in decision bar */}
+          {isV2 && !isFallback && (scores.technical_feasibility != null || scores.compliance_feasibility != null || scores.commercial_feasibility != null) && (
+            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-slate-700">
+              {[
+                { label: "Technical", val: scores.technical_feasibility },
+                { label: "Compliance", val: scores.compliance_feasibility },
+                { label: "Commercial", val: scores.commercial_feasibility },
+              ].map((s) => (
+                <div key={s.label} className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400 w-16 shrink-0">{s.label}</span>
+                  <div className="flex-1 bg-slate-700 rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${
+                        (s.val ?? 0) >= 65 ? "bg-emerald-400" : (s.val ?? 0) >= 40 ? "bg-amber-400" : "bg-red-400"
+                      }`}
+                      style={{ width: `${Math.min(s.val ?? 0, 100)}%` }}
+                    />
                   </div>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {note.content}
-                  </p>
+                  <span className={`text-xs font-bold w-6 text-right ${
+                    (s.val ?? 0) >= 65 ? "text-emerald-300" : (s.val ?? 0) >= 40 ? "text-amber-300" : "text-red-300"
+                  }`}>{s.val ?? "—"}</span>
                 </div>
               ))}
-              <div className="space-y-2 pt-2 border-t">
-                <textarea
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a note…"
-                  rows={3}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleAddNote}
-                  disabled={!newNote.trim() || submittingNote}
-                >
-                  {submittingNote ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
-                  Add Note
-                </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Fatal blockers — persistent red banners */}
+      {fatalBlockers.length > 0 && (
+        <div className="space-y-2">
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {fatalBlockers.map((rf: any, i: number) => (
+            <div key={i} className="flex items-start gap-3 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3">
+              <Shield className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+              <div>
+                <span className="text-xs font-bold text-red-800 uppercase tracking-wide">FATAL BLOCKER</span>
+                <p className="text-sm font-medium text-red-800">{rf.requirement}</p>
+                {rf.explanation && <p className="text-xs text-red-600 mt-0.5">{rf.explanation}</p>}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Analysis Level Indicator ── */}
+      <AnalysisLevelBanner
+        hasIntel={hasIntel}
+        isFallback={isFallback}
+        analysisMode={intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode}
+        analysisModel={intel?.intelligence?.analysisModel || rpt.analysis_model}
+        analyzing={analyzing}
+        onQuickAnalyze={() => handleAnalyze("quick")}
+        onDeepAnalyze={() => handleAnalyze("deep")}
+      />
+
+      {analysisError && (
+        <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${
+          analysisError.includes("budget") || analysisError.includes("Budget")
+            ? "border border-amber-300 bg-amber-50 text-amber-800"
+            : "border border-destructive/30 bg-destructive/10 text-destructive"
+        }`}>
+          {(analysisError.includes("budget") || analysisError.includes("Budget")) && <DollarSign className="h-3.5 w-3.5 shrink-0" />}
+          {analysisError}
+        </div>
+      )}
+      {actionError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{actionError}</div>
+      )}
+
+      {/* ════════════════════ TABS ════════════════════ */}
+      <div className="border-b flex items-center gap-0.5 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === tab.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+            }`}
+          >
+            <tab.icon className="h-3.5 w-3.5" />
+            {tab.label}
+            {tab.count != null && tab.count > 0 && (
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold">{tab.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ════════════════════ TAB CONTENT ════════════════════ */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-4">
+          {/* ── SUMMARY TAB ── */}
+          {activeTab === "summary" && (
+            <>
+              {/* Metadata overview */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-semibold">Opportunity Details</CardTitle>
+                    <a href={opp.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                      <ExternalLink className="h-3 w-3" /> View Original
+                    </a>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                    <MetaRow icon={Building2} label="Organization" value={opp.organization} />
+                    <MetaRow icon={MapPin} label="Location" value={[opp.city, opp.region, opp.country].filter(Boolean).join(", ")} />
+                    <MetaRow icon={Hash} label="Solicitation #" value={opp.solicitationNumber} />
+                    <MetaRow icon={DollarSign} label="Est. Value" value={formatCurrency(opp.estimatedValue, opp.currency)} />
+                    <MetaRow icon={Calendar} label="Posted" value={formatDate(opp.postedDate)} />
+                    <MetaRow icon={Clock} label="Closing" value={formatDate(opp.closingDate, "MMM d, yyyy h:mm a")} />
+                    <MetaRow icon={Tag} label="Category" value={opp.category} />
+                    <MetaRow icon={Globe} label="Source" value={opp.sourceName} />
+                    {opp.naicsName && <MetaRow icon={Tag} label="NAICS" value={opp.naicsName} />}
+                    {opp.setAside && <MetaRow icon={Tag} label="Set-Aside" value={opp.setAside} />}
+                    {opp.placeOfPerformance && <MetaRow icon={MapPin} label="Place of Performance" value={opp.placeOfPerformance} />}
+                    {opp.mandatorySiteVisit && <MetaRow icon={MapPin} label="Site Visit" value={opp.mandatorySiteVisit} />}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Description */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">Description</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none text-foreground">
+                    {(() => {
+                      const desc = opp.descriptionFull || opp.descriptionSummary || "";
+                      if (!desc || desc.startsWith("http://") || desc.startsWith("https://")) {
+                        return <p className="text-xs text-muted-foreground italic">Description not available — see the original listing for details.</p>;
+                      }
+                      return desc.split("\n").map((line, i) => (
+                        <p key={i} className={line.startsWith("-") ? "ml-4" : ""}>
+                          {line || <br />}
+                        </p>
+                      ));
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* ── ANALYSIS TAB ── */}
+          {activeTab === "analysis" && (
+            <>
+              {hasIntel ? (
+                <IntelligencePanel
+                  data={intel.intelligence}
+                  onReanalyze={() => handleAnalyze("quick")}
+                  onDeepAnalyze={() => handleAnalyze("deep")}
+                  reanalyzing={analyzing}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <Sparkles className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm font-medium">No analysis available</p>
+                    <p className="text-xs text-muted-foreground mt-1 mb-4">Run AI analysis to get a full Tender Intelligence Report</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleAnalyze("quick")}
+                        disabled={analyzing}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                        Quick Analysis
+                      </button>
+                      <button
+                        onClick={() => handleAnalyze("deep")}
+                        disabled={analyzing}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Deep Analysis
+                      </button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
+          {/* ── DOCUMENTS TAB ── */}
+          {activeTab === "documents" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">
+                  Documents ({(intel?.documents?.length || 0) || opp.documents.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const docs = intel?.documents?.length ? intel.documents : opp.documents;
+                  if (!docs || docs.length === 0) {
+                    return <p className="text-sm text-muted-foreground">No documents attached.</p>;
+                  }
+                  return (
+                    <div className="space-y-1.5">
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {docs.map((doc: any) => {
+                        const ft = (doc.fileType || "").toLowerCase();
+                        const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "xls" || ft === "xlsx" ? "text-green-600" : "text-muted-foreground";
+                        const extracted = doc.textExtracted || doc.text_extracted;
+                        return (
+                          <a
+                            key={doc.id}
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2.5 rounded-md border px-3 py-2 hover:bg-muted/40 transition-colors group"
+                          >
+                            <FileText className={`h-4 w-4 shrink-0 ${typeColor}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{doc.title || "Untitled"}</p>
+                              <p className="text-2xs text-muted-foreground">
+                                {doc.fileType?.toUpperCase() || "FILE"}
+                                {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
+                                {doc.pageCount ? ` · ${doc.pageCount}p` : ""}
+                                {doc.docCategory ? ` · ${doc.docCategory.replace(/_/g, " ")}` : ""}
+                              </p>
+                            </div>
+                            {extracted && (
+                              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 shrink-0">Text Extracted</span>
+                            )}
+                            <Download className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground shrink-0" />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── EVIDENCE TAB ── */}
+          {activeTab === "evidence" && (
+            <EvidencePanel rpt={rpt} isV2={isV2} />
+          )}
+
+          {/* ── NOTES TAB ── */}
+          {activeTab === "notes" && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Notes</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {opp.notes.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No notes yet.</p>
+                )}
+                {opp.notes.map((note) => (
+                  <div key={note.id} className="rounded-md border p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">{note.userName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(note.createdAt, "MMM d, yyyy h:mm a")}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.content}</p>
+                  </div>
+                ))}
+                <div className="space-y-2 pt-2 border-t">
+                  <textarea
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="Add a note…"
+                    rows={3}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  />
+                  <Button size="sm" onClick={handleAddNote} disabled={!newNote.trim() || submittingNote}>
+                    {submittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                    Add Note
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
-        {/* Sidebar metadata */}
+        {/* ════════════════════ SIDEBAR ════════════════════ */}
         <div className="space-y-4">
-          {/* Key details */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2.5">
-              <MetaRow icon={Hash} label="Solicitation #" value={opp.solicitationNumber} />
-              <MetaRow icon={Hash} label="External ID" value={opp.externalId} />
-              <MetaRow icon={DollarSign} label="Est. Value" value={formatCurrency(opp.estimatedValue, opp.currency)} />
-              <MetaRow icon={Calendar} label="Posted" value={formatDate(opp.postedDate)} />
-              <MetaRow icon={Clock} label="Closing" value={formatDate(opp.closingDate, "MMM d, yyyy h:mm a")} />
-              {opp.responseDeadline && (
-                <MetaRow icon={Clock} label="Response Due" value={formatDate(opp.responseDeadline, "MMM d, yyyy h:mm a")} />
-              )}
-              <MetaRow icon={Tag} label="Category" value={opp.category} />
-              {opp.naicsName && (
-                <MetaRow icon={Tag} label="NAICS" value={opp.naicsName} />
-              )}
-              {opp.classificationName && (
-                <MetaRow icon={Tag} label="PSC" value={opp.classificationName} />
-              )}
-              <MetaRow icon={Building2} label="Project Type" value={opp.projectType} />
-              {opp.setAside && (
-                <MetaRow icon={Tag} label="Set-Aside" value={opp.setAside} />
-              )}
-              <MetaRow icon={FileText} label="Addenda" value={String(opp.addendaCount)} />
-              {opp.placeOfPerformance && (
-                <MetaRow icon={MapPin} label="Place of Performance" value={opp.placeOfPerformance} />
-              )}
-              {opp.mandatorySiteVisit && (
-                <MetaRow icon={MapPin} label="Site Visit" value={opp.mandatorySiteVisit} />
-              )}
-              {opp.preBidMeeting && (
-                <MetaRow icon={Calendar} label="Pre-Bid Meeting" value={opp.preBidMeeting} />
-              )}
-            </CardContent>
-          </Card>
-
           {/* Contact */}
           {(opp.contactName || opp.contactEmail || opp.contactPhone || opp.officeAddress) && (
             <Card>
@@ -510,142 +647,15 @@ export default function OpportunityDetailPage() {
                 <MetaRow icon={User} label="Name" value={opp.contactName} />
                 <MetaRow icon={Mail} label="Email" value={opp.contactEmail} />
                 <MetaRow icon={Phone} label="Phone" value={opp.contactPhone} />
-                {opp.officeAddress && (
-                  <MetaRow icon={MapPin} label="Office" value={opp.officeAddress} />
-                )}
-                {opp.department && (
-                  <MetaRow icon={Building2} label="Department" value={opp.department} />
-                )}
-                {opp.office && (
-                  <MetaRow icon={Building2} label="Office Name" value={opp.office} />
-                )}
+                {opp.officeAddress && <MetaRow icon={MapPin} label="Office" value={opp.officeAddress} />}
+                {opp.department && <MetaRow icon={Building2} label="Department" value={opp.department} />}
+                {opp.office && <MetaRow icon={Building2} label="Office Name" value={opp.office} />}
               </CardContent>
             </Card>
           )}
 
           {/* Why this matched */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Why This Matched</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Score</span>
-                <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
-                  {opp.relevanceScore} / 100
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Bucket</span>
-                <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
-                  {getBucketLabel(opp.relevanceBucket)}
-                </span>
-              </div>
-
-              {opp.businessFitExplanation && (
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">Business Fit</p>
-                  <p className="text-sm leading-relaxed">{opp.businessFitExplanation}</p>
-                </div>
-              )}
-
-              {breakdown.positive_score != null && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Positive signal</span>
-                  <span className="font-medium text-emerald-600">+{String(breakdown.positive_score)}</span>
-                </div>
-              )}
-              {breakdown.negative_penalty != null && Number(breakdown.negative_penalty) > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Negative penalty</span>
-                  <span className="font-medium text-red-600">−{String(breakdown.negative_penalty)}</span>
-                </div>
-              )}
-              {breakdown.title_boost != null && Number(breakdown.title_boost) > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Title boost</span>
-                  <span className="font-medium text-blue-600">+{String(breakdown.title_boost)}</span>
-                </div>
-              )}
-              {breakdown.org_bonus != null && Number(breakdown.org_bonus) > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Org bonus</span>
-                  <span className="font-medium text-blue-600">+{String(breakdown.org_bonus)}</span>
-                </div>
-              )}
-              {breakdown.source_fit_bonus != null && Number(breakdown.source_fit_bonus) > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Source fit bonus</span>
-                  <span className="font-medium text-blue-600">+{String(breakdown.source_fit_bonus)}</span>
-                </div>
-              )}
-              {breakdown.category_bonus != null && Number(breakdown.category_bonus) > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Category bonus</span>
-                  <span className="font-medium text-blue-600">+{String(breakdown.category_bonus)}</span>
-                </div>
-              )}
-
-              {primaryMatches.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Primary matches</p>
-                  <div className="flex flex-wrap gap-1">
-                    {primaryMatches.map((kw) => (
-                      <span key={kw} className="inline-block rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">{kw}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {secondaryMatches.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Secondary matches</p>
-                  <div className="flex flex-wrap gap-1">
-                    {secondaryMatches.map((kw) => (
-                      <span key={kw} className="inline-block rounded-sm bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">{kw}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {contextualMatches.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Contextual matches</p>
-                  <div className="flex flex-wrap gap-1">
-                    {contextualMatches.map((kw) => (
-                      <span key={kw} className="inline-block rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{kw}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {semanticMatches.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Semantic matches</p>
-                  <div className="flex flex-wrap gap-1">
-                    {semanticMatches.map((kw) => (
-                      <span key={kw} className="inline-block rounded-sm bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700">{kw}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {opp.negativeKeywords.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">Negative matches</p>
-                  <div className="flex flex-wrap gap-1">
-                    {opp.negativeKeywords.map((kw) => (
-                      <span key={kw} className="inline-block rounded-sm bg-red-50 px-1.5 py-0.5 text-[10px] text-red-700">{kw}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {opp.keywordsMatched.length === 0 && opp.negativeKeywords.length === 0 && semanticMatches.length === 0 && (
-                <p className="text-sm text-muted-foreground">No keyword matches found.</p>
-              )}
-            </CardContent>
-          </Card>
+          <MatchingPanel opp={opp} />
 
           {/* Industry Tags */}
           {opp.industryTags.length > 0 && (
@@ -656,29 +666,39 @@ export default function OpportunityDetailPage() {
               <CardContent>
                 <div className="flex flex-wrap gap-1.5">
                   {opp.industryTags.map((tag) => (
-                    <Badge key={tag} variant="default" className="text-xs">
-                      {tag}
-                    </Badge>
+                    <Badge key={tag} variant="default" className="text-xs">{tag}</Badge>
                   ))}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Tags from DB */}
-          {opp.tags.length > 0 && (
+          {/* Re-analyze controls */}
+          {hasIntel && !isFallback && (
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Tags</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1.5">
-                  {opp.tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
+              <CardContent className="p-4 space-y-2">
+                <p className="text-xs font-semibold">Upgrade / Re-analyze</p>
+                {(intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode) !== "deep" && (
+                  <button
+                    onClick={() => handleAnalyze("deep")}
+                    disabled={analyzing}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 w-full justify-center"
+                  >
+                    {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    Upgrade to Deep Analysis
+                  </button>
+                )}
+                <button
+                  onClick={() => handleAnalyze((intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode) === "deep" ? "deep" : "quick")}
+                  disabled={analyzing}
+                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50 w-full justify-center"
+                >
+                  {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                  Re-analyze (uses AI tokens)
+                </button>
+                <p className="text-[10px] text-muted-foreground">
+                  Analyzed {formatDate(intel?.intelligence?.analyzedAt || intel?.intelligence?.analyzed_at)} · {intel?.intelligence?.analysisModel || rpt.analysis_model}
+                </p>
               </CardContent>
             </Card>
           )}
@@ -688,6 +708,159 @@ export default function OpportunityDetailPage() {
   );
 }
 
+/* ════════════════════════════════════════════════════════════
+ * AnalysisLevelBanner — shows free vs paid analysis state
+ * ════════════════════════════════════════════════════════════ */
+function AnalysisLevelBanner({
+  hasIntel,
+  isFallback,
+  analysisMode,
+  analysisModel,
+  analyzing,
+  onQuickAnalyze,
+  onDeepAnalyze,
+}: {
+  hasIntel: boolean;
+  isFallback: boolean;
+  analysisMode?: string;
+  analysisModel?: string;
+  analyzing: boolean;
+  onQuickAnalyze: () => void;
+  onDeepAnalyze: () => void;
+}) {
+  if (analyzing) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
+        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+        <p className="text-xs font-medium text-blue-800">Running AI analysis... This uses OpenAI tokens.</p>
+      </div>
+    );
+  }
+
+  // Level 1: No analysis at all
+  if (!hasIntel) {
+    return (
+      <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/10 px-4 py-4 space-y-3">
+        <div className="flex items-center gap-2.5">
+          <Shield className="h-4 w-4 text-emerald-600" />
+          <div>
+            <span className="text-xs font-semibold">Free Rule-Based Screening Active</span>
+            <p className="text-2xs text-muted-foreground">
+              Relevance scoring, keyword matching, and basic industry fit — at zero cost.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-6 border-t border-dashed pt-3">
+          <div className="flex-1 space-y-1">
+            <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Upgrade to AI Analysis</p>
+            <p className="text-2xs text-muted-foreground">
+              AI generates a professional bid-analysis report with feasibility scores, risk assessment, and recommendations.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onQuickAnalyze}
+              className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Quick Analysis
+              <span className="text-[9px] opacity-75 ml-0.5">~$0.01</span>
+            </button>
+            <button
+              onClick={onDeepAnalyze}
+              className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Deep Analysis
+              <span className="text-[9px] opacity-60 ml-0.5">~$0.05</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Level 2: Fallback / rule-based only
+  if (isFallback) {
+    return (
+      <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-amber-800">Rule-Based Estimate Only</span>
+              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 uppercase">Free</span>
+            </div>
+            <p className="text-[11px] text-amber-600">AI was unavailable. Showing keyword-only scoring. Run paid AI analysis for a full report.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onQuickAnalyze}
+            className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors"
+          >
+            <Zap className="h-3 w-3" />
+            Quick ~$0.01
+          </button>
+          <button
+            onClick={onDeepAnalyze}
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+          >
+            <Sparkles className="h-3 w-3" />
+            Deep ~$0.05
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Level 3: Quick analysis done
+  const isDeep = analysisMode === "deep";
+  const isQuick = !isDeep;
+
+  if (isQuick) {
+    return (
+      <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-blue-600" />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-blue-800">Quick AI Analysis</span>
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{analysisModel || "gpt-4o-mini"}</span>
+            </div>
+            <p className="text-[11px] text-blue-600">Based on title + description. Upgrade to Deep for document-level analysis.</p>
+          </div>
+        </div>
+        <button
+          onClick={onDeepAnalyze}
+          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors shrink-0"
+        >
+          <Sparkles className="h-3 w-3" />
+          Upgrade to Deep ~$0.05
+        </button>
+      </div>
+    );
+  }
+
+  // Level 4: Deep analysis done
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-2.5">
+      <Sparkles className="h-4 w-4 text-emerald-600" />
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-emerald-800">Deep AI Analysis</span>
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">{analysisModel || "gpt-4o"}</span>
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">Document-Aware</span>
+        </div>
+        <p className="text-[11px] text-emerald-600">Full document-level analysis with citations and detailed specifications.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+ * MetaRow — key/value display
+ * ════════════════════════════════════════════════════════════ */
 function MetaRow({
   icon: Icon,
   label,
@@ -708,16 +881,211 @@ function MetaRow({
   );
 }
 
-// eslint-disable-next-line
-function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onReanalyze?: () => void; reanalyzing?: boolean }) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["summary", "fit", "compliance", "supply"]));
+/* ════════════════════════════════════════════════════════════
+ * MatchingPanel — why this opportunity matched
+ * ════════════════════════════════════════════════════════════ */
+function MatchingPanel({ opp }: { opp: OpportunityDetail }) {
+  const breakdown = opp.relevanceBreakdown ?? {};
+  const primaryMatches: string[] = (breakdown.primary_matches as string[]) ?? [];
+  const secondaryMatches: string[] = (breakdown.secondary_matches as string[]) ?? [];
+  const contextualMatches: string[] = (breakdown.contextual_matches as string[]) ?? [];
+  const semanticMatches: string[] = (breakdown.semantic_matches as string[]) ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">Why This Matched</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Score</span>
+          <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
+            {opp.relevanceScore} / 100
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Bucket</span>
+          <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
+            {getBucketLabel(opp.relevanceBucket)}
+          </span>
+        </div>
+
+        {opp.businessFitExplanation && (
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Business Fit</p>
+            <p className="text-sm leading-relaxed">{opp.businessFitExplanation}</p>
+          </div>
+        )}
+
+        {breakdown.positive_score != null && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Positive signal</span>
+            <span className="font-medium text-emerald-600">+{String(breakdown.positive_score)}</span>
+          </div>
+        )}
+        {breakdown.negative_penalty != null && Number(breakdown.negative_penalty) > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Negative penalty</span>
+            <span className="font-medium text-red-600">−{String(breakdown.negative_penalty)}</span>
+          </div>
+        )}
+
+        {primaryMatches.length > 0 && (
+          <KeywordGroup label="Primary matches" keywords={primaryMatches} color="bg-emerald-50 text-emerald-700" />
+        )}
+        {secondaryMatches.length > 0 && (
+          <KeywordGroup label="Secondary matches" keywords={secondaryMatches} color="bg-blue-50 text-blue-700" />
+        )}
+        {contextualMatches.length > 0 && (
+          <KeywordGroup label="Contextual matches" keywords={contextualMatches} color="bg-amber-50 text-amber-700" />
+        )}
+        {semanticMatches.length > 0 && (
+          <KeywordGroup label="Semantic matches" keywords={semanticMatches} color="bg-violet-50 text-violet-700" />
+        )}
+        {opp.negativeKeywords.length > 0 && (
+          <KeywordGroup label="Negative matches" keywords={opp.negativeKeywords} color="bg-red-50 text-red-700" />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function KeywordGroup({ label, keywords, color }: { label: string; keywords: string[]; color: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-1">
+        {keywords.map((kw) => (
+          <span key={kw} className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] ${color}`}>{kw}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+ * EvidencePanel — interactive checklist from report
+ * ════════════════════════════════════════════════════════════ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
+  const evidence = rpt.required_evidence || {};
+  const beforeBidding: string[] = evidence.before_bidding || [];
+  const withSubmission: string[] = evidence.with_submission || [];
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  function toggle(item: string) {
+    setChecked(prev => {
+      const next = new Set(prev);
+      next.has(item) ? next.delete(item) : next.add(item);
+      return next;
+    });
+  }
+
+  if (!isV2 || (beforeBidding.length === 0 && withSubmission.length === 0)) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <ListChecks className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm font-medium">No evidence checklist available</p>
+          <p className="text-xs text-muted-foreground mt-1">Run AI analysis to generate required evidence items</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const totalItems = beforeBidding.length + withSubmission.length;
+  const checkedCount = checked.size;
+  const progress = totalItems > 0 ? Math.round((checkedCount / totalItems) * 100) : 0;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Evidence Checklist</CardTitle>
+          <span className="text-xs text-muted-foreground">{checkedCount}/{totalItems} completed · {progress}%</span>
+        </div>
+        <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+          <div
+            className="h-1.5 rounded-full bg-emerald-500 transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {beforeBidding.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Before Bidding</p>
+            <div className="space-y-1.5">
+              {beforeBidding.map((item, i) => {
+                const key = `before_${i}`;
+                const isChecked = checked.has(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggle(key)}
+                    className={`flex items-start gap-2.5 w-full text-left rounded-md border px-3 py-2 transition-colors ${
+                      isChecked ? "bg-emerald-50 border-emerald-200" : "hover:bg-muted/40"
+                    }`}
+                  >
+                    <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      isChecked ? "bg-emerald-600 border-emerald-600" : "border-input"
+                    }`}>
+                      {isChecked && <CheckCircle2 className="h-3 w-3 text-white" />}
+                    </div>
+                    <span className={`text-xs ${isChecked ? "text-emerald-800 line-through" : ""}`}>{item}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {withSubmission.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">With Submission</p>
+            <div className="space-y-1.5">
+              {withSubmission.map((item, i) => {
+                const key = `with_${i}`;
+                const isChecked = checked.has(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggle(key)}
+                    className={`flex items-start gap-2.5 w-full text-left rounded-md border px-3 py-2 transition-colors ${
+                      isChecked ? "bg-emerald-50 border-emerald-200" : "hover:bg-muted/40"
+                    }`}
+                  >
+                    <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      isChecked ? "bg-emerald-600 border-emerald-600" : "border-input"
+                    }`}>
+                      {isChecked && <CheckCircle2 className="h-3 w-3 text-white" />}
+                    </div>
+                    <span className={`text-xs ${isChecked ? "text-emerald-800 line-through" : ""}`}>{item}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+ * IntelligencePanel — Full report inside Analysis tab
+ * ════════════════════════════════════════════════════════════ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { data: any; onReanalyze?: () => void; onDeepAnalyze?: () => void; reanalyzing?: boolean }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "evidence"])
+  );
 
   if (!data) return null;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rpt: any = data.intelligenceSummary || data.intelligence_summary || {};
   const isV2 = rpt.report_version === "2.0";
 
-  // v2 report fields
   const verdict = rpt.verdict || {};
   const projSummary = rpt.project_summary || {};
   const scope = rpt.scope_breakdown || {};
@@ -732,36 +1100,12 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
   const evidence = rpt.required_evidence || {};
   const scores = rpt.feasibility_scores || {};
 
-  // v1 fallback
-  const v1feasibility: any = rpt.feasibility_assessment || {};
-  const v1china: any = rpt.china_sourcing_analysis || {};
-
-  const overallScore: number | undefined = isV2
-    ? scores.overall_score
-    : (data.feasibilityScore ?? data.feasibility_score ?? v1feasibility.feasibility_score);
-  const recommendation: string | undefined = isV2
-    ? verdict.recommendation
-    : (data.recommendationStatus ?? data.recommendation_status ?? v1feasibility.recommendation);
-  const confidence: string | undefined = verdict.confidence;
-  const verdictLine: string | undefined = isV2 ? verdict.one_line : rpt.one_line_verdict;
   const overview: string | undefined = isV2
     ? projSummary.overview
     : (data.projectOverview || data.project_overview || rpt.project_overview);
   const analyzedAt: string | undefined = data.analyzedAt || data.analyzed_at || rpt.analyzed_at;
   const model: string | undefined = data.analysisModel || data.analysis_model || rpt.analysis_model;
   const isFallback: boolean = model === "fallback_rule_based" || rpt.fallback_used === true;
-
-  const recColors: Record<string, string> = {
-    strongly_pursue: "bg-emerald-600 text-white",
-    pursue: "bg-emerald-600 text-white",
-    review_carefully: "bg-amber-500 text-white",
-    low_probability: "bg-orange-500 text-white",
-    skip: "bg-red-600 text-white",
-  };
-
-  const confColors: Record<string, string> = {
-    high: "text-emerald-700", medium: "text-blue-700", low: "text-amber-700", very_low: "text-red-700",
-  };
 
   const severityColors: Record<string, string> = {
     fatal_blocker: "bg-red-100 text-red-800 border-red-300",
@@ -777,123 +1121,52 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
     });
   }
 
-  const SectionHeader = ({ id, title, icon }: { id: string; title: string; icon?: React.ReactNode }) => (
+  const SectionHeader = ({ id, title }: { id: string; title: string }) => (
     <button
       onClick={() => toggleSection(id)}
       className="flex items-center justify-between w-full py-2.5 text-left group"
     >
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 group-hover:text-foreground transition-colors">{title}</span>
-      </div>
-      <svg className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.has(id) ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-      </svg>
+      <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 group-hover:text-foreground transition-colors">{title}</span>
+      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.has(id) ? "rotate-180" : ""}`} />
     </button>
   );
 
   return (
-    <Card className="border-2 border-blue-200 overflow-hidden">
-      {/* ── FALLBACK WARNING ── */}
-      {isFallback && (
-        <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <div>
-              <span className="text-xs font-semibold text-amber-800">Rule-Based Estimate Only</span>
-              <p className="text-[11px] text-amber-600">This analysis used keyword matching, not AI. Click Re-analyze to generate a full AI report.</p>
-            </div>
-          </div>
+    <Card className="overflow-hidden">
+      {/* Header with re-analyze controls */}
+      <div className="px-5 py-3 bg-slate-50 border-b flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-blue-600" />
+          <span className="text-xs font-semibold">Tender Intelligence Report</span>
+          {isV2 && <span className="text-[10px] text-muted-foreground">v2.0</span>}
+          {isFallback && <span className="text-[10px] text-amber-600 font-medium">(Fallback)</span>}
+        </div>
+        <div className="flex items-center gap-1.5">
           {onReanalyze && (
             <button
               onClick={onReanalyze}
               disabled={reanalyzing}
-              className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-50 shrink-0"
+              className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+              Quick
+            </button>
+          )}
+          {onDeepAnalyze && (
+            <button
+              onClick={onDeepAnalyze}
+              disabled={reanalyzing}
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Run AI Analysis
+              Deep
             </button>
           )}
         </div>
-      )}
-
-      {/* ── DECISION HEADER ── */}
-      <div className={`p-5 text-white ${isFallback ? "bg-gradient-to-r from-slate-700 to-slate-600" : "bg-gradient-to-r from-slate-900 to-slate-800"}`}>
-        <div className="flex items-start gap-4">
-          {overallScore != null && (
-            <div className="flex flex-col items-center gap-1 shrink-0">
-              <div className={`flex h-14 w-14 items-center justify-center rounded-xl text-xl font-bold ${
-                overallScore >= 65 ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/50"
-                : overallScore >= 40 ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50"
-                : "bg-red-500/20 text-red-300 ring-1 ring-red-400/50"
-              }`}>
-                {overallScore}
-              </div>
-              <span className="text-[9px] text-slate-400 font-medium">SCORE</span>
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              <span className="text-xs font-semibold text-slate-300 tracking-wide">TENDER INTELLIGENCE REPORT</span>
-              {recommendation && (
-                <span className={`rounded px-2 py-0.5 text-[10px] font-bold tracking-wide ${recColors[recommendation] || "bg-gray-600"}`}>
-                  {recommendation.replace(/_/g, " ").toUpperCase()}
-                </span>
-              )}
-              {confidence && (
-                <span className={`text-[10px] font-medium ${confColors[confidence] || "text-slate-400"}`}>
-                  {confidence.replace(/_/g, " ")} confidence
-                </span>
-              )}
-              {onReanalyze && !isFallback && (
-                <button
-                  onClick={onReanalyze}
-                  disabled={reanalyzing}
-                  className="ml-auto inline-flex items-center gap-1 rounded border border-slate-600 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50"
-                >
-                  {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  Re-analyze
-                </button>
-              )}
-            </div>
-            {verdictLine && (
-              <p className="text-sm text-white/90 leading-snug font-medium">{verdictLine}</p>
-            )}
-            {confidence && verdict.confidence_rationale && (
-              <p className="text-[11px] text-slate-400 mt-1">{verdict.confidence_rationale}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Three feasibility scores bar */}
-        {isV2 && (scores.technical_feasibility != null || scores.compliance_feasibility != null || scores.commercial_feasibility != null) && (
-          <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-slate-700">
-            {[
-              { label: "Technical", val: scores.technical_feasibility },
-              { label: "Compliance", val: scores.compliance_feasibility },
-              { label: "Commercial", val: scores.commercial_feasibility },
-            ].map((s) => (
-              <div key={s.label} className="text-center">
-                <div className="text-[10px] text-slate-400 mb-1">{s.label}</div>
-                <div className="w-full bg-slate-700 rounded-full h-1.5">
-                  <div
-                    className={`h-1.5 rounded-full transition-all ${
-                      (s.val ?? 0) >= 65 ? "bg-emerald-400" : (s.val ?? 0) >= 40 ? "bg-amber-400" : "bg-red-400"
-                    }`}
-                    style={{ width: `${Math.min(s.val ?? 0, 100)}%` }}
-                  />
-                </div>
-                <div className={`text-xs font-bold mt-0.5 ${
-                  (s.val ?? 0) >= 65 ? "text-emerald-300" : (s.val ?? 0) >= 40 ? "text-amber-300" : "text-red-300"
-                }`}>{s.val ?? "—"}</div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      <CardContent className="p-0 divide-y">
-        {/* ── 1. Project Summary ── */}
+      <div className="divide-y">
+        {/* 1. Project Summary */}
         <div className="px-5">
           <SectionHeader id="summary" title="Project Summary" />
           {expandedSections.has("summary") && (
@@ -914,7 +1187,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           )}
         </div>
 
-        {/* ── 2. Scope Breakdown ── */}
+        {/* 2. Scope Breakdown */}
         {isV2 && (scope.main_deliverables?.length > 0 || scope.quantities || scope.intended_use) && (
           <div className="px-5">
             <SectionHeader id="scope" title="Scope Breakdown" />
@@ -938,7 +1211,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── 3. Technical Requirements ── */}
+        {/* 3. Technical Requirements */}
         {isV2 && (techReqs.product_requirements?.length > 0 || techReqs.standards_certifications?.length > 0 || techReqs.environmental_requirements?.length > 0) && (
           <div className="px-5">
             <SectionHeader id="tech" title="Technical Requirements" />
@@ -990,7 +1263,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── 4. Timeline ── */}
+        {/* 4. Timeline */}
         {isV2 && (timeline.bid_closing || timeline.project_start || timeline.delivery_deadline || timeline.schedule_notes) && (
           <div className="px-5">
             <SectionHeader id="timeline" title="Timeline & Milestones" />
@@ -1020,7 +1293,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── 5. Evaluation Strategy ── */}
+        {/* 5. Evaluation Strategy */}
         {isV2 && (evalStrategy.pricing_weight || evalStrategy.likely_evaluator_focus) && evalStrategy.pricing_weight !== "Not specified" && (
           <div className="px-5">
             <SectionHeader id="eval" title="Evaluation Strategy" />
@@ -1039,7 +1312,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── 6. Business Fit ── */}
+        {/* 6. Business Fit */}
         <div className="px-5">
           <SectionHeader id="fit" title="Fit for Our Business" />
           {expandedSections.has("fit") && (
@@ -1054,8 +1327,8 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
                   {bizFit.fit_assessment.replace(/_/g, " ")}
                 </div>
               )}
-              {(isV2 ? bizFit.fit_explanation : v1feasibility.business_fit_explanation) && (
-                <p className="text-sm">{isV2 ? bizFit.fit_explanation : v1feasibility.business_fit_explanation}</p>
+              {bizFit.fit_explanation && (
+                <p className="text-sm">{bizFit.fit_explanation}</p>
               )}
               {isV2 && bizFit.recommended_role && bizFit.recommended_role !== "not_recommended" && (
                 <p className="text-xs text-muted-foreground">Recommended role: <strong className="text-foreground">{bizFit.recommended_role.replace(/_/g, " ")}</strong></p>
@@ -1074,7 +1347,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           )}
         </div>
 
-        {/* ── 7. Compliance Red Flags ── */}
+        {/* 7. Compliance Red Flags */}
         {isV2 && (compliance.red_flags?.length > 0 || compliance.mandatory_certifications?.length > 0 || (compliance.bonding_insurance && compliance.bonding_insurance !== "Not specified")) && (
           <div className="px-5">
             <SectionHeader id="compliance" title="Compliance Red Flags" />
@@ -1082,6 +1355,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
               <div className="pb-4 space-y-3">
                 {compliance.red_flags?.length > 0 && (
                   <div className="space-y-2">
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {compliance.red_flags.map((rf: any, i: number) => (
                       <div key={i} className={`rounded-md border px-3 py-2 ${severityColors[rf.severity] || "bg-slate-50 border-slate-200"}`}>
                         <div className="flex items-center gap-2 mb-0.5">
@@ -1110,7 +1384,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── 8. Compatibility Analysis ── */}
+        {/* 8. Compatibility Analysis */}
         {isV2 && compat.compatibility_risk && compat.compatibility_risk !== "none" && (
           <div className="px-5">
             <SectionHeader id="compat" title="Compatibility Analysis" />
@@ -1125,14 +1399,13 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
                 </div>
                 {compat.existing_system && compat.existing_system !== "Not specified" && <p><span className="text-muted-foreground">Existing system:</span> {compat.existing_system}</p>}
                 {compat.brand_compatibility && compat.brand_compatibility !== "Not specified" && <p><span className="text-muted-foreground">Brand compat:</span> {compat.brand_compatibility}</p>}
-                {compat.proof_required && compat.proof_required !== "Not specified" && <p><span className="text-muted-foreground">Proof needed:</span> {compat.proof_required}</p>}
                 {compat.compatibility_notes && <p className="text-xs text-muted-foreground">{compat.compatibility_notes}</p>}
               </div>
             )}
           </div>
         )}
 
-        {/* ── 9. Supply Chain Feasibility ── */}
+        {/* 9. Supply Chain */}
         <div className="px-5">
           <SectionHeader id="supply" title="Supply Chain & China Sourcing" />
           {expandedSections.has("supply") && (
@@ -1154,20 +1427,14 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
                   {supplyChain.shipping_lead_time && supplyChain.shipping_lead_time !== "Not assessed" && <p><span className="text-muted-foreground">Lead time:</span> {supplyChain.shipping_lead_time}</p>}
                   {supplyChain.local_installation && supplyChain.local_installation !== "Not specified" && <p><span className="text-muted-foreground">Local install:</span> {supplyChain.local_installation}</p>}
                 </>
-              ) : v1china.explanation ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${v1china.viable ? "bg-green-500" : "bg-red-500"}`} />
-                    <span className="font-medium">{v1china.viable ? "Viable" : "Not Viable"}</span>
-                  </div>
-                  <p>{v1china.explanation}</p>
-                </>
-              ) : <p className="text-muted-foreground">Not assessed.</p>}
+              ) : (
+                <p className="text-muted-foreground">Not assessed.</p>
+              )}
             </div>
           )}
         </div>
 
-        {/* ── 10. Participation Strategy ── */}
+        {/* 10. Participation Strategy */}
         {isV2 && participation.recommended_approach && (
           <div className="px-5">
             <SectionHeader id="strategy" title="Participation Strategy" />
@@ -1188,7 +1455,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── 11. Required Evidence ── */}
+        {/* 11. Required Evidence */}
         {isV2 && (evidence.before_bidding?.length > 0 || evidence.with_submission?.length > 0) && (
           <div className="px-5">
             <SectionHeader id="evidence" title="Required Evidence & Next Actions" />
@@ -1219,7 +1486,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
           </div>
         )}
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="px-5 py-3 flex items-center justify-between text-[10px] text-muted-foreground bg-slate-50">
           <span>
             {analyzedAt && `Analyzed ${new Date(analyzedAt).toLocaleDateString()}`}
@@ -1234,16 +1501,7 @@ function IntelligencePanel({ data, onReanalyze, reanalyzing }: { data: any; onRe
             )}
           </span>
         </div>
-      </CardContent>
+      </div>
     </Card>
-  );
-}
-
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border bg-slate-50/50 p-4">
-      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{title}</h4>
-      {children}
-    </div>
   );
 }

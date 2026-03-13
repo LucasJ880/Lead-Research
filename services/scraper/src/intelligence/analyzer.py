@@ -198,11 +198,26 @@ SCORING RULES:
 - If compliance_feasibility has a fatal_blocker in red_flags, cap compliance at 15."""
 
 
+_DEEP_CITATION_ADDENDUM = """
+
+DEEP ANALYSIS INSTRUCTIONS (document-aware mode):
+You have access to actual tender document text above. You MUST:
+1. Cite specific document names when referencing requirements (e.g., "Per [Document: Spec_Sheet.pdf], Section 3.2...").
+2. Extract exact specification numbers, clause references, and quantity figures from documents.
+3. Identify contradictions between the description and document text.
+4. For technical_requirements.product_requirements, quote exact spec language when possible.
+5. For compliance_risks.red_flags, reference the specific document and clause that creates the risk.
+6. For timeline_milestones, extract exact dates from documents rather than inferring from the description.
+7. Rate your confidence HIGHER if documents contain detailed specifications, LOWER if documents are vague or procedural only.
+"""
+
+
 class TenderAnalyzer:
     """Generates structured Tender Intelligence Reports using OpenAI."""
 
-    def __init__(self, model: str = "gpt-4o-mini") -> None:
+    def __init__(self, model: str = "gpt-4o-mini", max_tokens: int = 3500) -> None:
         self._model = model
+        self._max_tokens = max_tokens
 
     def analyze(
         self,
@@ -230,14 +245,21 @@ class TenderAnalyzer:
             logger.error("OPENAI_API_KEY not configured — cannot run AI analysis")
             return self._fallback_analysis(title, description)
 
-        desc_text = (description or "")[:6000]
-        doc_text = self._prepare_documents(document_texts)
+        is_deep = self._model in ("gpt-4o", "gpt-4o-2024-11-20")
+        desc_limit = 12000 if is_deep else 6000
+        doc_limit = 30000 if is_deep else 15000
+        desc_text = (description or "")[:desc_limit]
+        doc_text = self._prepare_documents(document_texts, max_total=doc_limit)
 
         if not desc_text and not doc_text:
             logger.warning("No description or documents to analyze for: %s", title)
             return self._fallback_analysis(title, description)
 
-        prompt = _ANALYSIS_PROMPT.format(
+        analysis_prompt = _ANALYSIS_PROMPT
+        if is_deep and doc_text:
+            analysis_prompt += _DEEP_CITATION_ADDENDUM
+
+        prompt = analysis_prompt.format(
             title=title,
             organization=organization or "Not specified",
             location=location or "Not specified",
@@ -267,16 +289,20 @@ class TenderAnalyzer:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
-                max_tokens=3500,
+                max_tokens=self._max_tokens,
                 response_format={"type": "json_object"},
                 timeout=90,
             )
 
             usage = response.usage
+            prompt_tokens = 0
+            completion_tokens = 0
             if usage:
+                prompt_tokens = usage.prompt_tokens
+                completion_tokens = usage.completion_tokens
                 logger.info(
                     "OpenAI token usage: prompt=%d completion=%d total=%d",
-                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens,
+                    prompt_tokens, completion_tokens, usage.total_tokens,
                 )
 
             raw = response.choices[0].message.content or "{}"
@@ -286,6 +312,8 @@ class TenderAnalyzer:
             result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
             result["report_version"] = result.get("report_version", "2.0")
             result["fallback_used"] = False
+            result["_prompt_tokens"] = prompt_tokens
+            result["_completion_tokens"] = completion_tokens
 
             verdict = result.get("verdict", {})
             scores = result.get("feasibility_scores", {})
@@ -315,19 +343,20 @@ class TenderAnalyzer:
             logger.error("AI analysis failed unexpectedly: %s (type: %s)", exc, type(exc).__name__)
             return self._fallback_analysis(title, description)
 
-    def _prepare_documents(self, document_texts: dict[str, str] | None) -> str:
+    def _prepare_documents(self, document_texts: dict[str, str] | None, max_total: int = 15000) -> str:
         if not document_texts:
             return ""
+        per_doc = min(max_total // max(len(document_texts), 1), max_total)
         parts: list[str] = []
         total = 0
         for fname, text in document_texts.items():
-            chunk = text[:5000]
-            if total + len(chunk) > 15000:
-                chunk = chunk[:max(0, 15000 - total)]
+            chunk = text[:per_doc]
+            if total + len(chunk) > max_total:
+                chunk = chunk[:max(0, max_total - total)]
             if chunk:
                 parts.append(f"\n--- Document: {fname} ---\n{chunk}")
                 total += len(chunk)
-            if total >= 15000:
+            if total >= max_total:
                 break
         return "".join(parts)
 

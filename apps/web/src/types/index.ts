@@ -61,9 +61,20 @@ export type WorkflowStatus =
   | "review"
   | "shortlisted"
   | "pursuing"
+  | "bid_submitted"
+  | "won"
+  | "lost"
   | "passed"
   | "not_relevant"
-  | "monitor";
+  | "monitor"
+  | "rfq_sent"
+  | "bid_drafted";
+
+export type AccessMode =
+  | "api"
+  | "http_scrape"
+  | "authenticated_browser"
+  | "local_connector";
 
 export interface OpportunityFilters {
   keyword?: string;
@@ -161,6 +172,8 @@ export interface OpportunitySummary {
   hasIntelligence?: boolean;
   recommendationStatus?: string;
   feasibilityScore?: number;
+  analysisMode?: string;
+  analysisModel?: string;
 }
 
 export interface OpportunityDetail extends OpportunitySummary {
@@ -217,6 +230,7 @@ export interface SourceItem {
   id: string;
   name: string;
   sourceType: SourceType;
+  accessMode: AccessMode;
   baseUrl: string;
   listingPath?: string;
   country: string;
@@ -258,103 +272,159 @@ export interface CrawlLogEntry {
   createdAt: string;
 }
 
-// ─── AI Intelligence types ───
+// ─── AI Intelligence types (v2.0 report) ───
 
-export interface IntelligenceFeasibility {
-  feasibility_score?: number;
-  recommendation?: string;
-  business_fit_explanation?: string;
-  key_concerns?: string[];
-  key_advantages?: string[];
+export interface V2Verdict {
+  one_line?: string;
+  recommendation?: "pursue" | "review_carefully" | "low_probability" | "skip" | string;
+  confidence?: "high" | "medium" | "low" | "very_low" | string;
+  confidence_rationale?: string;
 }
 
-export interface IntelligenceChinaSourcing {
-  viable?: boolean;
-  explanation?: string;
-  restrictions?: string[];
-  lead_time_concern?: string;
+export interface V2ProjectSummary {
+  overview?: string;
+  issuing_body?: string;
+  project_type?: string;
 }
 
-export interface IntelligenceWCR {
-  is_relevant?: boolean;
-  relevance_explanation?: string;
-  specific_products?: string[];
-  estimated_scope_percentage?: number;
+export interface V2ScopeBreakdown {
+  main_deliverables?: string[];
+  quantities?: string;
+  scope_type?: string;
+  service_scope?: string;
+  intended_use?: string;
 }
 
-export interface IntelligenceTechReqs {
-  materials?: string[];
-  measurements?: string;
-  compliance?: string[];
+export interface V2TechnicalRequirements {
+  product_requirements?: string[];
+  environmental_requirements?: string[];
+  installation_requirements?: string[];
+  standards_certifications?: string[];
+  control_systems?: string;
   specialized_needs?: string[];
 }
 
-export interface IntelligenceQualReqs {
-  experience_years?: string;
-  certifications?: string[];
-  insurance_min?: string;
-  labor_requirements?: string;
-  bonding?: string;
-  security_clearance?: string;
-  other?: string[];
-}
-
-export interface IntelligenceDates {
-  posting_date?: string | null;
-  closing_date?: string | null;
-  site_visit_date?: string | null;
+export interface V2TimelineMilestones {
+  bid_closing?: string | null;
+  response_due?: string | null;
+  site_visit?: string | null;
   pre_bid_meeting?: string | null;
   project_start?: string | null;
-  project_completion?: string | null;
-  timeline_notes?: string;
+  delivery_deadline?: string | null;
+  milestone_dates?: string[];
+  schedule_pressure?: "realistic" | "moderate" | "tight" | "very_tight" | string;
+  schedule_notes?: string;
 }
 
-export interface IntelligenceSummary {
-  one_line_verdict?: string;
-  project_overview?: string;
-  scope_of_work?: string;
-  scope_type?: string;
-  technical_requirements?: IntelligenceTechReqs;
-  qualification_requirements?: IntelligenceQualReqs;
-  critical_dates?: IntelligenceDates;
-  risk_factors?: string[];
-  feasibility_assessment?: IntelligenceFeasibility;
-  window_covering_relevance?: IntelligenceWCR;
-  china_sourcing_analysis?: IntelligenceChinaSourcing;
-  recommended_action?: string;
+export interface V2EvaluationStrategy {
+  pricing_weight?: string;
+  technical_weight?: string;
+  experience_weight?: string;
+  other_criteria?: string[];
+  likely_evaluator_focus?: string;
+}
+
+export interface V2BusinessFit {
+  fit_assessment?: "strong_fit" | "moderate_fit" | "weak_fit" | "poor_fit" | string;
+  fit_explanation?: string;
+  recommended_role?: string;
+  capability_gaps?: string[];
+}
+
+export interface V2RedFlag {
+  requirement: string;
+  severity: "fatal_blocker" | "serious_risk" | "normal_requirement" | string;
+  explanation?: string;
+}
+
+export interface V2ComplianceRisks {
+  red_flags?: V2RedFlag[];
+  mandatory_certifications?: string[];
+  experience_thresholds?: string;
+  bonding_insurance?: string;
+  local_requirements?: string;
+}
+
+export interface V2CompatibilityAnalysis {
+  existing_system?: string;
+  brand_compatibility?: string;
+  proof_required?: string;
+  compatibility_risk?: "none" | "low" | "medium" | "high" | string;
+  compatibility_notes?: string;
+}
+
+export interface V2SupplyChainFeasibility {
+  china_sourcing_viable?: boolean;
+  sourcing_explanation?: string;
+  buy_domestic_restrictions?: string[];
+  shipping_lead_time?: string;
+  warehousing_needs?: string;
+  import_compliance?: string;
+  local_installation?: string;
+}
+
+export interface V2ParticipationStrategy {
+  recommended_approach?: string;
+  strategy_rationale?: string;
+  potential_partners?: string;
+  competitive_positioning?: string;
+}
+
+export interface V2RequiredEvidence {
+  before_bidding?: string[];
+  with_submission?: string[];
+  examples?: string[];
+}
+
+export interface V2FeasibilityScores {
+  technical_feasibility?: number;
+  compliance_feasibility?: number;
+  commercial_feasibility?: number;
+  overall_score?: number;
+  score_rationale?: string;
+}
+
+export interface V2IntelligenceReport {
+  report_version?: string;
+  verdict?: V2Verdict;
+  project_summary?: V2ProjectSummary;
+  scope_breakdown?: V2ScopeBreakdown;
+  technical_requirements?: V2TechnicalRequirements;
+  timeline_milestones?: V2TimelineMilestones;
+  evaluation_strategy?: V2EvaluationStrategy;
+  business_fit?: V2BusinessFit;
+  compliance_risks?: V2ComplianceRisks;
+  compatibility_analysis?: V2CompatibilityAnalysis;
+  supply_chain_feasibility?: V2SupplyChainFeasibility;
+  participation_strategy?: V2ParticipationStrategy;
+  required_evidence?: V2RequiredEvidence;
+  feasibility_scores?: V2FeasibilityScores;
+  analysis_model?: string;
+  analyzed_at?: string;
+  fallback_used?: boolean;
 }
 
 export interface TenderIntelligence {
   id?: string;
   opportunityId?: string;
-  projectOverview?: string;
-  project_overview?: string;
-  scopeOfWork?: string;
-  scope_of_work?: string;
-  scopeType?: string;
-  scope_type?: string;
-  technicalRequirements?: IntelligenceTechReqs;
-  technical_requirements?: IntelligenceTechReqs;
-  qualificationReqs?: IntelligenceQualReqs;
-  qualification_reqs?: IntelligenceQualReqs;
-  criticalDates?: IntelligenceDates;
-  critical_dates?: IntelligenceDates;
-  riskFactors?: string[];
-  risk_factors?: string[];
   feasibilityScore?: number;
   feasibility_score?: number;
   recommendationStatus?: string;
   recommendation_status?: string;
-  businessFitExplanation?: string;
-  business_fit_explanation?: string;
-  chinaSourceAnalysis?: IntelligenceChinaSourcing | string;
-  china_source_analysis?: IntelligenceChinaSourcing | string;
-  intelligenceSummary?: IntelligenceSummary;
-  intelligence_summary?: IntelligenceSummary;
   analysisModel?: string;
   analysis_model?: string;
+  analysisMode?: string;
+  analysis_mode?: string;
+  analysisStatus?: string;
+  analysis_status?: string;
   analyzedAt?: string;
   analyzed_at?: string;
+  intelligenceSummary?: V2IntelligenceReport;
+  intelligence_summary?: V2IntelligenceReport;
+  projectOverview?: string;
+  project_overview?: string;
+  businessFitExplanation?: string;
+  business_fit_explanation?: string;
 }
 
 export interface IntelligenceResponse {
