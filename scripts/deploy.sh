@@ -10,6 +10,9 @@ DEPLOY_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 NO_CACHE="${NO_CACHE:-}"
 SKIP_PULL="${SKIP_PULL:-}"
 
+# Ensure git trusts this directory (needed when running as root on a deploy-owned repo)
+git config --global --add safe.directory "$PROJECT_DIR" 2>/dev/null || true
+
 echo "═══════════════════════════════════════════"
 echo " BidToGo — Production Deployment"
 echo " $DEPLOY_TS"
