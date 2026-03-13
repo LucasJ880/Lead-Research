@@ -150,12 +150,13 @@ echo ""
 echo "5/7  Ensuring admin user exists..."
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@bidtogo.ca}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-changeme}"
-HASH=$($COMPOSE run --rm app node -e "
-  const b=require('bcryptjs');
-  b.hash('${ADMIN_PASSWORD}',12).then(h=>console.log(h));
+
+# Use --no-deps to avoid waiting for health checks just to hash a password
+HASH=$(timeout 30 $COMPOSE run --rm --no-deps app node -e "
+  require('bcryptjs').hash('${ADMIN_PASSWORD}',12).then(h=>{console.log(h);process.exit(0);});
 " 2>/dev/null | tail -1)
 
-if [ -n "$HASH" ]; then
+if [ -n "$HASH" ] && [[ "$HASH" == \$2* ]]; then
   $COMPOSE exec -T postgres psql \
     -U "${POSTGRES_USER:-leadharvest}" -d "${POSTGRES_DB:-leadharvest}" -c "
     INSERT INTO users (id, email, password_hash, name, role, created_at, updated_at)
@@ -164,13 +165,15 @@ if [ -n "$HASH" ]; then
   " > /dev/null 2>&1
   echo "     Admin: ${ADMIN_EMAIL}"
 else
-  echo "     WARNING: Could not hash password, skipping admin seed."
+  echo "     WARNING: Could not hash password (timeout or bcryptjs issue)."
+  echo "     If admin user already exists, this is fine."
+  echo "     Otherwise, manually run:  SKIP_PULL=1 bash scripts/deploy.sh"
 fi
 
 echo ""
 echo "     Seeding sources..."
-$COMPOSE run --rm scraper-api \
-  python -m src.seeds.sources 2>&1 | tail -10
+timeout 60 $COMPOSE run --rm --no-deps scraper-api \
+  python -m src.seeds.sources 2>&1 | tail -10 || echo "     WARNING: Source seeding timed out or failed (non-critical)"
 echo "     Sources seeded."
 
 # ── 7. Start all services ───────────────────────────────
