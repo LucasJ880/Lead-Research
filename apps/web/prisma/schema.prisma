@@ -131,6 +131,14 @@ enum DocCategory {
   other
 }
 
+enum QingyanSyncStatus {
+  pending
+  pushing
+  synced
+  failed
+  cancelled
+}
+
 // ─── Users ─────────────────────────────────────────────────
 
 model User {
@@ -305,6 +313,7 @@ model Opportunity {
   notes        Note[]
   alerts       Alert[]
   intelligence TenderIntelligence?
+  qingyanSync  QingyanSync?
 
   @@unique([sourceId, externalId], name: "uq_source_external_id")
   @@unique([fingerprint], name: "uq_fingerprint")
@@ -493,4 +502,32 @@ model AiUsageLog {
 
   @@index([createdAt(sort: Desc)], name: "idx_ai_usage_created")
   @@map("ai_usage_log")
+}
+
+// ─── Qingyan Integration Sync ─────────────────────────────
+
+model QingyanSync {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  opportunityId    String            @unique @map("opportunity_id") @db.Uuid
+  qingyanProjectId String?           @map("qingyan_project_id") @db.VarChar(255)
+  qingyanTaskId    String?           @map("qingyan_task_id") @db.VarChar(255)
+  syncStatus       QingyanSyncStatus @default(pending) @map("sync_status")
+  syncDirection    String            @default("bidtogo_to_qingyan") @map("sync_direction") @db.VarChar(50)
+  pushedBy         String?           @map("pushed_by") @db.Uuid
+  pushedAt         DateTime?         @map("pushed_at") @db.Timestamptz()
+  lastSyncAt       DateTime?         @map("last_sync_at") @db.Timestamptz()
+  qingyanStatus    String?           @map("qingyan_status") @db.VarChar(100)
+  qingyanUrl       String?           @map("qingyan_url")
+  errorMessage     String?           @map("error_message")
+  retryCount       Int               @default(0) @map("retry_count")
+  payloadSnapshot  Json?             @map("payload_snapshot")
+  metadata         Json              @default("{}") @map("metadata")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz()
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([syncStatus], name: "idx_qingyan_sync_status")
+  @@index([qingyanProjectId], name: "idx_qingyan_sync_project")
+  @@map("qingyan_sync")
 }

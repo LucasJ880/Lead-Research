@@ -439,6 +439,11 @@ function OpportunitiesPage() {
                       {opp.title}
                     </Link>
                     <div className="flex items-center gap-1 mt-0.5">
+                      {opp.hasQingyanSync && (
+                        <span className="inline-flex items-center rounded bg-violet-100 px-1.5 py-px text-[10px] text-violet-700 font-bold" title={`Qingyan: ${opp.qingyanProjectId || "Linked"}`}>
+                          QY
+                        </span>
+                      )}
                       {opp.keywordsMatched.slice(0, 2).map((kw) => (
                         <span key={kw} className="inline-block rounded bg-emerald-50 px-1.5 py-px text-[10px] text-emerald-700 font-medium">{kw}</span>
                       ))}

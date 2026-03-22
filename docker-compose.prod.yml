@@ -61,6 +61,10 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       SCRAPER_API_URL: http://scraper-api:8001
       SCRAPER_API_KEY: ${SCRAPER_API_KEY}
+      QINGYAN_ENABLED: ${QINGYAN_ENABLED:-false}
+      QINGYAN_API_BASE: ${QINGYAN_API_BASE:-}
+      QINGYAN_API_TOKEN: ${QINGYAN_API_TOKEN:-}
+      QINGYAN_WEBHOOK_SECRET: ${QINGYAN_WEBHOOK_SECRET:-}
       NODE_ENV: production
     depends_on:
       postgres:

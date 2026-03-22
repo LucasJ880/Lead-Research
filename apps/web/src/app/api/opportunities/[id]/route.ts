@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
-import type { OpportunityDetail, OpportunityStatus, RelevanceBucket, WorkflowStatus } from "@/types";
+import type { OpportunityDetail, OpportunityStatus, QingyanSyncInfo, RelevanceBucket, WorkflowStatus } from "@/types";
 
 const VALID_WORKFLOW: WorkflowStatus[] = [
   "new", "hot", "review", "shortlisted", "pursuing", "passed", "not_relevant", "monitor",
@@ -39,6 +39,7 @@ export async function GET(
         tags: {
           include: { tag: { select: { name: true } } },
         },
+        qingyanSync: true,
       },
     });
 
@@ -122,6 +123,21 @@ export async function GET(
         updatedAt: note.updatedAt.toISOString(),
       })),
       tags: opp.tags.map((t) => t.tag.name),
+      qingyanSync: opp.qingyanSync
+        ? {
+            id: opp.qingyanSync.id,
+            syncStatus: opp.qingyanSync.syncStatus as QingyanSyncInfo["syncStatus"],
+            qingyanProjectId: opp.qingyanSync.qingyanProjectId ?? undefined,
+            qingyanTaskId: opp.qingyanSync.qingyanTaskId ?? undefined,
+            qingyanUrl: opp.qingyanSync.qingyanUrl ?? undefined,
+            qingyanStatus: opp.qingyanSync.qingyanStatus ?? undefined,
+            pushedBy: opp.qingyanSync.pushedBy ?? undefined,
+            pushedAt: opp.qingyanSync.pushedAt?.toISOString(),
+            lastSyncAt: opp.qingyanSync.lastSyncAt?.toISOString(),
+            errorMessage: opp.qingyanSync.errorMessage ?? undefined,
+            retryCount: opp.qingyanSync.retryCount,
+          }
+        : undefined,
     };
 
     return NextResponse.json(detail);

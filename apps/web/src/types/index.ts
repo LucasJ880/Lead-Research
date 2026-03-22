@@ -174,6 +174,8 @@ export interface OpportunitySummary {
   feasibilityScore?: number;
   analysisMode?: string;
   analysisModel?: string;
+  hasQingyanSync?: boolean;
+  qingyanProjectId?: string;
 }
 
 export interface OpportunityDetail extends OpportunitySummary {
@@ -208,6 +210,7 @@ export interface OpportunityDetail extends OpportunitySummary {
   documents: DocumentItem[];
   notes: NoteItem[];
   tags: string[];
+  qingyanSync?: QingyanSyncInfo;
 }
 
 export interface DocumentItem {
@@ -451,4 +454,41 @@ export interface SavedSearch {
   resultCount?: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+// ─── Qingyan Integration types ───
+
+export type QingyanSyncStatus = "pending" | "pushing" | "synced" | "failed" | "cancelled";
+
+export interface QingyanSyncInfo {
+  id: string;
+  syncStatus: QingyanSyncStatus;
+  qingyanProjectId?: string;
+  qingyanTaskId?: string;
+  qingyanUrl?: string;
+  qingyanStatus?: string;
+  pushedBy?: string;
+  pushedByName?: string;
+  pushedAt?: string;
+  lastSyncAt?: string;
+  errorMessage?: string;
+  retryCount: number;
+}
+
+export interface QingyanPushOptions {
+  opportunityId: string;
+  createAs: "project" | "task";
+  priority: "high" | "medium" | "low";
+  assignTo?: string;
+  notes?: string;
+}
+
+export interface QingyanPushResponse {
+  syncId: string;
+  status: QingyanSyncStatus;
+  qingyanProjectId?: string;
+  qingyanUrl?: string;
+  pushedAt?: string;
+  error?: string;
+  retryable?: boolean;
 }

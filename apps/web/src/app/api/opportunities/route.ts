@@ -35,6 +35,8 @@ interface RawOpportunityRow {
   feasibility_score?: number | null;
   analysis_mode?: string | null;
   analysis_model?: string | null;
+  has_qingyan_sync?: boolean;
+  qingyan_project_id?: string | null;
 }
 
 function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
@@ -63,6 +65,8 @@ function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
     feasibilityScore: row.feasibility_score ? Number(row.feasibility_score) : undefined,
     analysisMode: row.analysis_mode ?? undefined,
     analysisModel: row.analysis_model ?? undefined,
+    hasQingyanSync: row.has_qingyan_sync ?? false,
+    qingyanProjectId: row.qingyan_project_id ?? undefined,
   };
 }
 
@@ -269,11 +273,14 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
       ti.recommendation_status,
       ti.feasibility_score,
       ti.analysis_mode,
-      ti.analysis_model
+      ti.analysis_model,
+      (qs.id IS NOT NULL AND qs.sync_status = 'synced') AS has_qingyan_sync,
+      qs.qingyan_project_id
     FROM opportunities o
     LEFT JOIN organizations org ON o.organization_id = org.id
     JOIN sources s ON o.source_id = s.id
     LEFT JOIN tender_intelligence ti ON ti.opportunity_id = o.id
+    LEFT JOIN qingyan_sync qs ON qs.opportunity_id = o.id
     ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${idx.v} OFFSET $${idx.v + 1}
@@ -413,11 +420,14 @@ async function handlePrismaSearch(params: SearchParams) {
       ti.recommendation_status,
       ti.feasibility_score,
       ti.analysis_mode,
-      ti.analysis_model
+      ti.analysis_model,
+      (qs.id IS NOT NULL AND qs.sync_status = 'synced') AS has_qingyan_sync,
+      qs.qingyan_project_id
     FROM opportunities o
     LEFT JOIN organizations org ON o.organization_id = org.id
     JOIN sources s ON o.source_id = s.id
     LEFT JOIN tender_intelligence ti ON ti.opportunity_id = o.id
+    LEFT JOIN qingyan_sync qs ON qs.opportunity_id = o.id
     ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${idx.v} OFFSET $${idx.v + 1}

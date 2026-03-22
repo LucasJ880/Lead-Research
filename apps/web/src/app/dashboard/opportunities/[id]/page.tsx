@@ -54,7 +54,9 @@ import {
   getWorkflowLabel,
   getWorkflowColor,
 } from "@/lib/utils";
-import type { OpportunityDetail, WorkflowStatus } from "@/types";
+import type { OpportunityDetail, QingyanSyncInfo, WorkflowStatus } from "@/types";
+import { QingyanPushButton } from "@/components/qingyan/qingyan-push-button";
+import { QingyanSyncCard } from "@/components/qingyan/qingyan-sync-card";
 
 const statusVariant: Record<string, "success" | "warning" | "destructive" | "outline"> = {
   open: "success",
@@ -100,6 +102,8 @@ export default function OpportunityDetailPage() {
   const [intelError, setIntelError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("summary");
+  const [qingyanSync, setQingyanSync] = useState<QingyanSyncInfo | null>(null);
+  const [retryingQingyan, setRetryingQingyan] = useState(false);
 
   const fetchDetail = useCallback(() => {
     setLoading(true);
@@ -391,6 +395,16 @@ export default function OpportunityDetailPage() {
                   </button>
                 );
               })}
+
+              <div className={`ml-1 pl-1.5 ${hasIntel && !isFallback ? "border-l border-slate-600" : "border-l"}`}>
+                <QingyanPushButton
+                  opportunity={opp}
+                  recommendation={recommendation}
+                  feasibilityScore={overallScore}
+                  darkMode={hasIntel && !isFallback}
+                  onSyncUpdate={(sync) => setQingyanSync(sync)}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -621,6 +635,27 @@ export default function OpportunityDetailPage() {
                 {opp.office && <MetaRow icon={Building2} label="Office Name" value={opp.office} />}
               </CardContent>
             </Card>
+          )}
+
+          {/* Qingyan Integration */}
+          {(qingyanSync || opp.qingyanSync) && (
+            <QingyanSyncCard
+              syncInfo={qingyanSync || opp.qingyanSync!}
+              retrying={retryingQingyan}
+              onRetry={async () => {
+                const sync = qingyanSync || opp.qingyanSync;
+                if (!sync) return;
+                setRetryingQingyan(true);
+                try {
+                  const res = await fetch(`/api/qingyan/retry/${sync.id}`, { method: "POST" });
+                  const data = await res.json();
+                  if (data.status === "synced") {
+                    setQingyanSync({ ...sync, ...data, syncStatus: "synced" });
+                  }
+                } catch { /* retry silently */ }
+                finally { setRetryingQingyan(false); }
+              }}
+            />
           )}
 
           {/* Why this matched */}
