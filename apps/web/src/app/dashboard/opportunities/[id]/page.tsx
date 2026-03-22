@@ -37,6 +37,7 @@ import {
   MessageSquare,
   LayoutDashboard,
   Zap,
+  Upload,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,9 @@ export default function OpportunityDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>("summary");
   const [qingyanSync, setQingyanSync] = useState<QingyanSyncInfo | null>(null);
   const [retryingQingyan, setRetryingQingyan] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fetchDetail = useCallback(() => {
     setLoading(true);
@@ -166,6 +170,47 @@ export default function OpportunityDetailPage() {
       setAnalysisError(err instanceof Error ? err.message : "Analysis failed");
     } finally {
       setAnalyzing(false);
+      setAnalysisPhase(null);
+    }
+  }
+
+  async function handleUploadAnalyze() {
+    if (uploadFiles.length === 0) return;
+    setUploading(true);
+    setUploadError(null);
+    setAnalysisPhase("正在上传文档...");
+    try {
+      const formData = new FormData();
+      for (const f of uploadFiles) {
+        formData.append("files", f);
+      }
+      formData.append("opportunity_id", id);
+
+      setTimeout(() => setAnalysisPhase("正在进行 AI 深度分析..."), 2000);
+      const res = await fetch("/api/intelligence/upload-analyze", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "上传分析失败" }));
+        throw new Error(err.detail || err.error || "上传分析失败");
+      }
+      const result = await res.json();
+      if (result.status === "error") {
+        throw new Error(result.message || "分析失败");
+      }
+      if (result.status === "budget_exceeded") {
+        throw new Error(result.message || "AI预算已用完");
+      }
+      setAnalysisPhase("加载结果...");
+      await new Promise((r) => setTimeout(r, 800));
+      fetchIntelligence();
+      setActiveTab("analysis");
+      setUploadFiles([]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "上传分析失败");
+    } finally {
+      setUploading(false);
       setAnalysisPhase(null);
     }
   }
@@ -563,6 +608,63 @@ export default function OpportunityDetailPage() {
                   </CardContent>
                 </Card>
               )}
+              {/* Upload RFP Documents for Analysis */}
+              <Card className="mt-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    上传 RFP 文档分析
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">上传招标文件（PDF/DOCX），AI 将进行深度分析并生成中文投标策略报告</p>
+                  <div className="flex items-center gap-2">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="file"
+                        multiple
+                        accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv"
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          setUploadFiles(files.slice(0, 5));
+                          setUploadError(null);
+                        }}
+                      />
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center hover:border-blue-400 transition-colors">
+                        {uploadFiles.length > 0 ? (
+                          <div className="space-y-1">
+                            {uploadFiles.map((f, i) => (
+                              <p key={i} className="text-xs text-foreground">{f.name} ({(f.size / 1024).toFixed(0)} KB)</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">点击选择文件（最多5个，支持 PDF/DOCX/TXT/XLSX）</p>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                  {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleUploadAnalyze}
+                      disabled={uploading || uploadFiles.length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                    >
+                      {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      {uploading ? "分析中..." : "上传并分析"}
+                    </button>
+                    {uploadFiles.length > 0 && !uploading && (
+                      <button
+                        onClick={() => { setUploadFiles([]); setUploadError(null); }}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        清除文件
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </>
           )}
 
@@ -1220,14 +1322,15 @@ function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) 
 
 function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { data: any; onReanalyze?: () => void; onDeepAnalyze?: () => void; reanalyzing?: boolean }) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "evidence", "quotes"])
+    new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "bid_strategy", "company_risks", "addendum", "actions", "evidence", "quotes"])
   );
 
   if (!data) return null;
 
 
   const rpt: any = data.intelligenceSummary || data.intelligence_summary || {};
-  const isV2 = rpt.report_version === "2.0";
+  const isV2 = rpt.report_version === "2.0" || rpt.report_version === "3.0";
+  const isV3 = rpt.report_version === "3.0";
 
   const verdict = rpt.verdict || {};
   const projSummary = rpt.project_summary || {};
@@ -1240,6 +1343,10 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
   const compat = rpt.compatibility_analysis || {};
   const supplyChain = rpt.supply_chain_feasibility || {};
   const participation = rpt.participation_strategy || {};
+  const bidStrategy = rpt.bid_strategy || {};
+  const addendumAnalysis: any[] = rpt.addendum_analysis || [];
+  const companyRisks: any[] = rpt.company_specific_risks || [];
+  const actionItems: any[] = rpt.action_items || [];
   const evidence = rpt.required_evidence || {};
   const scores = rpt.feasibility_scores || {};
   const docsAnalyzed = rpt.documents_analyzed || {};
@@ -1284,7 +1391,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-blue-600" />
           <span className="text-xs font-semibold">招标情报报告</span>
-          {isV2 && <span className="text-[10px] text-muted-foreground">v2.0</span>}
+          {isV2 && <span className="text-[10px] text-muted-foreground">{isV3 ? "v3.0" : "v2.0"}</span>}
           {isFallback && <span className="text-[10px] text-amber-600 font-medium">(Fallback)</span>}
         </div>
         <div className="flex items-center gap-1.5">
@@ -1480,8 +1587,18 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
                   {evalStrategy.technical_weight && evalStrategy.technical_weight !== "Not specified" && <p><span className="text-muted-foreground">Technical:</span> {evalStrategy.technical_weight}</p>}
                   {evalStrategy.experience_weight && evalStrategy.experience_weight !== "Not specified" && <p><span className="text-muted-foreground">Experience:</span> {evalStrategy.experience_weight}</p>}
                 </div>
-                {evalStrategy.likely_evaluator_focus && evalStrategy.likely_evaluator_focus !== "Not specified" && (
+                {evalStrategy.likely_evaluator_focus && evalStrategy.likely_evaluator_focus !== "Not specified" && evalStrategy.likely_evaluator_focus !== "招标文件未说明" && (
                   <p className="text-xs text-blue-700 bg-blue-50 rounded p-2">{evalStrategy.likely_evaluator_focus}</p>
+                )}
+                {evalStrategy.scoring_optimization?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">评分优化建议：</span>
+                    <ul className="mt-1 space-y-1">
+                      {evalStrategy.scoring_optimization.map((s: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2 text-sm"><Zap className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />{s}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}
@@ -1631,6 +1748,152 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
           </div>
         )}
 
+        {/* V3: Bid Strategy — Go/No-Go Decision */}
+        {isV3 && bidStrategy.go_no_go && (
+          <div className="px-5">
+            <SectionHeader id="bid_strategy" title="投标策略 · Go/No-Go 决策" />
+            {expandedSections.has("bid_strategy") && (
+              <div className="pb-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className={`rounded-lg px-4 py-2.5 text-sm font-bold ${
+                    bidStrategy.go_no_go === "建议投标" ? "bg-emerald-100 text-emerald-800 border border-emerald-300" :
+                    bidStrategy.go_no_go === "不建议投标" ? "bg-red-100 text-red-800 border border-red-300" :
+                    "bg-amber-100 text-amber-800 border border-amber-300"
+                  }`}>
+                    {bidStrategy.go_no_go}
+                  </div>
+                  {bidStrategy.win_probability && (
+                    <div className={`rounded px-2.5 py-1 text-xs font-medium ${
+                      bidStrategy.win_probability === "high" ? "bg-emerald-50 text-emerald-700" :
+                      bidStrategy.win_probability === "medium" ? "bg-blue-50 text-blue-700" :
+                      "bg-slate-100 text-slate-600"
+                    }`}>
+                      中标概率: {bidStrategy.win_probability === "high" ? "高" : bidStrategy.win_probability === "medium" ? "中" : bidStrategy.win_probability === "low" ? "低" : "极低"}
+                    </div>
+                  )}
+                </div>
+                {bidStrategy.go_no_go_rationale && (
+                  <p className="text-sm leading-relaxed">{bidStrategy.go_no_go_rationale}</p>
+                )}
+                {bidStrategy.pricing_strategy && bidStrategy.pricing_strategy !== "未评估" && (
+                  <div className="rounded-md bg-blue-50 border border-blue-200 p-3">
+                    <p className="text-xs font-semibold text-blue-800 mb-1">定价策略</p>
+                    <p className="text-sm text-blue-900">{bidStrategy.pricing_strategy}</p>
+                  </div>
+                )}
+                {bidStrategy.scoring_optimization?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">评分最大化建议：</span>
+                    <ul className="mt-1 space-y-1">
+                      {bidStrategy.scoring_optimization.map((s: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2 text-sm"><Zap className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {bidStrategy.differentiation_points?.length > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground font-medium">差异化优势：</span>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {bidStrategy.differentiation_points.map((d: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">{d}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {bidStrategy.executive_summary_outline && bidStrategy.executive_summary_outline !== "未评估" && (
+                  <div className="rounded-md bg-slate-50 border p-3">
+                    <p className="text-xs font-semibold text-slate-700 mb-1">执行摘要建议要点</p>
+                    <p className="text-sm">{bidStrategy.executive_summary_outline}</p>
+                  </div>
+                )}
+                {bidStrategy.win_probability_rationale && (
+                  <p className="text-xs text-muted-foreground">{bidStrategy.win_probability_rationale}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* V3: Company-Specific Risks */}
+        {isV3 && companyRisks.length > 0 && (
+          <div className="px-5">
+            <SectionHeader id="company_risks" title="公司维度风险" />
+            {expandedSections.has("company_risks") && (
+              <div className="pb-4 space-y-2">
+                {companyRisks.map((r: any, i: number) => (
+                  <div key={i} className={`rounded-md border px-3 py-2 ${
+                    r.severity === "high" ? "bg-red-50 border-red-200" :
+                    r.severity === "medium" ? "bg-amber-50 border-amber-200" :
+                    "bg-slate-50 border-slate-200"
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`h-2 w-2 rounded-full ${
+                        r.severity === "high" ? "bg-red-500" : r.severity === "medium" ? "bg-amber-500" : "bg-green-500"
+                      }`} />
+                      <span className="text-xs font-semibold">{r.risk}</span>
+                    </div>
+                    {r.mitigation && <p className="text-xs text-muted-foreground ml-4">{r.mitigation}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* V3: Addendum Analysis */}
+        {isV3 && addendumAnalysis.length > 0 && (
+          <div className="px-5">
+            <SectionHeader id="addendum" title="Addendum 变更追踪" />
+            {expandedSections.has("addendum") && (
+              <div className="pb-4 space-y-2">
+                {addendumAnalysis.map((a: any, i: number) => (
+                  <div key={i} className="rounded-md border border-purple-200 bg-purple-50/50 px-3 py-2">
+                    <p className="text-xs font-bold text-purple-800">{a.number}</p>
+                    {a.key_changes?.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-sm">
+                        {a.key_changes.map((c: string, j: number) => (
+                          <li key={j} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />{c}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {a.impact && <p className="text-xs text-purple-700 mt-1">{a.impact}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* V3: Action Items */}
+        {isV3 && actionItems.length > 0 && (
+          <div className="px-5">
+            <SectionHeader id="actions" title="团队待办清单" />
+            {expandedSections.has("actions") && (
+              <div className="pb-4 space-y-2">
+                {actionItems.map((item: any, i: number) => (
+                  <div key={i} className="flex items-start gap-3 rounded-md border px-3 py-2">
+                    <div className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                      item.priority === "high" ? "bg-red-100 text-red-700" :
+                      item.priority === "medium" ? "bg-amber-100 text-amber-700" :
+                      "bg-slate-100 text-slate-600"
+                    }`}>
+                      {item.priority === "high" ? "紧急" : item.priority === "medium" ? "中" : "低"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{item.action}</p>
+                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                        {item.responsible && <span>负责: {item.responsible}</span>}
+                        {item.deadline && <span>截止: {item.deadline}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 11. Required Evidence */}
         {isV2 && (evidence.before_bidding?.length > 0 || evidence.with_submission?.length > 0) && (
           <div className="px-5">
@@ -1697,7 +1960,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
           <span>
             {analyzedAt && `分析于 ${formatDate(analyzedAt)}`}
             {model && ` · ${isFallback ? "基于规则回退" : model}`}
-            {isV2 && " · v2.0"}
+            {isV2 && ` · ${isV3 ? "v3.0" : "v2.0"}`}
           </span>
           <span className="flex items-center gap-1 font-medium">
             {isFallback ? (

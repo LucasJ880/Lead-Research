@@ -353,6 +353,8 @@ class CrawlPipeline:
             if resource_links and opp.external_id:
                 self._insert_documents(opp.external_id, opp.source_id, resource_links)
 
+            self._maybe_trigger_auto_analysis(opp)
+
         except Exception:
             logger.exception("Failed to insert opportunity: %s", opp.title)
             self._result.errors.append(f"Insert failed: {opp.title}")
@@ -436,6 +438,29 @@ class CrawlPipeline:
                 self._session.execute(text("ROLLBACK TO SAVEPOINT opp_update"))
             except Exception:
                 pass
+
+    def _maybe_trigger_auto_analysis(self, opp: OpportunityCreate) -> None:
+        """Dispatch auto-analysis for high-relevance new opportunities."""
+        if (opp.relevance_score or 0) < 80:
+            return
+        if not opp.external_id:
+            return
+        try:
+            row = self._session.execute(
+                text("SELECT id FROM opportunities WHERE external_id = :eid AND source_id = :sid LIMIT 1"),
+                {"eid": opp.external_id, "sid": opp.source_id},
+            ).fetchone()
+            if not row:
+                return
+            opp_id = str(row.id)
+            from src.tasks.auto_analyze import auto_analyze_opportunity
+            auto_analyze_opportunity.apply_async(
+                args=[opp_id],
+                countdown=60,
+            )
+            logger.info("Dispatched auto-analysis for high-relevance opp: %s (score=%s)", opp.title[:60], opp.relevance_score)
+        except Exception as exc:
+            logger.warning("Failed to dispatch auto-analysis: %s", exc)
 
     def _insert_documents(
         self, external_id: str, source_id: str, docs: list[dict],

@@ -309,6 +309,19 @@ async def upload_opportunities(batch: AgentOpportunityUpload) -> dict:
                 _insert_opp(session, opp)
                 created += 1
 
+                if (opp.relevance_score or 0) >= 80 and opp.external_id:
+                    try:
+                        row = session.execute(
+                            text("SELECT id FROM opportunities WHERE external_id = :eid AND source_id = :sid LIMIT 1"),
+                            {"eid": opp.external_id, "sid": opp.source_id},
+                        ).fetchone()
+                        if row:
+                            from src.tasks.auto_analyze import auto_analyze_opportunity
+                            auto_analyze_opportunity.apply_async(args=[str(row.id)], countdown=60)
+                            logger.info("Dispatched auto-analysis for agent-uploaded opp: %s", opp.title[:60])
+                    except Exception as aa_exc:
+                        logger.warning("Failed to dispatch auto-analysis for agent opp: %s", aa_exc)
+
             except Exception as exc:
                 errors.append(f"{opp.title[:60]}: {exc}")
                 logger.exception("Agent upload: failed to process %s", opp.title[:60])

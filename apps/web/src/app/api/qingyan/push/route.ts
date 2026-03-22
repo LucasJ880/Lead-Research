@@ -106,6 +106,9 @@ export async function POST(request: NextRequest) {
       ? JSON.parse(JSON.stringify(intel.intelligenceSummary))
       : null;
 
+    const bidStrategy = (report.bid_strategy as Record<string, unknown>) ?? {};
+    const autoPriority = bidStrategy.go_no_go === "建议投标" ? "high" : bidStrategy.go_no_go === "不建议投标" ? "low" : "medium";
+
     const payload: QingyanProjectPayload = {
       external_ref: {
         system: "bidtogo",
@@ -113,10 +116,10 @@ export async function POST(request: NextRequest) {
         url: oppUrl,
       },
       project: {
-        name: `[Tender] ${opp.title}`,
+        name: `[招标] ${(opp as any).titleZh || opp.title}`,
         description: buildFullDescription(opp, intel, report),
         category: "tender_opportunity",
-        priority: options?.priority || "medium",
+        priority: options?.priority || autoPriority,
         deadline: opp.closingDate ? opp.closingDate.toISOString() : null,
         source_platform: opp.source.name,
         client_organization: opp.organization?.name || null,
@@ -343,6 +346,49 @@ function buildFullDescription(
     if (participation.strategy_rationale) t += `\n${participation.strategy_rationale}`;
     if (participation.competitive_positioning && participation.competitive_positioning !== "Not assessed") t += `\n竞争定位: ${participation.competitive_positioning}`;
     sections.push(t);
+  }
+
+  const bidStrategy = (report.bid_strategy as Record<string, unknown>) ?? {};
+  if (bidStrategy.go_no_go) {
+    let t = `【投标策略 · Go/No-Go】${bidStrategy.go_no_go}`;
+    if (bidStrategy.go_no_go_rationale) t += `\n${bidStrategy.go_no_go_rationale}`;
+    if (bidStrategy.win_probability) t += `\n中标概率: ${bidStrategy.win_probability}`;
+    if (bidStrategy.pricing_strategy && bidStrategy.pricing_strategy !== "未评估") t += `\n定价策略: ${bidStrategy.pricing_strategy}`;
+    const scoringOpt = bidStrategy.scoring_optimization as string[] | undefined;
+    if (scoringOpt?.length) t += `\n评分最大化:\n${scoringOpt.map((s: string) => `• ${s}`).join("\n")}`;
+    const diffPoints = bidStrategy.differentiation_points as string[] | undefined;
+    if (diffPoints?.length) t += `\n差异化优势: ${diffPoints.join("; ")}`;
+    sections.push(t);
+  }
+
+  const companyRisks = report.company_specific_risks as Array<Record<string, string>> | undefined;
+  if (companyRisks?.length) {
+    sections.push(`【公司维度风险】\n${companyRisks.map((r) => {
+      let line = `${r.severity === "high" ? "🔴" : r.severity === "medium" ? "🟡" : "🟢"} ${r.risk}`;
+      if (r.mitigation) line += ` — 应对: ${r.mitigation}`;
+      return line;
+    }).join("\n")}`);
+  }
+
+  const addendumAnalysis = report.addendum_analysis as Array<Record<string, unknown>> | undefined;
+  if (addendumAnalysis?.length) {
+    sections.push(`【Addendum 变更】\n${addendumAnalysis.map((a) => {
+      let line = `${a.number}`;
+      const changes = a.key_changes as string[] | undefined;
+      if (changes?.length) line += `\n${changes.map((c: string) => `  • ${c}`).join("\n")}`;
+      if (a.impact) line += `\n  影响: ${a.impact}`;
+      return line;
+    }).join("\n\n")}`);
+  }
+
+  const actionItems = report.action_items as Array<Record<string, string>> | undefined;
+  if (actionItems?.length) {
+    sections.push(`【团队待办清单】\n${actionItems.map((item) => {
+      let line = `☐ [${item.priority === "high" ? "紧急" : item.priority === "medium" ? "中" : "低"}] ${item.action}`;
+      if (item.responsible) line += ` (${item.responsible})`;
+      if (item.deadline) line += ` — 截止: ${item.deadline}`;
+      return line;
+    }).join("\n")}`);
   }
 
   const beforeBidding = evidence.before_bidding as string[] | undefined;

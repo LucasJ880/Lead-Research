@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # Google Translate
     GOOGLE_TRANSLATE_API_KEY: str = ""
 
+    # Qingyan integration (for auto-push from scraper tasks)
+    QINGYAN_API_BASE: str = ""
+    QINGYAN_API_TOKEN: str = ""
+    QINGYAN_ENABLED: str = "false"
+
     # AI cost control
     AI_DAILY_BUDGET_USD: float = 5.0
     AI_MONTHLY_BUDGET_USD: float = 100.0

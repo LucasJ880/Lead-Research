@@ -1,15 +1,22 @@
-"""AI-powered Tender Intelligence Report generator.
+"""AI-powered Tender Intelligence Report generator (v3 — Chinese output).
 
-Produces a structured 12-section bid analysis report that helps a window
-covering / textile company decide whether to pursue a tender, using:
+Produces a structured bid analysis report in Chinese that helps a window
+covering company decide whether to pursue a tender, using:
   - opportunity metadata
   - description text
-  - document text (when available)
+  - document text (when available, including addenda)
 
 Three distinct feasibility dimensions are always assessed:
   1. Technical Feasibility — can we deliver the product/service?
   2. Bid Compliance Feasibility — would our bid be disqualified?
   3. Commercial Feasibility — is this financially and logistically viable?
+
+v3 additions over v2:
+  - All report text output in Chinese (Simplified)
+  - bid_strategy section: go/no-go, pricing, scoring optimization
+  - addendum_analysis section: per-addendum change tracking
+  - company_specific_risks: risks mapped to our actual capabilities
+  - action_items: concrete next steps for the team
 """
 
 from __future__ import annotations
@@ -32,157 +39,195 @@ _openai_available = True
 # ──────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
-You are a senior procurement intelligence analyst and bid advisor with deep expertise in government contract analysis.
+你是一位资深的政府采购情报分析师和投标策略顾问，擅长北美政府/机构采购合同的深度分析。
 
-Your client is a North American window covering and textile furnishing company that:
-- Supplies and installs blinds, roller shades, zebra blinds, motorized shades, solar shades, blackout shades, skylight shades
-- Supplies curtains, drapery, privacy curtains, cubicle curtains, healthcare curtains
-- Supplies fabric, textile, linen, bedding, hospitality linen
-- Does FF&E (Furniture, Fixtures & Equipment) supply and installation
-- Sources products from manufacturers in China for North American supply/install projects
-- Focuses on commercial projects: hospitals, schools, hotels, government buildings, multi-residential
+你的客户是一家北美窗饰遮阳产品制造安装公司，具体业务包括：
+- 供应与安装：百叶窗、卷帘、斑马帘、电动遮阳帘、太阳能遮阳帘、遮光帘、天窗遮阳系统
+- 供应与安装：窗帘、窗幔、隐私帘、医院隔帘、办公隔断帘
+- FF&E（家具、固定装置与设备）整体供应与安装
+- 从中国制造商采购产品，在北美完成供应/安装项目
+- 主要服务商业项目：医院、学校、酒店、政府大楼、多户住宅
 
-Your job is to produce a professional, HIGHLY DETAILED Tender Intelligence Report that helps the client make a bid/no-bid decision with full confidence.
+你的任务是以**投标操盘手**的视角，用中文产出一份专业、详尽、可直接指导投标决策的《招标情报分析报告》。
 
-CRITICAL RULES:
-- Never fabricate facts. If information is not in the tender data, say "Not specified in available documents."
-- Always distinguish between technical feasibility, bid compliance feasibility, and commercial feasibility — they are NOT the same.
-- If a mandatory requirement could disqualify the bid, flag it as a "fatal_blocker", "serious_risk", or "normal_requirement".
-- Be direct, specific, and actionable. Every sentence should help the reader decide.
-- When document text is available, you MUST mine it thoroughly for specific details: exact product specs, quantities, room counts, material requirements, brand references, clause numbers, deadlines, and evaluation criteria.
-- ALWAYS cite your sources: reference document names and section numbers when making claims (e.g. "Per RFQ Document Section 3.2..." or "According to Attachment A...").
-- Extract and quote critical language verbatim when it impacts the bid decision (bonding requirements, set-aside restrictions, mandatory certifications, disqualifying criteria)."""
+核心规则：
+- 所有输出内容必须使用简体中文
+- 绝不编造事实。如果招标文件中没有相关信息，明确说明"招标文件未说明"
+- 始终区分三个可行性维度：技术可行性、合规可行性、商业可行性——它们是不同的
+- 如果某项强制要求可能导致投标被取消资格，标记为 "fatal_blocker"（致命阻断）、"serious_risk"（严重风险）或 "normal_requirement"（常规要求）
+- 直接、具体、可操作。每一句话都要帮助读者做出投标/不投标的决定
+- 当有文档原文时，必须深入挖掘：具体产品规格、数量、房间数、材料要求、品牌指定、条款编号、截止日期、评标权重
+- 必须引用来源：引用文档名称和章节编号（如"根据RFP第5.2条..."或"参见附件H..."）
+- 对影响投标决策的关键条款，必须逐字引用原文（保证金要求、限制条款、强制资质、取消资格条件）
+- 以"如果你是这家公司的老板"的视角给出投标策略建议"""
 
 # ──────────────────────────────────────────────────────────────
 # Analysis prompt — 12-section report schema
 # ──────────────────────────────────────────────────────────────
 
 _ANALYSIS_PROMPT = """\
-Analyze this tender opportunity and produce a Tender Intelligence Report as JSON.
+分析以下招标项目，产出一份中文《招标情报分析报告》，以 JSON 格式返回。
 
-OPPORTUNITY DATA:
-Title: {title}
-Organization: {organization}
-Location: {location}
-Country: {country}
-Closing Date: {closing_date}
-Response Deadline: {response_deadline}
-Source: {source}
+招标基本信息：
+标题: {title}
+采购机构: {organization}
+地点: {location}
+国家: {country}
+截标日期: {closing_date}
+答复截止: {response_deadline}
+来源平台: {source}
 NAICS: {naics}
-Category: {category}
-Set-Aside: {set_aside}
-Solicitation #: {solicitation_number}
+分类: {category}
+限制条件: {set_aside}
+招标编号: {solicitation_number}
 
-DESCRIPTION / SCOPE:
+招标描述/范围：
 {description}
 
-DOCUMENT CONTENT (if available):
+招标文件原文（如有）：
 {document_text}
 
-Respond with ONLY valid JSON matching this exact structure:
+请仅返回有效的 JSON，严格符合以下结构（所有文本值用简体中文）：
 {{
-  "report_version": "2.0",
+  "report_version": "3.0",
 
   "verdict": {{
-    "one_line": "One sentence: [Pursue/Review/Skip] — key reason for this recommendation",
+    "one_line": "一句话结论：[建议投标/谨慎评估/不建议投标] — 核心理由",
     "recommendation": "pursue | review_carefully | low_probability | skip",
     "confidence": "high | medium | low | very_low",
-    "confidence_rationale": "Why this confidence level (e.g. limited description, no documents)"
+    "confidence_rationale": "为什么是这个置信度（如：仅有描述无文档、文档内容详尽等）"
   }},
 
   "project_summary": {{
-    "overview": "2-3 sentences: what the tender is about and what is being requested",
-    "issuing_body": "Organization name and type (federal/state/municipal/education/healthcare)",
+    "overview": "2-3句：该招标的核心内容和需求概述",
+    "issuing_body": "采购机构名称与类型（联邦/州省/市政/教育/医疗）",
     "project_type": "new_construction | renovation | replacement | maintenance | supply_contract | service_contract | design_build | other"
   }},
 
   "scope_breakdown": {{
-    "main_deliverables": ["List each major deliverable"],
-    "quantities": "Specific quantities mentioned or 'Not specified'",
+    "main_deliverables": ["逐项列出主要交付物"],
+    "quantities": "具体数量（如有）或'招标文件未说明'",
     "scope_type": "supply_only | install_only | supply_and_install | design_build | consulting | mixed | unclear",
-    "service_scope": "Any service/maintenance/warranty scope beyond initial delivery",
-    "intended_use": "Where/how the products will be used (hospital patient rooms, hotel guest rooms, office, etc.)"
+    "service_scope": "超出初始交付的服务/维保范围",
+    "intended_use": "产品用于何处（医院病房、酒店客房、办公室等）"
   }},
 
   "technical_requirements": {{
-    "product_requirements": ["Specific product specs, materials, finishes, performance criteria"],
-    "environmental_requirements": ["Fire rating, antimicrobial, VOC, sustainability, LEED, etc."],
-    "installation_requirements": ["Installation-specific requirements"],
-    "standards_certifications": ["Required standards, codes, certifications (NFPA, ASTM, UL, CAN/CSA, etc.)"],
-    "control_systems": "Motorization, automation, HVAC integration, building management systems if relevant",
-    "specialized_needs": ["Any unique or unusual technical requirements"]
+    "product_requirements": ["具体产品规格、材料、饰面、性能标准"],
+    "environmental_requirements": ["防火等级、抗菌、VOC、LEED等环保要求"],
+    "installation_requirements": ["安装相关的具体要求"],
+    "standards_certifications": ["必须满足的标准/规范/认证（NFPA、ASTM、UL、CAN/CSA等）"],
+    "control_systems": "电动化、自动化、暖通联动、楼宇管理系统（如相关）",
+    "specialized_needs": ["任何独特或不寻常的技术要求"]
   }},
 
   "timeline_milestones": {{
-    "bid_closing": "Bid submission deadline",
-    "response_due": "Response / Q&A deadline if different",
-    "site_visit": "Mandatory or optional site visit date, or null",
-    "pre_bid_meeting": "Pre-bid meeting date, or null",
-    "project_start": "Expected start, or null",
-    "delivery_deadline": "Delivery/completion deadline, or null",
-    "milestone_dates": ["Any other milestone dates mentioned"],
+    "bid_closing": "投标截止日期",
+    "response_due": "答疑截止日期（如不同）",
+    "site_visit": "现场踏勘日期（强制/自选），或 null",
+    "pre_bid_meeting": "投标前会议日期，或 null",
+    "project_start": "预计开工日期，或 null",
+    "delivery_deadline": "交付/竣工期限，或 null",
+    "milestone_dates": ["其他里程碑日期"],
     "schedule_pressure": "realistic | moderate | tight | very_tight",
-    "schedule_notes": "Assessment of whether the timeline is achievable given China sourcing + shipping"
+    "schedule_notes": "时间线评估：考虑中国采购+海运周期，是否可行"
   }},
 
   "evaluation_strategy": {{
-    "pricing_weight": "Percentage or description of price evaluation weight, or 'Not specified'",
-    "technical_weight": "Technical evaluation weight",
-    "experience_weight": "Experience/references evaluation weight",
-    "other_criteria": ["Any other evaluation criteria mentioned"],
-    "likely_evaluator_focus": "What the evaluator will care most about based on the tender language"
+    "pricing_weight": "价格评分权重百分比，或'招标文件未说明'",
+    "technical_weight": "技术评分权重",
+    "experience_weight": "经验/业绩评分权重",
+    "other_criteria": ["其他评标标准"],
+    "likely_evaluator_focus": "根据招标语言判断评委最关注什么",
+    "scoring_optimization": ["针对每个评标维度的得分最大化建议"]
   }},
 
   "business_fit": {{
     "fit_assessment": "strong_fit | moderate_fit | weak_fit | poor_fit",
-    "fit_explanation": "2-3 sentences: why this does or doesn't fit the company's capabilities",
+    "fit_explanation": "2-3句：为什么该项目适合/不适合我们公司的能力",
     "recommended_role": "prime_contractor | subcontractor | supplier_only | partner_required | not_recommended",
-    "capability_gaps": ["Any gaps between our capabilities and tender requirements"]
+    "capability_gaps": ["我们能力与招标要求之间的差距"]
   }},
 
   "compliance_risks": {{
     "red_flags": [
       {{
-        "requirement": "Description of the requirement",
+        "requirement": "要求描述",
         "severity": "fatal_blocker | serious_risk | normal_requirement",
-        "explanation": "Why this is a risk and what would be needed to mitigate it"
+        "explanation": "为什么这是风险，需要什么来化解"
       }}
     ],
-    "mandatory_certifications": ["List any mandatory certifications that could disqualify"],
-    "experience_thresholds": "Required years/projects of experience, or 'Not specified'",
-    "bonding_insurance": "Bid bond, performance bond, insurance minimums",
-    "local_requirements": "Local business registration, union labor, apprenticeship requirements"
+    "mandatory_certifications": ["可能导致取消资格的强制认证"],
+    "experience_thresholds": "要求的年限/项目数，或'招标文件未说明'",
+    "bonding_insurance": "投标保函、履约保函、保险要求",
+    "local_requirements": "本地注册、工会、学徒制要求"
   }},
 
   "compatibility_analysis": {{
-    "existing_system": "Whether the tender references an existing system, brand, processor, or platform",
-    "brand_compatibility": "Whether specific brand/product compatibility is required or implied",
-    "proof_required": "Whether OEM letters, datasheets, engineering validation, or compatibility proof would be needed",
+    "existing_system": "是否涉及现有系统、品牌指定或平台兼容",
+    "brand_compatibility": "是否要求特定品牌兼容",
+    "proof_required": "是否需要OEM授权函、数据表、工程验证等兼容性证明",
     "compatibility_risk": "none | low | medium | high",
-    "compatibility_notes": "Specific notes on what compatibility evidence would be needed"
+    "compatibility_notes": "需要什么兼容性证据的具体说明"
   }},
 
   "supply_chain_feasibility": {{
     "china_sourcing_viable": true,
-    "sourcing_explanation": "Can products realistically be sourced from China for this project?",
-    "buy_domestic_restrictions": ["Buy America, Buy Canadian, or similar restrictions"],
-    "shipping_lead_time": "Estimated manufacturing + shipping timeline vs project deadline",
-    "warehousing_needs": "Any warehousing/staging requirements",
-    "import_compliance": "Customs, tariffs, country-of-origin labeling requirements",
-    "local_installation": "Whether local installers or partners would be needed"
+    "sourcing_explanation": "从中国采购对该项目是否现实可行？",
+    "buy_domestic_restrictions": ["Buy America、Buy Canadian 或类似限制条款"],
+    "shipping_lead_time": "预估生产+海运周期 vs 项目截止时间",
+    "warehousing_needs": "仓储/暂存需求",
+    "import_compliance": "海关、关税、原产地标签要求",
+    "local_installation": "是否需要当地安装商或合作伙伴"
   }},
 
   "participation_strategy": {{
     "recommended_approach": "pursue_as_prime | pursue_as_sub | pursue_with_partners | pursue_after_proof | skip",
-    "strategy_rationale": "Why this approach is recommended",
-    "potential_partners": "Types of partners needed (local installer, GC, specialty sub, etc.)",
-    "competitive_positioning": "How to differentiate our bid"
+    "strategy_rationale": "为什么推荐这种参与方式",
+    "potential_partners": "需要的合作伙伴类型（当地安装商、总包、专业分包等）",
+    "competitive_positioning": "如何在投标中形成差异化优势"
   }},
 
+  "bid_strategy": {{
+    "go_no_go": "建议投标 | 谨慎评估 | 不建议投标",
+    "go_no_go_rationale": "结合公司能力的详细投标/不投标决策依据",
+    "pricing_strategy": "定价策略建议（如：技术占35%价格占30%，建议采用...策略）",
+    "scoring_optimization": ["如何在每个评标维度最大化得分的具体建议"],
+    "executive_summary_outline": "投标文件执行摘要的建议要点",
+    "differentiation_points": ["区别于竞争对手的核心优势"],
+    "win_probability": "high | medium | low | very_low",
+    "win_probability_rationale": "中标概率评估理由"
+  }},
+
+  "addendum_analysis": [
+    {{
+      "number": "Addendum 编号",
+      "key_changes": ["该 Addendum 的关键变更"],
+      "impact": "对投标策略的影响"
+    }}
+  ],
+
+  "company_specific_risks": [
+    {{
+      "risk": "风险描述（如：倾斜天窗需要张紧系统）",
+      "severity": "high | medium | low",
+      "mitigation": "应对方案（如：若有成熟天窗系统可投，否则风险大）"
+    }}
+  ],
+
+  "action_items": [
+    {{
+      "action": "具体待办事项（如：准备3个类似医院项目案例）",
+      "responsible": "建议负责人/角色",
+      "deadline": "建议完成时间",
+      "priority": "high | medium | low"
+    }}
+  ],
+
   "required_evidence": {{
-    "before_bidding": ["What must be confirmed/obtained before submitting a bid"],
-    "with_submission": ["What documentation must be included in the bid package"],
-    "examples": ["OEM compatibility letter", "product datasheets", "installer partner agreement", "insurance certificate", "bid bond"]
+    "before_bidding": ["投标前必须确认/获取的事项"],
+    "with_submission": ["投标文件中必须包含的文档"],
+    "examples": ["OEM授权函", "产品数据表", "安装商合作协议", "保险证明", "投标保函"]
   }},
 
   "feasibility_scores": {{
@@ -190,48 +235,51 @@ Respond with ONLY valid JSON matching this exact structure:
     "compliance_feasibility": 0,
     "commercial_feasibility": 0,
     "overall_score": 0,
-    "score_rationale": "Brief explanation of how the three dimensions combine"
+    "score_rationale": "三个维度综合评估简述"
   }},
 
   "documents_analyzed": {{
     "count": 0,
-    "names": ["List of document names that were analyzed"],
-    "coverage_note": "Brief note on document completeness — e.g. 'Full RFQ package available' or 'Only description, no attachments'"
+    "names": ["已分析的文档清单"],
+    "coverage_note": "文档完整度说明 — 如'完整RFQ包'或'仅有描述，无附件'"
   }},
 
   "evidence_quotes": [
     {{
-      "document": "Document name",
-      "section": "Section reference or page number if identifiable",
-      "quote": "Exact or near-exact text from the document",
-      "relevance": "Why this quote matters for the bid decision"
+      "document": "文档名称",
+      "section": "章节/页码",
+      "quote": "原文引用（保留英文原文）",
+      "relevance": "该引用对投标决策的重要性"
     }}
   ]
 }}
 
-SCORING RULES:
-- Each feasibility score is 0-100.
-- overall_score = weighted average: technical 30% + compliance 30% + commercial 40%.
-- If ANY dimension is below 20, set overall_score to max 25 regardless of other scores.
-- If compliance_feasibility has a fatal_blocker in red_flags, cap compliance at 15."""
+评分规则：
+- 每个可行性维度 0-100 分
+- overall_score = 加权平均：技术 30% + 合规 30% + 商业 40%
+- 如果任一维度低于 20 分，overall_score 最高不超过 25 分
+- 如果 compliance_risks 中有 fatal_blocker，合规得分上限为 15 分"""
 
 
 _DEEP_CITATION_ADDENDUM = """
 
-DEEP ANALYSIS INSTRUCTIONS (document-aware mode):
-You have access to actual tender document text above. You MUST:
-1. Cite specific document names when referencing requirements (e.g., "Per [Document: Spec_Sheet.pdf], Section 3.2...").
-2. Extract exact specification numbers, clause references, and quantity figures from documents.
-3. Identify contradictions between the description and document text.
-4. For technical_requirements.product_requirements, quote exact spec language when possible.
-5. For compliance_risks.red_flags, reference the specific document and clause that creates the risk.
-6. For timeline_milestones, extract exact dates from documents rather than inferring from the description.
-7. Rate your confidence HIGHER if documents contain detailed specifications, LOWER if documents are vague or procedural only.
-8. The "evidence_quotes" array MUST contain at least 3-5 direct quotes from the documents that are critical for the bid decision. Include the most important specifications, requirements, restrictions, and evaluation criteria verbatim.
-9. Populate "documents_analyzed" accurately with the names of all documents you analyzed and a coverage assessment.
-10. For scope_breakdown.quantities, extract EXACT quantities — number of rooms, number of units, square footage, linear feet, etc.
-11. For evaluation_strategy, extract exact percentage weights and scoring criteria from documents if available.
-12. Look for hidden requirements: insurance minimums, bonding amounts, security clearances, wage rate requirements (Davis-Bacon), Buy American clauses.
+深度分析指令（文档感知模式）：
+你已获得完整招标文件原文。你必须执行以下操作：
+1. 引用具体文档名称和章节（如："根据[文档: Spec_Sheet.pdf]第3.2节..."）
+2. 提取精确的规格编号、条款编号、数量数据
+3. 识别招标描述与文档正文之间的矛盾之处
+4. 在 technical_requirements.product_requirements 中，尽可能引用原文规格描述
+5. 在 compliance_risks.red_flags 中，引用产生风险的具体文档和条款
+6. 在 timeline_milestones 中，从文档提取精确日期而非从描述推断
+7. 如果文档含有详细规格，提高置信度；如果文档模糊或仅为程序性内容，降低置信度
+8. evidence_quotes 数组必须包含至少 3-5 条对投标决策至关重要的文档直接引用。逐字保留英文原文并加中文说明。包含最重要的规格、要求、限制条款和评标标准
+9. 准确填写 documents_analyzed，列出所有已分析文档及完整度评估
+10. 在 scope_breakdown.quantities 中提取精确数量——房间数、单位数、面积、线性英尺等
+11. 在 evaluation_strategy 中提取精确的权重百分比和评分标准
+12. 搜索隐藏要求：保险最低限额、保函金额、安全许可、工资标准（Davis-Bacon）、Buy American条款
+13. 在 bid_strategy.scoring_optimization 中，针对文档中明确的每个评标维度给出得分最大化策略
+14. 在 addendum_analysis 中，如果文档包含addendum/修正案内容，逐一分析其关键变化及对投标的影响
+15. 在 action_items 中，给出团队需要立即执行的具体待办清单，包含负责人建议和时间节点
 """
 
 
@@ -333,7 +381,7 @@ class TenderAnalyzer:
 
             result["analysis_model"] = self._model
             result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
-            result["report_version"] = result.get("report_version", "2.0")
+            result["report_version"] = result.get("report_version", "3.0")
             result["fallback_used"] = False
             result["_prompt_tokens"] = prompt_tokens
             result["_completion_tokens"] = completion_tokens
@@ -418,31 +466,31 @@ class TenderAnalyzer:
         feas = min(score, 100)
 
         return {
-            "report_version": "2.0",
+            "report_version": "3.0",
             "verdict": {
-                "one_line": f"{'Review' if is_relevant else 'Skip'} — {'possible industry fit based on keywords' if is_relevant else 'no clear industry fit detected'}",
+                "one_line": f"{'谨慎评估' if is_relevant else '不建议投标'} — {'关键词匹配显示可能相关' if is_relevant else '未检测到明确行业匹配'}",
                 "recommendation": rec,
                 "confidence": conf,
-                "confidence_rationale": "AI analysis unavailable; based on keyword matching only.",
+                "confidence_rationale": "AI分析不可用，仅基于关键词匹配。",
             },
             "project_summary": {
-                "overview": f"Tender: {title}",
-                "issuing_body": "Not specified",
+                "overview": f"招标项目：{title}",
+                "issuing_body": "招标文件未说明",
                 "project_type": "other",
             },
             "scope_breakdown": {
                 "main_deliverables": [],
-                "quantities": "Not specified",
+                "quantities": "招标文件未说明",
                 "scope_type": "unclear",
-                "service_scope": "Not specified",
-                "intended_use": "Not specified",
+                "service_scope": "招标文件未说明",
+                "intended_use": "招标文件未说明",
             },
             "technical_requirements": {
                 "product_requirements": [],
                 "environmental_requirements": [],
                 "installation_requirements": [],
                 "standards_certifications": [],
-                "control_systems": "Not specified",
+                "control_systems": "招标文件未说明",
                 "specialized_needs": [],
             },
             "timeline_milestones": {
@@ -451,52 +499,66 @@ class TenderAnalyzer:
                 "project_start": None, "delivery_deadline": None,
                 "milestone_dates": [],
                 "schedule_pressure": "realistic",
-                "schedule_notes": "Insufficient information to assess timeline.",
+                "schedule_notes": "信息不足，无法评估时间线。",
             },
             "evaluation_strategy": {
-                "pricing_weight": "Not specified",
-                "technical_weight": "Not specified",
-                "experience_weight": "Not specified",
+                "pricing_weight": "招标文件未说明",
+                "technical_weight": "招标文件未说明",
+                "experience_weight": "招标文件未说明",
                 "other_criteria": [],
-                "likely_evaluator_focus": "Not specified",
+                "likely_evaluator_focus": "招标文件未说明",
+                "scoring_optimization": [],
             },
             "business_fit": {
                 "fit_assessment": "moderate_fit" if is_relevant else "poor_fit",
-                "fit_explanation": breakdown.get("business_fit_explanation", "Rule-based scoring only."),
+                "fit_explanation": breakdown.get("business_fit_explanation", "仅基于规则评分。"),
                 "recommended_role": "not_recommended" if not is_relevant else "supplier_only",
                 "capability_gaps": [],
             },
             "compliance_risks": {
                 "red_flags": [],
                 "mandatory_certifications": [],
-                "experience_thresholds": "Not specified",
-                "bonding_insurance": "Not specified",
-                "local_requirements": "Not specified",
+                "experience_thresholds": "招标文件未说明",
+                "bonding_insurance": "招标文件未说明",
+                "local_requirements": "招标文件未说明",
             },
             "compatibility_analysis": {
-                "existing_system": "Not specified",
-                "brand_compatibility": "Not specified",
-                "proof_required": "Not specified",
+                "existing_system": "招标文件未说明",
+                "brand_compatibility": "招标文件未说明",
+                "proof_required": "招标文件未说明",
                 "compatibility_risk": "none",
-                "compatibility_notes": "Insufficient data to assess.",
+                "compatibility_notes": "数据不足，无法评估。",
             },
             "supply_chain_feasibility": {
                 "china_sourcing_viable": True,
-                "sourcing_explanation": "No restrictions identified (detailed analysis unavailable).",
+                "sourcing_explanation": "未发现限制条款（详细分析不可用）。",
                 "buy_domestic_restrictions": [],
-                "shipping_lead_time": "Not assessed",
-                "warehousing_needs": "Not specified",
-                "import_compliance": "Not specified",
-                "local_installation": "Not specified",
+                "shipping_lead_time": "未评估",
+                "warehousing_needs": "招标文件未说明",
+                "import_compliance": "招标文件未说明",
+                "local_installation": "招标文件未说明",
             },
             "participation_strategy": {
                 "recommended_approach": "skip" if not is_relevant else "pursue_after_proof",
-                "strategy_rationale": "Manual review recommended — AI analysis was unavailable.",
-                "potential_partners": "Not assessed",
-                "competitive_positioning": "Not assessed",
+                "strategy_rationale": "建议人工审核——AI分析不可用。",
+                "potential_partners": "未评估",
+                "competitive_positioning": "未评估",
             },
+            "bid_strategy": {
+                "go_no_go": "谨慎评估" if is_relevant else "不建议投标",
+                "go_no_go_rationale": "AI分析不可用，建议人工审核后决定。",
+                "pricing_strategy": "未评估",
+                "scoring_optimization": [],
+                "executive_summary_outline": "未评估",
+                "differentiation_points": [],
+                "win_probability": "very_low",
+                "win_probability_rationale": "信息不足，无法评估中标概率。",
+            },
+            "addendum_analysis": [],
+            "company_specific_risks": [],
+            "action_items": [],
             "required_evidence": {
-                "before_bidding": ["Manual review of tender documents required"],
+                "before_bidding": ["需要人工审核招标文件"],
                 "with_submission": [],
                 "examples": [],
             },
@@ -505,7 +567,7 @@ class TenderAnalyzer:
                 "compliance_feasibility": feas,
                 "commercial_feasibility": feas,
                 "overall_score": feas,
-                "score_rationale": "Approximate score from keyword matching; AI analysis unavailable.",
+                "score_rationale": "基于关键词匹配的近似评分；AI分析不可用。",
             },
             "analysis_model": "fallback_rule_based",
             "analyzed_at": datetime.now(timezone.utc).isoformat(),

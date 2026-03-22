@@ -610,3 +610,247 @@ async def analysis_status(opportunity_id: str) -> dict:
         return {"exists": False}
     finally:
         session.close()
+
+
+# ──────────────────────────────────────────────────────────────
+# Upload & Analyze — manual PDF upload for deep analysis
+# ──────────────────────────────────────────────────────────────
+
+from fastapi import File, Form, UploadFile
+
+_UPLOAD_MAX_FILES = 5
+_UPLOAD_MAX_SIZE = 25 * 1024 * 1024  # 25 MB per file
+
+
+@router.post("/upload-and-analyze", dependencies=[Depends(verify_api_key)])
+async def upload_and_analyze(
+    files: list[UploadFile] = File(...),
+    opportunity_id: str | None = Form(None),
+    title: str | None = Form(None),
+) -> dict:
+    """Upload 1-5 PDF/DOCX files and run deep AI analysis.
+
+    If opportunity_id is provided, enriches the analysis with opportunity metadata.
+    Otherwise runs a standalone analysis using only the uploaded documents.
+    """
+    if len(files) > _UPLOAD_MAX_FILES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"最多上传 {_UPLOAD_MAX_FILES} 个文件")
+
+    document_texts: dict[str, str] = {}
+    for f in files:
+        if not f.filename:
+            continue
+        content = await f.read()
+        if len(content) > _UPLOAD_MAX_SIZE:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"文件 {f.filename} 超过 25MB 限制")
+        ext = (f.filename.rsplit(".", 1)[-1] if "." in f.filename else "").lower()
+        supported = {"pdf", "docx", "doc", "txt", "xlsx", "xls", "csv"}
+        if ext not in supported:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"不支持的文件类型: {f.filename}（支持: {', '.join(supported)}）",
+            )
+        try:
+            extracted = _extract_text_from_bytes(content, ext)
+            if extracted and len(extracted.strip()) > 10:
+                document_texts[f.filename] = extracted
+        except Exception as exc:
+            logger.warning("Failed to extract text from uploaded %s: %s", f.filename, exc)
+
+    if not document_texts:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "未能从上传的文件中提取到有效文本")
+
+    session = get_db_session()
+    try:
+        budget_ok, budget_msg = _check_budget(session, "upload_deep")
+        if not budget_ok:
+            return {"status": "budget_exceeded", "message": budget_msg}
+
+        opp_title = title or "上传文档分析"
+        organization = None
+        location = None
+        closing_date = None
+        source_name = "手动上传"
+        description = ""
+        country = None
+        naics = None
+        category = None
+        set_aside = None
+        solicitation_number = None
+        response_deadline = None
+        linked_opp_id = opportunity_id
+
+        if opportunity_id:
+            opp = session.execute(
+                text("""
+                    SELECT o.id, o.title, o.description_summary, o.description_full,
+                           o.country, o.region, o.city, o.closing_date, o.category,
+                           o.solicitation_number, o.raw_data,
+                           s.name as source_name,
+                           org.name as organization_name
+                    FROM opportunities o
+                    LEFT JOIN sources s ON o.source_id = s.id
+                    LEFT JOIN organizations org ON o.organization_id = org.id
+                    WHERE o.id = :id
+                """),
+                {"id": opportunity_id},
+            ).fetchone()
+
+            if opp:
+                opp_title = opp.title
+                organization = opp.organization_name
+                lp = [p for p in [opp.city, opp.region, opp.country] if p]
+                location = ", ".join(lp) if lp else None
+                closing_date = str(opp.closing_date) if opp.closing_date else None
+                source_name = opp.source_name or "Unknown"
+                description = opp.description_full or opp.description_summary or ""
+                country = opp.country
+                category = opp.category
+                solicitation_number = opp.solicitation_number
+                raw = opp.raw_data if opp.raw_data else {}
+                if isinstance(raw, str):
+                    try:
+                        raw = json.loads(raw)
+                    except Exception:
+                        raw = {}
+                naics = raw.get("naics_code") or opp.category
+                set_aside = raw.get("set_aside")
+                response_deadline = raw.get("response_deadline")
+
+            existing_docs = session.execute(
+                text("""
+                    SELECT title, extracted_text FROM opportunity_documents
+                    WHERE opportunity_id = :id
+                      AND text_extracted = true
+                      AND extracted_text IS NOT NULL
+                      AND LENGTH(extracted_text) > 10
+                    LIMIT 10
+                """),
+                {"id": opportunity_id},
+            ).fetchall()
+            for i, doc in enumerate(existing_docs):
+                key = doc.title or f"existing_doc_{i}"
+                if key not in document_texts:
+                    document_texts[key] = doc.extracted_text
+
+        analyzer = TenderAnalyzer(model="gpt-4o", max_tokens=AUTO_ANALYZE_MAX_TOKENS)
+        result = analyzer.analyze(
+            title=opp_title,
+            organization=organization,
+            location=location,
+            closing_date=closing_date,
+            source=source_name,
+            description=description,
+            document_texts=document_texts,
+            country=country,
+            response_deadline=response_deadline,
+            naics=naics,
+            category=category,
+            set_aside=set_aside,
+            solicitation_number=solicitation_number,
+        )
+
+        fallback_used = result.get("fallback_used", False)
+        now = datetime.now(timezone.utc)
+        prompt_tok = result.pop("_prompt_tokens", 0)
+        completion_tok = result.pop("_completion_tokens", 0)
+
+        if not fallback_used:
+            est_cost = _estimate_cost("gpt-4o", prompt_tok, completion_tok)
+            _record_usage(
+                session, linked_opp_id or "upload", "gpt-4o", "upload_deep",
+                prompt_tok, completion_tok, est_cost, now,
+            )
+
+        if linked_opp_id:
+            verdict = result.get("verdict", {})
+            scores = result.get("feasibility_scores", {})
+            overall = scores.get("overall_score")
+            recommendation = verdict.get("recommendation", "review_carefully")
+            biz_fit = result.get("business_fit", {})
+            scope = result.get("scope_breakdown", {})
+            tech = result.get("technical_requirements", {})
+            quals = result.get("compliance_risks", {})
+            timeline = result.get("timeline_milestones", {})
+            risks_list = [rf.get("requirement", "") for rf in quals.get("red_flags", [])]
+            china = result.get("supply_chain_feasibility", {})
+
+            params = {
+                "opp_id": linked_opp_id,
+                "overview": result.get("project_summary", {}).get("overview", ""),
+                "scope": json.dumps(scope, cls=_Enc),
+                "scope_type": scope.get("scope_type", "unclear"),
+                "tech_reqs": json.dumps(tech, cls=_Enc),
+                "qual_reqs": json.dumps(quals, cls=_Enc),
+                "dates": json.dumps(timeline, cls=_Enc),
+                "risks": json.dumps(risks_list, cls=_Enc),
+                "feas_score": overall,
+                "recommendation": recommendation,
+                "biz_fit": biz_fit.get("fit_explanation", "")[:500],
+                "china": json.dumps(china, cls=_Enc),
+                "summary": json.dumps(result, cls=_Enc),
+                "model": "gpt-4o",
+                "mode": "upload_deep",
+                "status": "completed" if not fallback_used else "fallback_only",
+                "now": now,
+            }
+
+            existing = session.execute(
+                text("SELECT id FROM tender_intelligence WHERE opportunity_id = :id"),
+                {"id": linked_opp_id},
+            ).fetchone()
+
+            if existing:
+                session.execute(text("""
+                    UPDATE tender_intelligence SET
+                        project_overview = :overview, scope_of_work = :scope,
+                        scope_type = :scope_type, technical_requirements = :tech_reqs,
+                        qualification_reqs = :qual_reqs, critical_dates = :dates,
+                        risk_factors = :risks, feasibility_score = :feas_score,
+                        recommendation_status = :recommendation,
+                        business_fit_explanation = :biz_fit,
+                        china_source_analysis = :china,
+                        intelligence_summary = :summary, analysis_model = :model,
+                        analysis_mode = :mode, analysis_status = :status,
+                        analyzed_at = :now, updated_at = :now
+                    WHERE opportunity_id = :opp_id
+                """), params)
+            else:
+                session.execute(text("""
+                    INSERT INTO tender_intelligence (
+                        opportunity_id, project_overview, scope_of_work, scope_type,
+                        technical_requirements, qualification_reqs, critical_dates,
+                        risk_factors, feasibility_score, recommendation_status,
+                        business_fit_explanation, china_source_analysis,
+                        intelligence_summary, analysis_model, analysis_mode,
+                        analysis_status, analyzed_at, updated_at
+                    ) VALUES (
+                        :opp_id, :overview, :scope, :scope_type,
+                        :tech_reqs, :qual_reqs, :dates,
+                        :risks, :feas_score, :recommendation,
+                        :biz_fit, :china,
+                        :summary, :model, :mode,
+                        :status, :now, :now
+                    )
+                """), params)
+
+            session.commit()
+
+        return {
+            "status": "completed",
+            "opportunity_id": linked_opp_id,
+            "report": result,
+            "documents_analyzed": list(document_texts.keys()),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        session.rollback()
+        logger.exception("Upload analysis failed")
+        return {"status": "error", "message": str(exc)}
+    finally:
+        session.close()
+
+
+AUTO_ANALYZE_MAX_TOKENS = 8000

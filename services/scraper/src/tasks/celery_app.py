@@ -45,3 +45,5 @@ celery_app.conf.beat_schedule = {
 celery_app.autodiscover_tasks(["src.tasks"], related_name="crawl_tasks")
 celery_app.autodiscover_tasks(["src.tasks"], related_name="extract_documents")
 celery_app.autodiscover_tasks(["src.tasks"], related_name="translate_tasks")
+celery_app.autodiscover_tasks(["src.tasks"], related_name="auto_analyze")
+celery_app.autodiscover_tasks(["src.tasks"], related_name="discover_documents")
