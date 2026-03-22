@@ -80,7 +80,15 @@ class CanadaBuysCrawler(BaseCrawler):
         csv_url = cfg.get("csv_url", _OPEN_CSV_URL)
 
         self.logger.info("Downloading CanadaBuys CSV from %s", csv_url)
-        resp = requests.get(csv_url, timeout=120, stream=True)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/csv,text/plain,*/*",
+        }
+        resp = requests.get(csv_url, timeout=120, headers=headers)
         resp.raise_for_status()
         resp.encoding = resp.apparent_encoding or "utf-8"
 
