@@ -6,7 +6,7 @@ Security:
   - No secrets exposed in responses
 
 Endpoints:
-  GET  /api/agent/jobs          — fetch pending jobs for local_authenticated_connector sources
+  GET  /api/agent/jobs          — fetch pending jobs for local_connector sources
   POST /api/agent/jobs/{id}/status — update job status (running, completed, failed)
   POST /api/agent/opportunities — upload batch of normalized opportunities
   POST /api/agent/documents     — upload document metadata for an opportunity
@@ -70,7 +70,7 @@ def verify_agent_key(x_agent_key: str = Header(...)) -> str:
 
 @router.get("/jobs", dependencies=[Depends(verify_agent_key)])
 async def get_pending_jobs() -> list[AgentJobResponse]:
-    """Return pending crawl runs for local_authenticated_connector sources."""
+    """Return pending crawl runs for local_connector sources."""
     session = get_db_session()
     try:
         rows = session.execute(
@@ -80,7 +80,7 @@ async def get_pending_jobs() -> list[AgentJobResponse]:
                 FROM source_runs sr
                 JOIN sources s ON sr.source_id = s.id
                 WHERE sr.status = 'pending'
-                  AND s.access_mode = 'local_authenticated_connector'
+                  AND s.access_mode = 'local_connector'
                   AND s.is_active = true
                 ORDER BY sr.created_at ASC
                 LIMIT 10
@@ -95,7 +95,7 @@ async def get_pending_jobs() -> list[AgentJobResponse]:
                 source_name=r.source_name,
                 base_url=r.base_url,
                 crawl_config=r.crawl_config if r.crawl_config else {},
-                access_mode=r.access_mode or "local_authenticated_connector",
+                access_mode=r.access_mode or "local_connector",
             ))
         return jobs
     finally:
@@ -111,14 +111,14 @@ class CreateJobRequest(BaseModel):
 
 @router.post("/jobs/create", dependencies=[Depends(verify_agent_key)])
 async def create_agent_job(req: CreateJobRequest | None = None) -> list[AgentJobResponse]:
-    """Create pending crawl runs for all local_authenticated_connector sources.
+    """Create pending crawl runs for all local_connector sources.
 
     The local agent calls this to request work, or it can be called by the
     cloud scheduler to pre-create jobs.
     """
     session = get_db_session()
     try:
-        where = "s.access_mode = 'local_authenticated_connector' AND s.is_active = true"
+        where = "s.access_mode = 'local_connector' AND s.is_active = true"
         params: dict[str, Any] = {}
         if req and req.source_name:
             where += " AND s.name = :name"
@@ -147,7 +147,7 @@ async def create_agent_job(req: CreateJobRequest | None = None) -> list[AgentJob
                     source_name=s.name,
                     base_url=s.base_url,
                     crawl_config=s.crawl_config if s.crawl_config else {},
-                    access_mode=s.access_mode or "local_authenticated_connector",
+                    access_mode=s.access_mode or "local_connector",
                 ))
                 continue
 
@@ -167,7 +167,7 @@ async def create_agent_job(req: CreateJobRequest | None = None) -> list[AgentJob
                 source_name=s.name,
                 base_url=s.base_url,
                 crawl_config=s.crawl_config if s.crawl_config else {},
-                access_mode=s.access_mode or "local_authenticated_connector",
+                access_mode=s.access_mode or "local_connector",
             ))
 
         logger.info("Created %d agent jobs", len(jobs))

@@ -33,7 +33,7 @@ SOURCES = [
             "fetch_detail": True,
             "include_broad_keywords": True,
         },
-        "access_mode": "http_scrape",
+        "access_mode": "local_connector",
         "frequency": "daily",
         "is_active": True,
         "source_priority": "critical",
