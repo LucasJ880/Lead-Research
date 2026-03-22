@@ -36,6 +36,7 @@ export interface QingyanProjectPayload {
     fit_score: number | null;
     summary: string | null;
     full_report_url: string;
+    full_report: Record<string, unknown> | null;
   };
   documents: Array<{
     title: string;
