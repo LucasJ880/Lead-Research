@@ -128,7 +128,7 @@ class CanadaBuysCrawler(BaseCrawler):
         if not notice_url and not ref_number:
             return None
 
-        source_url = notice_url or f"https://canadabuys.canada.ca/en/tender-opportunities/{ref_number}"
+        source_url = f"https://canadabuys.canada.ca/en/tender-opportunities/{sol_number or ref_number}"
 
         pub_date = _parse_dt(row.get("publicationDate-datePublication"))
         closing_date = _parse_dt(row.get("tenderClosingDate-appelOffresDateCloture"))
@@ -196,8 +196,9 @@ class CanadaBuysCrawler(BaseCrawler):
             has_documents=False,
             organization_name=org_name,
             raw_data={
-                "parser_version": "canadabuys_csv_v1",
+                "parser_version": "canadabuys_csv_v2",
                 "reference_number": ref_number,
+                "notice_url": notice_url,
                 "amendment_number": _clean(row.get("amendmentNumber-numeroModification", ""), 50),
                 "gsin": gsin,
                 "unspsc": unspsc,
