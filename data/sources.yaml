@@ -40,6 +40,75 @@ sources:
   industry_fit_score: 65
   source_priority: high
   listing_path: /business-economy/doing-business-with-the-city/searching-bidding-on-city-contracts/toronto-bids-portal/
+- source_id: biddingo
+  source_name: Biddingo
+  country: CA
+  region: National
+  organization_type: aggregator
+  source_type: aggregator
+  base_url: https://www.biddingo.com
+  listing_pattern: search
+  parser_class: BiddingoCrawler
+  crawl_frequency: daily
+  active: true
+  notes: >-
+    Canadian procurement aggregator with 1.2M+ bid listings. REST API available
+    at api.biddingo.com. Crawler searches by industry keywords (26 terms) to
+    target window covering, textile, and furnishing opportunities. Best used as
+    a keyword search engine rather than full listing scrape.
+  crawl_config:
+    crawler_class: biddingo
+    max_pages_per_search: 3
+    page_size: 25
+    fetch_detail: true
+    rate_limit_seconds: 2
+  industry_fit_score: 80
+  source_priority: critical
+  listing_path: /search
+- source_id: bcbid
+  source_name: BC Bid
+  country: CA
+  region: BC
+  organization_type: provincial_government
+  source_type: bid_portal
+  base_url: https://bcbid.gov.bc.ca
+  listing_pattern: opportunities
+  parser_class: BCBidCrawler
+  crawl_frequency: daily
+  active: true
+  notes: >-
+    British Columbia provincial procurement portal on Jaggaer platform. Uses
+    JavaScript browser-check verification. Cloudscraper bypass attempted; may
+    require Playwright browser automation for full reliability. Covers all
+    provincial ministries and agencies.
+  crawl_config:
+    crawler_class: bcbid
+    rate_limit_seconds: 3
+  industry_fit_score: 65
+  source_priority: high
+  listing_path: /page.aspx/en/bps/process_browse
+- source_id: sasktenders
+  source_name: SaskTenders
+  country: CA
+  region: SK
+  organization_type: provincial_government
+  source_type: bid_portal
+  base_url: https://sasktenders.ca
+  listing_pattern: competitions
+  parser_class: SaskTendersCrawler
+  crawl_frequency: daily
+  active: true
+  notes: >-
+    Government of Saskatchewan procurement portal. Server-rendered HTML with
+    accordion-style listing. 388+ open competitions from provincial ministries,
+    Crown corporations, health authorities, municipalities, and school divisions.
+    No login required for public search.
+  crawl_config:
+    crawler_class: sasktenders
+    rate_limit_seconds: 2
+  industry_fit_score: 60
+  source_priority: high
+  listing_path: /content/public/Search.aspx
 - source_id: novascotia_procurement
   source_name: Nova Scotia Procurement Portal
   country: CA

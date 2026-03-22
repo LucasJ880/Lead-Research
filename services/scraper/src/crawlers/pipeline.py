@@ -44,6 +44,7 @@ from src.utils.normalizer import (
     normalize_status,
 )
 from src.utils.scorer import score_opportunity
+from src.utils.translator import translate_to_zh
 
 logger = get_logger(__name__)
 
@@ -94,7 +95,8 @@ class CrawlPipeline:
                     opp = self._normalize(opp)
                     opp = self._score(opp)
                     opp.source_run_id = source_run_id
-                    self._dedup_and_store(opp)
+                    zh_fields = self._translate_if_relevant(opp)
+                    self._dedup_and_store(opp, zh_fields=zh_fields)
                 except Exception as exc:
                     self._result.errors.append(f"Processing error: {exc}")
                     logger.exception("Error processing opportunity: %s", opp.title)
@@ -227,7 +229,21 @@ class CrawlPipeline:
             return False
         return True
 
-    def _dedup_and_store(self, opp: OpportunityCreate) -> None:
+    def _translate_if_relevant(self, opp: OpportunityCreate) -> dict | None:
+        """Translate title/descriptions to Chinese if relevance >= 80."""
+        if opp.relevance_score < 80:
+            return None
+        try:
+            title_zh = translate_to_zh(opp.title) if opp.title else None
+            summary_zh = translate_to_zh(opp.description_summary) if opp.description_summary else None
+            full_zh = translate_to_zh(opp.description_full) if opp.description_full else None
+            if title_zh or summary_zh or full_zh:
+                return {"title_zh": title_zh, "summary_zh": summary_zh, "full_zh": full_zh}
+        except Exception:
+            logger.exception("Inline translation failed for: %s", opp.title)
+        return None
+
+    def _dedup_and_store(self, opp: OpportunityCreate, *, zh_fields: dict | None = None) -> None:
         """Check for duplicates and insert or update the opportunity."""
         if not self._validate(opp):
             return
@@ -238,7 +254,7 @@ class CrawlPipeline:
                 self._session, opp.source_id, opp.external_id
             )
             if existing_id:
-                self._update_opportunity(existing_id, opp)
+                self._update_opportunity(existing_id, opp, zh_fields=zh_fields)
                 return
 
         # Check by fingerprint
@@ -248,12 +264,13 @@ class CrawlPipeline:
             logger.debug("Skipping duplicate: %s", opp.title)
             return
 
-        self._insert_opportunity(opp)
+        self._insert_opportunity(opp, zh_fields=zh_fields)
 
     # ─── Database Operations ────────────────────────────────
 
-    def _insert_opportunity(self, opp: OpportunityCreate) -> None:
+    def _insert_opportunity(self, opp: OpportunityCreate, *, zh_fields: dict | None = None) -> None:
         """Insert a new opportunity row using a SAVEPOINT for isolation."""
+        zh = zh_fields or {}
         try:
             self._session.execute(text("SAVEPOINT opp_insert"))
             self._session.execute(
@@ -261,6 +278,7 @@ class CrawlPipeline:
                     INSERT INTO opportunities (
                         source_id, source_run_id, external_id,
                         title, description_summary, description_full,
+                        title_zh, description_summary_zh, description_full_zh, translated_at,
                         status, country, region, city, location_raw,
                         posted_date, closing_date, project_type, category,
                         solicitation_number, estimated_value, currency,
@@ -273,6 +291,7 @@ class CrawlPipeline:
                     ) VALUES (
                         :source_id, :source_run_id, :external_id,
                         :title, :description_summary, :description_full,
+                        :title_zh, :summary_zh, :full_zh, :translated_at,
                         :status, :country, :region, :city, :location_raw,
                         :posted_date, :closing_date, :project_type, :category,
                         :solicitation_number, :estimated_value, :currency,
@@ -291,6 +310,10 @@ class CrawlPipeline:
                     "title": opp.title,
                     "description_summary": opp.description_summary,
                     "description_full": opp.description_full,
+                    "title_zh": zh.get("title_zh"),
+                    "summary_zh": zh.get("summary_zh"),
+                    "full_zh": zh.get("full_zh"),
+                    "translated_at": datetime.now(timezone.utc) if zh else None,
                     "status": opp.status.value if opp.status else "unknown",
                     "country": opp.country,
                     "region": opp.region,
@@ -338,8 +361,9 @@ class CrawlPipeline:
             except Exception:
                 pass
 
-    def _update_opportunity(self, opportunity_id: str, opp: OpportunityCreate) -> None:
+    def _update_opportunity(self, opportunity_id: str, opp: OpportunityCreate, *, zh_fields: dict | None = None) -> None:
         """Update an existing opportunity with fresh data."""
+        zh = zh_fields or {}
         try:
             self._session.execute(text("SAVEPOINT opp_update"))
             self._session.execute(
@@ -349,6 +373,10 @@ class CrawlPipeline:
                         title = :title,
                         description_summary = COALESCE(:description_summary, description_summary),
                         description_full = COALESCE(:description_full, description_full),
+                        title_zh = COALESCE(:title_zh, title_zh),
+                        description_summary_zh = COALESCE(:summary_zh, description_summary_zh),
+                        description_full_zh = COALESCE(:full_zh, description_full_zh),
+                        translated_at = COALESCE(:translated_at, translated_at),
                         status = :status,
                         closing_date = COALESCE(:closing_date, closing_date),
                         estimated_value = COALESCE(:estimated_value, estimated_value),
@@ -372,6 +400,10 @@ class CrawlPipeline:
                     "title": opp.title,
                     "description_summary": opp.description_summary,
                     "description_full": opp.description_full,
+                    "title_zh": zh.get("title_zh"),
+                    "summary_zh": zh.get("summary_zh"),
+                    "full_zh": zh.get("full_zh"),
+                    "translated_at": datetime.now(timezone.utc) if zh else None,
                     "status": opp.status.value if opp.status else "unknown",
                     "closing_date": opp.closing_date,
                     "estimated_value": float(opp.estimated_value) if opp.estimated_value else None,

@@ -300,6 +300,10 @@ model Opportunity {
   workflowUpdatedAt   DateTime?         @map("workflow_updated_at") @db.Timestamptz()
   ingestionMode       String            @default("live") @map("ingestion_mode") @db.VarChar(20)
   rawData             Json?             @map("raw_data")
+  titleZh             String?           @map("title_zh")
+  descriptionSummaryZh String?          @map("description_summary_zh")
+  descriptionFullZh   String?           @map("description_full_zh") @db.Text
+  translatedAt        DateTime?         @map("translated_at") @db.Timestamptz()
   fingerprint         String            @db.VarChar(64)
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz()

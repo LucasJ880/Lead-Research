@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # OpenAI for document intelligence
     OPENAI_API_KEY: str = ""
 
+    # Google Translate
+    GOOGLE_TRANSLATE_API_KEY: str = ""
+
     # AI cost control
     AI_DAILY_BUDGET_USD: float = 5.0
     AI_MONTHLY_BUDGET_USD: float = 100.0

@@ -25,27 +25,27 @@ const STATUS_CONFIG: Record<
 > = {
   completed: {
     icon: CheckCircle2,
-    label: "Completed",
+    label: "完成",
     color: "text-emerald-600 bg-emerald-50 border-emerald-200",
   },
   failed: {
     icon: XCircle,
-    label: "Failed",
+    label: "失败",
     color: "text-red-600 bg-red-50 border-red-200",
   },
   running: {
     icon: Loader2,
-    label: "Running",
+    label: "运行中",
     color: "text-blue-600 bg-blue-50 border-blue-200",
   },
   pending: {
     icon: Clock,
-    label: "Pending",
+    label: "等待",
     color: "text-amber-600 bg-amber-50 border-amber-200",
   },
   cancelled: {
     icon: AlertTriangle,
-    label: "Cancelled",
+    label: "已取消",
     color: "text-slate-500 bg-slate-50 border-slate-200",
   },
 };
@@ -117,7 +117,7 @@ export default function LogsPage() {
         setCrawlMessage(`Error: ${body.error || res.statusText}`);
       } else {
         setCrawlMessage(
-          "Crawler dispatched — this page will auto-refresh while runs are in progress."
+          "抓取器已启动 — 运行中时页面将自动刷新。"
         );
         // Quick poll cycle: 3s, 6s, 15s, then the interval takes over
         setTimeout(() => fetchRuns(1), 3000);
@@ -145,9 +145,9 @@ export default function LogsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Crawl Logs</h1>
+          <h1 className="text-xl font-bold tracking-tight">抓取日志</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Source-level crawl execution history &middot; {total} total runs
+            数据源抓取执行历史 &middot; {total} 次运行
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -156,7 +156,7 @@ export default function LogsPage() {
             className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
           >
             <RefreshCw className="h-4 w-4" />
-            Refresh
+            刷新
           </button>
           <button
             onClick={triggerCrawl}
@@ -168,7 +168,7 @@ export default function LogsPage() {
             ) : (
               <Play className="h-4 w-4" />
             )}
-            Run Crawler
+            运行抓取
           </button>
         </div>
       </div>
@@ -183,35 +183,35 @@ export default function LogsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Runs on Page</p>
+            <p className="text-xs font-medium text-muted-foreground">本页运行</p>
             <p className="mt-1 text-xl font-bold">{summary.total}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-emerald-600">Completed</p>
+            <p className="text-xs font-medium text-emerald-600">已完成</p>
             <p className="mt-1 text-xl font-bold text-emerald-600">{summary.completed}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-red-600">Failed</p>
+            <p className="text-xs font-medium text-red-600">失败</p>
             <p className="mt-1 text-xl font-bold text-red-600">{summary.failed}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-blue-600">Running / Pending</p>
+            <p className="text-xs font-medium text-blue-600">运行中 / 等待</p>
             <p className="mt-1 text-xl font-bold text-blue-600">{summary.running}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Opps Found / Inserted</p>
+            <p className="text-xs font-medium text-muted-foreground">发现 / 新增</p>
             <p className="mt-1 text-xl font-bold">
               {summary.totalFound}{" "}
               <span className="text-sm font-normal text-muted-foreground">
-                / {summary.totalInserted} new
+                / {summary.totalInserted} 新增
               </span>
             </p>
           </CardContent>
@@ -221,7 +221,7 @@ export default function LogsPage() {
       {/* Runs Table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Crawl Run History</CardTitle>
+          <CardTitle className="text-base font-semibold">抓取运行历史</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -233,9 +233,9 @@ export default function LogsPage() {
           ) : runs.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
               <FileSearch className="mx-auto h-10 w-10 mb-3 text-muted-foreground/40" />
-              <p className="text-sm font-medium">No crawl runs yet</p>
+              <p className="text-sm font-medium">暂无抓取记录</p>
               <p className="mt-1 text-xs">
-                Click &ldquo;Run Crawler&rdquo; to start your first crawl.
+                点击&ldquo;运行抓取&rdquo;开始首次抓取。
               </p>
             </div>
           ) : (
@@ -244,16 +244,16 @@ export default function LogsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
-                      <TableHead className="pb-3 pr-4">Status</TableHead>
-                      <TableHead className="pb-3 pr-4">Source</TableHead>
-                      <TableHead className="pb-3 pr-4">Trigger</TableHead>
-                      <TableHead className="pb-3 pr-4">Started</TableHead>
-                      <TableHead className="pb-3 pr-4">Duration</TableHead>
-                      <TableHead className="pb-3 pr-4 text-right">Pages</TableHead>
-                      <TableHead className="pb-3 pr-4 text-right">Found</TableHead>
-                      <TableHead className="pb-3 pr-4 text-right">New</TableHead>
-                      <TableHead className="pb-3 pr-4 text-right">Updated</TableHead>
-                      <TableHead className="pb-3">Error</TableHead>
+                      <TableHead className="pb-3 pr-4">状态</TableHead>
+                      <TableHead className="pb-3 pr-4">数据源</TableHead>
+                      <TableHead className="pb-3 pr-4">触发方式</TableHead>
+                      <TableHead className="pb-3 pr-4">开始时间</TableHead>
+                      <TableHead className="pb-3 pr-4">耗时</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">页数</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">发现</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">新增</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">更新</TableHead>
+                      <TableHead className="pb-3">错误</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -279,7 +279,7 @@ export default function LogsPage() {
                             {run.triggeredBy === "local_agent" ? (
                               <span className="inline-flex items-center gap-1">
                                 <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-                                Local Agent
+                                本地代理
                               </span>
                             ) : (
                               <span className="capitalize">{run.triggeredBy}</span>
@@ -332,7 +332,7 @@ export default function LogsPage() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t pt-4 mt-4">
                   <p className="text-xs text-muted-foreground">
-                    Page {page} of {totalPages} &middot; {total} total runs
+                    第 {page} 页 / 共 {totalPages} 页 &middot; {total} 次运行
                   </p>
                   <div className="flex items-center gap-2">
                     <button
@@ -340,14 +340,14 @@ export default function LogsPage() {
                       onClick={() => fetchRuns(page - 1)}
                       className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50 transition-colors"
                     >
-                      <ChevronLeft className="h-3 w-3" /> Prev
+                      <ChevronLeft className="h-3 w-3" /> 上一页
                     </button>
                     <button
                       disabled={page >= totalPages}
                       onClick={() => fetchRuns(page + 1)}
                       className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50 transition-colors"
                     >
-                      Next <ChevronRight className="h-3 w-3" />
+                      下一页 <ChevronRight className="h-3 w-3" />
                     </button>
                   </div>
                 </div>

@@ -66,13 +66,13 @@ const statusVariant: Record<string, "success" | "warning" | "destructive" | "out
 };
 
 const WORKFLOW_ACTIONS: { value: WorkflowStatus; label: string; icon: typeof Flame; shortLabel: string }[] = [
-  { value: "hot", label: "Mark Hot", icon: Flame, shortLabel: "Hot" },
-  { value: "review", label: "Review Later", icon: Eye, shortLabel: "Review" },
-  { value: "shortlisted", label: "Shortlist", icon: Bookmark, shortLabel: "Shortlisted" },
-  { value: "pursuing", label: "Pursuing", icon: ArrowRight, shortLabel: "Pursuing" },
-  { value: "monitor", label: "Monitor", icon: Radio, shortLabel: "Monitor" },
-  { value: "passed", label: "Pass", icon: XCircle, shortLabel: "Passed" },
-  { value: "not_relevant", label: "Not Relevant", icon: XCircle, shortLabel: "Not Relevant" },
+  { value: "hot", label: "标记紧急", icon: Flame, shortLabel: "紧急" },
+  { value: "review", label: "稍后审核", icon: Eye, shortLabel: "待审" },
+  { value: "shortlisted", label: "列入候选", icon: Bookmark, shortLabel: "候选" },
+  { value: "pursuing", label: "跟进中", icon: ArrowRight, shortLabel: "跟进" },
+  { value: "monitor", label: "监控", icon: Radio, shortLabel: "监控" },
+  { value: "passed", label: "跳过", icon: XCircle, shortLabel: "跳过" },
+  { value: "not_relevant", label: "不相关", icon: XCircle, shortLabel: "不相关" },
 ];
 
 type TabId = "summary" | "analysis" | "documents" | "evidence" | "notes";
@@ -210,7 +210,7 @@ export default function OpportunityDetailPage() {
 
   const backLink = (
     <Link href="/dashboard/opportunities" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-      <ArrowLeft className="h-4 w-4" /> Back to Opportunities
+      <ArrowLeft className="h-4 w-4" /> 返回机会列表
     </Link>
   );
 
@@ -235,8 +235,8 @@ export default function OpportunityDetailPage() {
       <div className="space-y-4">
         {backLink}
         <div className="rounded-lg border p-10 text-center">
-          <h2 className="text-base font-semibold">Opportunity Not Found</h2>
-          <p className="mt-1 text-xs text-muted-foreground">This opportunity doesn&apos;t exist or has been removed.</p>
+          <h2 className="text-base font-semibold">机会未找到</h2>
+          <p className="mt-1 text-xs text-muted-foreground">该机会不存在或已被删除。</p>
         </div>
       </div>
     );
@@ -279,11 +279,11 @@ export default function OpportunityDetailPage() {
   };
 
   const tabs: { id: TabId; label: string; icon: typeof LayoutDashboard; count?: number }[] = [
-    { id: "summary", label: "Summary", icon: LayoutDashboard },
-    { id: "analysis", label: "Analysis", icon: Sparkles },
-    { id: "documents", label: "Documents", icon: FileText, count: intel?.documents?.length || opp.documents.length },
-    { id: "evidence", label: "Evidence", icon: ListChecks },
-    { id: "notes", label: "Notes", icon: MessageSquare, count: opp.notes.length },
+    { id: "summary", label: "摘要", icon: LayoutDashboard },
+    { id: "analysis", label: "分析", icon: Sparkles },
+    { id: "documents", label: "文件", icon: FileText, count: intel?.documents?.length || opp.documents.length },
+    { id: "evidence", label: "证据", icon: ListChecks },
+    { id: "notes", label: "备注", icon: MessageSquare, count: opp.notes.length },
   ];
 
   return (
@@ -334,7 +334,7 @@ export default function OpportunityDetailPage() {
                       ? confidence === "high" ? "text-emerald-300" : confidence === "medium" ? "text-blue-300" : "text-amber-300"
                       : confidence === "high" ? "text-emerald-700" : confidence === "medium" ? "text-blue-700" : "text-amber-700"
                   }`}>
-                    {confidence.replace(/_/g, " ")} confidence
+                    {confidence.replace(/_/g, " ")} 置信度
                   </span>
                 )}
               </div>
@@ -418,7 +418,7 @@ export default function OpportunityDetailPage() {
             <div key={i} className="flex items-start gap-3 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3">
               <Shield className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
               <div>
-                <span className="text-xs font-bold text-red-800 uppercase tracking-wide">FATAL BLOCKER</span>
+                <span className="text-xs font-bold text-red-800 uppercase tracking-wide">致命阻断</span>
                 <p className="text-sm font-medium text-red-800">{rf.requirement}</p>
                 {rf.explanation && <p className="text-xs text-red-600 mt-0.5">{rf.explanation}</p>}
               </div>
@@ -478,26 +478,26 @@ export default function OpportunityDetailPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold">Opportunity Details</CardTitle>
+                    <CardTitle className="text-sm font-semibold">机会详情</CardTitle>
                     <a href={opp.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                      <ExternalLink className="h-3 w-3" /> View Original
+                      <ExternalLink className="h-3 w-3" /> 查看原文
                     </a>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                    <MetaRow icon={Building2} label="Organization" value={opp.organization} />
-                    <MetaRow icon={MapPin} label="Location" value={[opp.city, opp.region, opp.country].filter(Boolean).join(", ")} />
-                    <MetaRow icon={Hash} label="Solicitation #" value={opp.solicitationNumber} />
-                    <MetaRow icon={DollarSign} label="Est. Value" value={formatCurrency(opp.estimatedValue, opp.currency)} />
-                    <MetaRow icon={Calendar} label="Posted" value={formatDate(opp.postedDate)} />
-                    <MetaRow icon={Clock} label="Closing" value={formatDate(opp.closingDate, "MMM d, yyyy h:mm a")} />
-                    <MetaRow icon={Tag} label="Category" value={opp.category} />
-                    <MetaRow icon={Globe} label="Source" value={opp.sourceName} />
+                    <MetaRow icon={Building2} label="机构" value={opp.organization} />
+                    <MetaRow icon={MapPin} label="地点" value={[opp.city, opp.region, opp.country].filter(Boolean).join(", ")} />
+                    <MetaRow icon={Hash} label="招标编号" value={opp.solicitationNumber} />
+                    <MetaRow icon={DollarSign} label="预估价值" value={formatCurrency(opp.estimatedValue, opp.currency)} />
+                    <MetaRow icon={Calendar} label="发布日期" value={formatDate(opp.postedDate)} />
+                    <MetaRow icon={Clock} label="截止日期" value={formatDate(opp.closingDate, "MMM d, yyyy h:mm a")} />
+                    <MetaRow icon={Tag} label="类别" value={opp.category} />
+                    <MetaRow icon={Globe} label="来源" value={opp.sourceName} />
                     {opp.naicsName && <MetaRow icon={Tag} label="NAICS" value={opp.naicsName} />}
-                    {opp.setAside && <MetaRow icon={Tag} label="Set-Aside" value={opp.setAside} />}
-                    {opp.placeOfPerformance && <MetaRow icon={MapPin} label="Place of Performance" value={opp.placeOfPerformance} />}
-                    {opp.mandatorySiteVisit && <MetaRow icon={MapPin} label="Site Visit" value={opp.mandatorySiteVisit} />}
+                    {opp.setAside && <MetaRow icon={Tag} label="预留" value={opp.setAside} />}
+                    {opp.placeOfPerformance && <MetaRow icon={MapPin} label="履行地点" value={opp.placeOfPerformance} />}
+                    {opp.mandatorySiteVisit && <MetaRow icon={MapPin} label="现场考察" value={opp.mandatorySiteVisit} />}
                   </div>
                 </CardContent>
               </Card>
@@ -505,14 +505,14 @@ export default function OpportunityDetailPage() {
               {/* Description */}
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">Description</CardTitle>
+                  <CardTitle className="text-sm font-semibold">描述</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="prose prose-sm max-w-none text-foreground">
                     {(() => {
                       const desc = opp.descriptionFull || opp.descriptionSummary || "";
                       if (!desc || desc.startsWith("http://") || desc.startsWith("https://")) {
-                        return <p className="text-xs text-muted-foreground italic">Description not available — see the original listing for details.</p>;
+                        return <p className="text-xs text-muted-foreground italic">暂无描述 — 请查看原始招标文件。</p>;
                       }
                       return desc.split("\n").map((line, i) => (
                         <p key={i} className={line.startsWith("-") ? "ml-4" : ""}>
@@ -540,8 +540,8 @@ export default function OpportunityDetailPage() {
                 <Card>
                   <CardContent className="p-8 text-center">
                     <Sparkles className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-sm font-medium">No analysis available</p>
-                    <p className="text-xs text-muted-foreground mt-1 mb-4">Run AI analysis to get a full Tender Intelligence Report</p>
+                    <p className="text-sm font-medium">暂无分析</p>
+                    <p className="text-xs text-muted-foreground mt-1 mb-4">运行 AI 分析以获取完整招标情报报告</p>
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => handleAnalyze("quick")}
@@ -549,7 +549,7 @@ export default function OpportunityDetailPage() {
                         className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
                       >
                         {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                        Quick Analysis
+                        快速分析
                       </button>
                       <button
                         onClick={() => handleAnalyze("deep")}
@@ -557,7 +557,7 @@ export default function OpportunityDetailPage() {
                         className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
                       >
                         <Sparkles className="h-3.5 w-3.5" />
-                        Deep Analysis
+                        深度分析
                       </button>
                     </div>
                   </CardContent>
@@ -583,11 +583,11 @@ export default function OpportunityDetailPage() {
           {activeTab === "notes" && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Notes</CardTitle>
+                <CardTitle className="text-sm font-semibold">备注</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {opp.notes.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No notes yet.</p>
+                  <p className="text-sm text-muted-foreground">暂无备注。</p>
                 )}
                 {opp.notes.map((note) => (
                   <div key={note.id} className="rounded-md border p-4">
@@ -604,13 +604,13 @@ export default function OpportunityDetailPage() {
                   <textarea
                     value={newNote}
                     onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Add a note…"
+                    placeholder="添加备注…"
                     rows={3}
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                   />
                   <Button size="sm" onClick={handleAddNote} disabled={!newNote.trim() || submittingNote}>
                     {submittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                    Add Note
+                    添加备注
                   </Button>
                 </div>
               </CardContent>
@@ -624,15 +624,15 @@ export default function OpportunityDetailPage() {
           {(opp.contactName || opp.contactEmail || opp.contactPhone || opp.officeAddress) && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Contact</CardTitle>
+                <CardTitle className="text-sm font-semibold">联系方式</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <MetaRow icon={User} label="Name" value={opp.contactName} />
-                <MetaRow icon={Mail} label="Email" value={opp.contactEmail} />
-                <MetaRow icon={Phone} label="Phone" value={opp.contactPhone} />
-                {opp.officeAddress && <MetaRow icon={MapPin} label="Office" value={opp.officeAddress} />}
-                {opp.department && <MetaRow icon={Building2} label="Department" value={opp.department} />}
-                {opp.office && <MetaRow icon={Building2} label="Office Name" value={opp.office} />}
+                <MetaRow icon={User} label="姓名" value={opp.contactName} />
+                <MetaRow icon={Mail} label="邮箱" value={opp.contactEmail} />
+                <MetaRow icon={Phone} label="电话" value={opp.contactPhone} />
+                {opp.officeAddress && <MetaRow icon={MapPin} label="办公地址" value={opp.officeAddress} />}
+                {opp.department && <MetaRow icon={Building2} label="部门" value={opp.department} />}
+                {opp.office && <MetaRow icon={Building2} label="办公室" value={opp.office} />}
               </CardContent>
             </Card>
           )}
@@ -665,7 +665,7 @@ export default function OpportunityDetailPage() {
           {opp.industryTags.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Industry Tags</CardTitle>
+                <CardTitle className="text-sm font-semibold">行业标签</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-1.5">
@@ -681,7 +681,7 @@ export default function OpportunityDetailPage() {
           {hasIntel && !isFallback && (
             <Card>
               <CardContent className="p-4 space-y-2">
-                <p className="text-xs font-semibold">Upgrade / Re-analyze</p>
+                <p className="text-xs font-semibold">升级 / 重新分析</p>
                 {(intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode) !== "deep" && (
                   <button
                     onClick={() => handleAnalyze("deep")}
@@ -689,7 +689,7 @@ export default function OpportunityDetailPage() {
                     className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 w-full justify-center"
                   >
                     {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                    Upgrade to Deep Analysis
+                    升级为深度分析
                   </button>
                 )}
                 <button
@@ -698,10 +698,10 @@ export default function OpportunityDetailPage() {
                   className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50 w-full justify-center"
                 >
                   {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-                  Re-analyze (uses AI tokens)
+                  重新分析 (消耗 AI 额度)
                 </button>
                 <p className="text-[10px] text-muted-foreground">
-                  Analyzed {formatDate(intel?.intelligence?.analyzedAt || intel?.intelligence?.analyzed_at)} · {intel?.intelligence?.analysisModel || rpt.analysis_model}
+                  分析于 {formatDate(intel?.intelligence?.analyzedAt || intel?.intelligence?.analyzed_at)} · {intel?.intelligence?.analysisModel || rpt.analysis_model}
                 </p>
               </CardContent>
             </Card>
@@ -743,7 +743,7 @@ function AnalysisLevelBanner({
         <div className="flex items-center gap-3">
           <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
           <div>
-            <p className="text-xs font-medium text-blue-800">Running AI analysis...</p>
+            <p className="text-xs font-medium text-blue-800">正在运行 AI 分析...</p>
             {analysisPhase && (
               <p className="text-[11px] text-blue-600 mt-0.5">{analysisPhase}</p>
             )}
@@ -765,17 +765,17 @@ function AnalysisLevelBanner({
         <div className="flex items-center gap-2.5">
           <Shield className="h-4 w-4 text-emerald-600" />
           <div>
-            <span className="text-xs font-semibold">Free Rule-Based Screening Active</span>
+            <span className="text-xs font-semibold">免费规则筛选生效中</span>
             <p className="text-2xs text-muted-foreground">
-              Relevance scoring, keyword matching, and basic industry fit — at zero cost.
+              关联度评分、关键词匹配和基础行业匹配 — 零成本。
             </p>
           </div>
         </div>
           <div className="flex items-center gap-6 border-t border-dashed pt-3">
           <div className="flex-1 space-y-1">
-            <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Upgrade to AI Analysis</p>
+            <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">升级为 AI 分析</p>
             <p className="text-2xs text-muted-foreground">
-              AI will extract and read all {docCount || 0} document{(docCount || 0) !== 1 ? "s" : ""}, then generate a professional bid report with feasibility scores, cited evidence, and actionable recommendations.
+              AI 将提取并阅读全部 {docCount || 0} 个文件，然后生成包含可行性评分、引用证据和可操作建议的专业标书报告。
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -784,7 +784,7 @@ function AnalysisLevelBanner({
               className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
             >
               <Zap className="h-3.5 w-3.5" />
-              Quick Analysis
+              快速分析
               <span className="text-[9px] opacity-75 ml-0.5">~$0.01</span>
             </button>
             <button
@@ -792,7 +792,7 @@ function AnalysisLevelBanner({
               className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              Deep Analysis
+              深度分析
               <span className="text-[9px] opacity-60 ml-0.5">~$0.05</span>
             </button>
           </div>
@@ -809,10 +809,10 @@ function AnalysisLevelBanner({
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-amber-800">Rule-Based Estimate Only</span>
+              <span className="text-xs font-semibold text-amber-800">仅规则估算</span>
               <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 uppercase">Free</span>
             </div>
-            <p className="text-[11px] text-amber-600">AI was unavailable. Showing keyword-only scoring. Run paid AI analysis for a full report.</p>
+            <p className="text-[11px] text-amber-600">AI 不可用。显示仅关键词评分。运行付费 AI 分析以获取完整报告。</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -846,10 +846,10 @@ function AnalysisLevelBanner({
           <Zap className="h-4 w-4 text-blue-600" />
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-blue-800">Quick AI Analysis</span>
+              <span className="text-xs font-semibold text-blue-800">快速 AI 分析</span>
               <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{analysisModel || "gpt-4o-mini"}</span>
             </div>
-            <p className="text-[11px] text-blue-600">Based on title + description + extracted documents. Upgrade to Deep for deeper document analysis with citations.</p>
+            <p className="text-[11px] text-blue-600">基于标题+描述+提取文件。升级为深度分析可获得更深入的文件分析和引用。</p>
           </div>
         </div>
         <button
@@ -857,7 +857,7 @@ function AnalysisLevelBanner({
           className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors shrink-0"
         >
           <Sparkles className="h-3 w-3" />
-          Upgrade to Deep ~$0.05
+          升级深度 ~$0.05
         </button>
       </div>
     );
@@ -869,11 +869,11 @@ function AnalysisLevelBanner({
       <Sparkles className="h-4 w-4 text-emerald-600" />
       <div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-emerald-800">Deep AI Analysis</span>
+          <span className="text-xs font-semibold text-emerald-800">深度 AI 分析</span>
           <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">{analysisModel || "gpt-4o"}</span>
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">Document-Aware</span>
+          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">文件感知</span>
         </div>
-        <p className="text-[11px] text-emerald-600">Full document-level analysis with citations and detailed specifications.</p>
+        <p className="text-[11px] text-emerald-600">包含引用和详细规格的完整文件级分析。</p>
       </div>
     </div>
   );
@@ -915,17 +915,17 @@ function MatchingPanel({ opp }: { opp: OpportunityDetail }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold">Why This Matched</CardTitle>
+        <CardTitle className="text-sm font-semibold">匹配原因</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Score</span>
+          <span className="text-muted-foreground">评分</span>
           <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
             {opp.relevanceScore} / 100
           </span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Bucket</span>
+          <span className="text-muted-foreground">分类</span>
           <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
             {getBucketLabel(opp.relevanceBucket)}
           </span>
@@ -933,38 +933,38 @@ function MatchingPanel({ opp }: { opp: OpportunityDetail }) {
 
         {opp.businessFitExplanation && (
           <div className="rounded-lg border bg-muted/30 p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Business Fit</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">业务匹配</p>
             <p className="text-sm leading-relaxed">{opp.businessFitExplanation}</p>
           </div>
         )}
 
         {breakdown.positive_score != null && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Positive signal</span>
+            <span className="text-muted-foreground">正面信号</span>
             <span className="font-medium text-emerald-600">+{String(breakdown.positive_score)}</span>
           </div>
         )}
         {breakdown.negative_penalty != null && Number(breakdown.negative_penalty) > 0 && (
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Negative penalty</span>
+            <span className="text-muted-foreground">负面惩罚</span>
             <span className="font-medium text-red-600">−{String(breakdown.negative_penalty)}</span>
           </div>
         )}
 
         {primaryMatches.length > 0 && (
-          <KeywordGroup label="Primary matches" keywords={primaryMatches} color="bg-emerald-50 text-emerald-700" />
+          <KeywordGroup label="主要匹配" keywords={primaryMatches} color="bg-emerald-50 text-emerald-700" />
         )}
         {secondaryMatches.length > 0 && (
-          <KeywordGroup label="Secondary matches" keywords={secondaryMatches} color="bg-blue-50 text-blue-700" />
+          <KeywordGroup label="次要匹配" keywords={secondaryMatches} color="bg-blue-50 text-blue-700" />
         )}
         {contextualMatches.length > 0 && (
-          <KeywordGroup label="Contextual matches" keywords={contextualMatches} color="bg-amber-50 text-amber-700" />
+          <KeywordGroup label="上下文匹配" keywords={contextualMatches} color="bg-amber-50 text-amber-700" />
         )}
         {semanticMatches.length > 0 && (
-          <KeywordGroup label="Semantic matches" keywords={semanticMatches} color="bg-violet-50 text-violet-700" />
+          <KeywordGroup label="语义匹配" keywords={semanticMatches} color="bg-violet-50 text-violet-700" />
         )}
         {opp.negativeKeywords.length > 0 && (
-          <KeywordGroup label="Negative matches" keywords={opp.negativeKeywords} color="bg-red-50 text-red-700" />
+          <KeywordGroup label="负面匹配" keywords={opp.negativeKeywords} color="bg-red-50 text-red-700" />
         )}
       </CardContent>
     </Card>
@@ -1007,8 +1007,8 @@ function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
       <Card>
         <CardContent className="p-8 text-center">
           <ListChecks className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium">No evidence checklist available</p>
-          <p className="text-xs text-muted-foreground mt-1">Run AI analysis to generate required evidence items</p>
+          <p className="text-sm font-medium">暂无证据清单</p>
+          <p className="text-xs text-muted-foreground mt-1">运行 AI 分析以生成所需证据项</p>
         </CardContent>
       </Card>
     );
@@ -1022,8 +1022,8 @@ function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">Evidence Checklist</CardTitle>
-          <span className="text-xs text-muted-foreground">{checkedCount}/{totalItems} completed · {progress}%</span>
+          <CardTitle className="text-sm font-semibold">证据清单</CardTitle>
+          <span className="text-xs text-muted-foreground">{checkedCount}/{totalItems} 已完成 · {progress}%</span>
         </div>
         <div className="w-full bg-muted rounded-full h-1.5 mt-2">
           <div
@@ -1035,7 +1035,7 @@ function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
       <CardContent className="space-y-4">
         {beforeBidding.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Before Bidding</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">投标前</p>
             <div className="space-y-1.5">
               {beforeBidding.map((item, i) => {
                 const key = `before_${i}`;
@@ -1062,7 +1062,7 @@ function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
         )}
         {withSubmission.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">With Submission</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">随标书提交</p>
             <div className="space-y-1.5">
               {withSubmission.map((item, i) => {
                 const key = `with_${i}`;
@@ -1113,12 +1113,12 @@ function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) 
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold">
-              Documents ({totalCount})
+              文件 ({totalCount})
             </CardTitle>
             {totalCount > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-muted-foreground">
-                  {extractedCount}/{totalCount} extracted
+                  {extractedCount}/{totalCount} 已提取
                 </span>
                 <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
                   <div
@@ -1134,7 +1134,7 @@ function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) 
           {(!docs || docs.length === 0) ? (
             <div className="text-center py-6">
               <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No documents attached to this opportunity.</p>
+              <p className="text-sm text-muted-foreground">此机会无附件文件。</p>
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -1159,10 +1159,10 @@ function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) 
                         <a href={doc.url} target="_blank" rel="noopener noreferrer"
                           className="text-xs font-medium truncate block hover:text-primary transition-colors"
                         >
-                          {doc.title || "Untitled"}
+                          {doc.title || "未命名"}
                         </a>
                         <p className="text-[10px] text-muted-foreground">
-                          {isLink ? "WEB LINK" : doc.fileType?.toUpperCase() || "FILE"}
+                          {isLink ? "网页链接" : doc.fileType?.toUpperCase() || "文件"}
                           {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
                           {doc.pageCount ? ` · ${doc.pageCount}p` : ""}
                           {textLen > 0 ? ` · ${(textLen / 1000).toFixed(0)}K chars` : ""}
@@ -1170,19 +1170,19 @@ function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) 
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {usedInAnalysis && (
-                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">ANALYZED</span>
+                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">已分析</span>
                         )}
                         {extracted ? (
-                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Extracted</span>
+                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">已提取</span>
                         ) : (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">Pending</span>
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">待处理</span>
                         )}
                         {hasPreview && (
                           <button
                             onClick={() => setPreviewDoc(previewDoc?.id === doc.id ? null : doc)}
                             className="rounded border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           >
-                            {previewDoc?.id === doc.id ? "Hide" : "Preview"}
+                            {previewDoc?.id === doc.id ? "隐藏" : "预览"}
                           </button>
                         )}
                         <a href={doc.url} target="_blank" rel="noopener noreferrer">
@@ -1192,13 +1192,13 @@ function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) 
                     </div>
                     {previewDoc?.id === doc.id && hasPreview && (
                       <div className="border-t bg-slate-50 px-3 py-2.5">
-                        <p className="text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">Extracted Text Preview</p>
+                        <p className="text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">提取文本预览</p>
                         <pre className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
                           {doc.extractedTextPreview || doc.extracted_text_preview}
                         </pre>
                         {textLen > 800 && (
                           <p className="text-[10px] text-muted-foreground mt-1.5 italic">
-                            Showing first 800 of {(textLen / 1000).toFixed(0)}K characters
+                            显示前 800 个字符，共 {(textLen / 1000).toFixed(0)}K 字符
                           </p>
                         )}
                       </div>
@@ -1283,7 +1283,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
       <div className="px-5 py-3 bg-slate-50 border-b flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-blue-600" />
-          <span className="text-xs font-semibold">Tender Intelligence Report</span>
+          <span className="text-xs font-semibold">招标情报报告</span>
           {isV2 && <span className="text-[10px] text-muted-foreground">v2.0</span>}
           {isFallback && <span className="text-[10px] text-amber-600 font-medium">(Fallback)</span>}
         </div>
@@ -1295,7 +1295,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
               className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
             >
               {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-              Quick
+              快速
             </button>
           )}
           {onDeepAnalyze && (
@@ -1305,7 +1305,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
               className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Deep
+              深度
             </button>
           )}
         </div>
@@ -1344,7 +1344,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
 
         {/* 1. Project Summary */}
         <div className="px-5">
-          <SectionHeader id="summary" title="Project Summary" />
+          <SectionHeader id="summary" title="项目概述" />
           {expandedSections.has("summary") && (
             <div className="pb-4 space-y-3">
               {overview && <p className="text-sm leading-relaxed">{overview}</p>}
@@ -1366,12 +1366,12 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 2. Scope Breakdown */}
         {isV2 && (scope.main_deliverables?.length > 0 || scope.quantities || scope.intended_use) && (
           <div className="px-5">
-            <SectionHeader id="scope" title="Scope Breakdown" />
+            <SectionHeader id="scope" title="范围分析" />
             {expandedSections.has("scope") && (
               <div className="pb-4 space-y-2 text-sm">
                 {scope.main_deliverables?.length > 0 && (
                   <div>
-                    <span className="text-xs text-muted-foreground font-medium">Deliverables:</span>
+                    <span className="text-xs text-muted-foreground font-medium">交付物：</span>
                     <ul className="mt-1 space-y-0.5">
                       {scope.main_deliverables.map((d: string, i: number) => (
                         <li key={i} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />{d}</li>
@@ -1379,7 +1379,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
                     </ul>
                   </div>
                 )}
-                {scope.quantities && scope.quantities !== "Not specified" && <p><span className="text-muted-foreground">Quantities:</span> {scope.quantities}</p>}
+                {scope.quantities && scope.quantities !== "Not specified" && <p><span className="text-muted-foreground">数量：</span> {scope.quantities}</p>}
                 {scope.intended_use && scope.intended_use !== "Not specified" && <p><span className="text-muted-foreground">Intended use:</span> {scope.intended_use}</p>}
                 {scope.service_scope && scope.service_scope !== "Not specified" && <p><span className="text-muted-foreground">Service scope:</span> {scope.service_scope}</p>}
               </div>
@@ -1390,7 +1390,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 3. Technical Requirements */}
         {isV2 && (techReqs.product_requirements?.length > 0 || techReqs.standards_certifications?.length > 0 || techReqs.environmental_requirements?.length > 0) && (
           <div className="px-5">
-            <SectionHeader id="tech" title="Technical Requirements" />
+            <SectionHeader id="tech" title="技术要求" />
             {expandedSections.has("tech") && (
               <div className="pb-4 space-y-3 text-sm">
                 {techReqs.product_requirements?.length > 0 && (
@@ -1442,7 +1442,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 4. Timeline */}
         {isV2 && (timeline.bid_closing || timeline.project_start || timeline.delivery_deadline || timeline.schedule_notes) && (
           <div className="px-5">
-            <SectionHeader id="timeline" title="Timeline & Milestones" />
+            <SectionHeader id="timeline" title="时间线与里程碑" />
             {expandedSections.has("timeline") && (
               <div className="pb-4 space-y-2 text-sm">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -1472,7 +1472,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 5. Evaluation Strategy */}
         {isV2 && (evalStrategy.pricing_weight || evalStrategy.likely_evaluator_focus) && evalStrategy.pricing_weight !== "Not specified" && (
           <div className="px-5">
-            <SectionHeader id="eval" title="Evaluation Strategy" />
+            <SectionHeader id="eval" title="评估策略" />
             {expandedSections.has("eval") && (
               <div className="pb-4 space-y-2 text-sm">
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1490,7 +1490,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
 
         {/* 6. Business Fit */}
         <div className="px-5">
-          <SectionHeader id="fit" title="Fit for Our Business" />
+          <SectionHeader id="fit" title="业务匹配度" />
           {expandedSections.has("fit") && (
             <div className="pb-4 space-y-2">
               {isV2 && bizFit.fit_assessment && (
@@ -1526,7 +1526,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 7. Compliance Red Flags */}
         {isV2 && (compliance.red_flags?.length > 0 || compliance.mandatory_certifications?.length > 0 || (compliance.bonding_insurance && compliance.bonding_insurance !== "Not specified")) && (
           <div className="px-5">
-            <SectionHeader id="compliance" title="Compliance Red Flags" />
+            <SectionHeader id="compliance" title="合规风险" />
             {expandedSections.has("compliance") && (
               <div className="pb-4 space-y-3">
                 {compliance.red_flags?.length > 0 && (
@@ -1563,7 +1563,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 8. Compatibility Analysis */}
         {isV2 && compat.compatibility_risk && compat.compatibility_risk !== "none" && (
           <div className="px-5">
-            <SectionHeader id="compat" title="Compatibility Analysis" />
+            <SectionHeader id="compat" title="兼容性分析" />
             {expandedSections.has("compat") && (
               <div className="pb-4 space-y-2 text-sm">
                 <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
@@ -1583,14 +1583,14 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
 
         {/* 9. Supply Chain */}
         <div className="px-5">
-          <SectionHeader id="supply" title="Supply Chain & China Sourcing" />
+          <SectionHeader id="supply" title="供应链与中国采购" />
           {expandedSections.has("supply") && (
             <div className="pb-4 space-y-2 text-sm">
               {isV2 ? (
                 <>
                   <div className="flex items-center gap-2">
                     <span className={`inline-block h-2.5 w-2.5 rounded-full ${supplyChain.china_sourcing_viable ? "bg-green-500" : "bg-red-500"}`} />
-                    <span className="font-medium">{supplyChain.china_sourcing_viable ? "China Sourcing Viable" : "China Sourcing Not Viable"}</span>
+                    <span className="font-medium">{supplyChain.china_sourcing_viable ? "中国采购可行" : "中国采购不可行"}</span>
                   </div>
                   {supplyChain.sourcing_explanation && <p>{supplyChain.sourcing_explanation}</p>}
                   {supplyChain.buy_domestic_restrictions?.length > 0 && (
@@ -1604,7 +1604,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
                   {supplyChain.local_installation && supplyChain.local_installation !== "Not specified" && <p><span className="text-muted-foreground">Local install:</span> {supplyChain.local_installation}</p>}
                 </>
               ) : (
-                <p className="text-muted-foreground">Not assessed.</p>
+                <p className="text-muted-foreground">未评估。</p>
               )}
             </div>
           )}
@@ -1613,7 +1613,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 10. Participation Strategy */}
         {isV2 && participation.recommended_approach && (
           <div className="px-5">
-            <SectionHeader id="strategy" title="Participation Strategy" />
+            <SectionHeader id="strategy" title="参与策略" />
             {expandedSections.has("strategy") && (
               <div className="pb-4 space-y-2 text-sm">
                 <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
@@ -1634,12 +1634,12 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* 11. Required Evidence */}
         {isV2 && (evidence.before_bidding?.length > 0 || evidence.with_submission?.length > 0) && (
           <div className="px-5">
-            <SectionHeader id="evidence" title="Required Evidence & Next Actions" />
+            <SectionHeader id="evidence" title="所需证据与后续行动" />
             {expandedSections.has("evidence") && (
               <div className="pb-4 space-y-3 text-sm">
                 {evidence.before_bidding?.length > 0 && (
                   <div>
-                    <span className="text-xs text-muted-foreground font-medium">Before bidding:</span>
+                    <span className="text-xs text-muted-foreground font-medium">投标前：</span>
                     <ul className="mt-1 space-y-1">
                       {evidence.before_bidding.map((e: string, i: number) => (
                         <li key={i} className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-500" />{e}</li>
@@ -1649,7 +1649,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
                 )}
                 {evidence.with_submission?.length > 0 && (
                   <div>
-                    <span className="text-xs text-muted-foreground font-medium">With submission:</span>
+                    <span className="text-xs text-muted-foreground font-medium">随标书提交：</span>
                     <ul className="mt-1 space-y-1">
                       {evidence.with_submission.map((e: string, i: number) => (
                         <li key={i} className="flex items-start gap-2"><FileText className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-500" />{e}</li>
@@ -1665,7 +1665,7 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* Evidence Quotes from Documents */}
         {evidenceQuotes.length > 0 && (
           <div className="px-5">
-            <SectionHeader id="quotes" title="Evidence Quotes from Documents" />
+            <SectionHeader id="quotes" title="文件证据引用" />
             {expandedSections.has("quotes") && (
               <div className="pb-4 space-y-2">
                 {evidenceQuotes.map((eq: any, i: number) => (
@@ -1695,13 +1695,13 @@ function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { 
         {/* Footer */}
         <div className="px-5 py-3 flex items-center justify-between text-[10px] text-muted-foreground bg-slate-50">
           <span>
-            {analyzedAt && `Analyzed ${formatDate(analyzedAt)}`}
-            {model && ` · ${isFallback ? "Rule-based fallback" : model}`}
+            {analyzedAt && `分析于 ${formatDate(analyzedAt)}`}
+            {model && ` · ${isFallback ? "基于规则回退" : model}`}
             {isV2 && " · v2.0"}
           </span>
           <span className="flex items-center gap-1 font-medium">
             {isFallback ? (
-              <><AlertTriangle className="h-3 w-3 text-amber-500" /> Keyword Estimate</>
+              <><AlertTriangle className="h-3 w-3 text-amber-500" /> 关键词估算</>
             ) : (
               <><Sparkles className="h-3 w-3" /> BidToGo AI</>
             )}

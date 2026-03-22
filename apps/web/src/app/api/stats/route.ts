@@ -151,7 +151,8 @@ export async function GET() {
 
     const recentOpportunities: OpportunitySummary[] = recentRows.map((opp) => ({
       id: opp.id,
-      title: opp.title,
+      title: (opp as any).titleZh || opp.title,
+      titleZh: (opp as any).titleZh ?? undefined,
       status: opp.status as OpportunityStatus,
       workflowStatus: (opp.workflowStatus ?? "new") as WorkflowStatus,
       organization: opp.organization?.name ?? undefined,

@@ -32,19 +32,19 @@ const runStatusConfig: Record<
   RunStatus,
   { icon: typeof CheckCircle2; color: string; label: string }
 > = {
-  completed: { icon: CheckCircle2, color: "text-emerald-600", label: "Completed" },
-  failed: { icon: AlertCircle, color: "text-red-500", label: "Failed" },
-  running: { icon: Clock, color: "text-blue-500", label: "Running" },
-  pending: { icon: Clock, color: "text-amber-500", label: "Pending" },
-  cancelled: { icon: XCircle, color: "text-slate-400", label: "Cancelled" },
+  completed: { icon: CheckCircle2, color: "text-emerald-600", label: "完成" },
+  failed: { icon: AlertCircle, color: "text-red-500", label: "失败" },
+  running: { icon: Clock, color: "text-blue-500", label: "运行中" },
+  pending: { icon: Clock, color: "text-amber-500", label: "等待" },
+  cancelled: { icon: XCircle, color: "text-slate-400", label: "已取消" },
 };
 
 const healthConfig: Record<SourceHealthStatus, { icon: typeof CheckCircle2; color: string; label: string; dotColor: string }> = {
-  healthy: { icon: CheckCircle2, color: "text-emerald-600", label: "Healthy", dotColor: "bg-emerald-500" },
-  degraded: { icon: AlertTriangle, color: "text-amber-500", label: "Degraded", dotColor: "bg-amber-500" },
-  failing: { icon: XCircle, color: "text-red-500", label: "Failing", dotColor: "bg-red-500" },
-  unsupported: { icon: AlertCircle, color: "text-slate-400", label: "Unsupported", dotColor: "bg-slate-400" },
-  untested: { icon: HelpCircle, color: "text-slate-400", label: "Untested", dotColor: "bg-slate-400" },
+  healthy: { icon: CheckCircle2, color: "text-emerald-600", label: "健康", dotColor: "bg-emerald-500" },
+  degraded: { icon: AlertTriangle, color: "text-amber-500", label: "降级", dotColor: "bg-amber-500" },
+  failing: { icon: XCircle, color: "text-red-500", label: "故障", dotColor: "bg-red-500" },
+  unsupported: { icon: AlertCircle, color: "text-slate-400", label: "不支持", dotColor: "bg-slate-400" },
+  untested: { icon: HelpCircle, color: "text-slate-400", label: "未测试", dotColor: "bg-slate-400" },
 };
 
 const priorityBadge: Record<SourcePriority, string> = {
@@ -59,7 +59,7 @@ const accessModeConfig: Record<AccessMode, { label: string; color: string }> = {
   api: { label: "API", color: "bg-blue-50 text-blue-700 border-blue-200" },
   http_scrape: { label: "Web Scrape", color: "bg-slate-50 text-slate-600 border-slate-200" },
   authenticated_browser: { label: "Auth Browser", color: "bg-amber-50 text-amber-700 border-amber-200" },
-  local_connector: { label: "Local Agent", color: "bg-violet-50 text-violet-700 border-violet-200" },
+  local_connector: { label: "本地代理", color: "bg-violet-50 text-violet-700 border-violet-200" },
 };
 
 function fitBadge(score: number) {
@@ -69,6 +69,14 @@ function fitBadge(score: number) {
 }
 
 type SortKey = "name" | "priority" | "fit" | "total" | "relevant" | "yield" | "health";
+
+const PRIORITY_LABELS: Record<SourcePriority, string> = {
+  critical: "关键",
+  high: "高",
+  medium: "中",
+  low: "低",
+  experimental: "实验",
+};
 
 const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, experimental: 4 };
 const HEALTH_ORDER: Record<string, number> = { failing: 0, degraded: 1, untested: 2, unsupported: 3, healthy: 4 };
@@ -169,20 +177,20 @@ export default function SourcesPage() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Sources</h1>
+          <h1 className="text-xl font-bold tracking-tight">数据源</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {sources.length} sources registered &middot;{" "}
-            {priorityCounts["critical"] ?? 0} critical &middot;{" "}
-            {priorityCounts["high"] ?? 0} high &middot;{" "}
-            {priorityCounts["medium"] ?? 0} medium &middot;{" "}
-            {priorityCounts["low"] ?? 0} low &middot;{" "}
-            {priorityCounts["experimental"] ?? 0} experimental
+            {sources.length} 个已注册源 &middot;{" "}
+            {priorityCounts["critical"] ?? 0} 关键 &middot;{" "}
+            {priorityCounts["high"] ?? 0} 高 &middot;{" "}
+            {priorityCounts["medium"] ?? 0} 中 &middot;{" "}
+            {priorityCounts["low"] ?? 0} 低 &middot;{" "}
+            {priorityCounts["experimental"] ?? 0} 实验
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRecalculate} disabled={recalculating}>
             <RefreshCw className={`mr-2 h-4 w-4 ${recalculating ? "animate-spin" : ""}`} />
-            Recalculate Analytics
+            重新计算分析
           </Button>
         </div>
       </div>
@@ -190,10 +198,10 @@ export default function SourcesPage() {
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Active Sources", value: totalActive, icon: Activity, color: "text-blue-600 bg-blue-50" },
-          { label: "Total Opportunities", value: totalOpps, icon: BarChart3, color: "text-emerald-600 bg-emerald-50" },
-          { label: "Relevant Collected", value: totalRelevant, icon: Target, color: "text-violet-600 bg-violet-50" },
-          { label: "Avg Fit Score", value: avgFit, icon: Zap, color: "text-amber-600 bg-amber-50" },
+          { label: "活跃源", value: totalActive, icon: Activity, color: "text-blue-600 bg-blue-50" },
+          { label: "总机会数", value: totalOpps, icon: BarChart3, color: "text-emerald-600 bg-emerald-50" },
+          { label: "相关收集", value: totalRelevant, icon: Target, color: "text-violet-600 bg-violet-50" },
+          { label: "平均匹配分", value: avgFit, icon: Zap, color: "text-amber-600 bg-amber-50" },
         ].map((c) => (
           <Card key={c.label}>
             <CardContent className="p-4">
@@ -217,7 +225,7 @@ export default function SourcesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             className="h-9 rounded-md border border-input bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-64"
-            placeholder="Search sources…"
+            placeholder="搜索数据源…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -233,7 +241,7 @@ export default function SourcesPage() {
                 : "bg-background text-muted-foreground hover:bg-muted border-input"
             }`}
           >
-            {v === "all" ? "All" : v === "active" ? "Active" : "Inactive"}
+            {v === "all" ? "全部" : v === "active" ? "活跃" : "未激活"}
           </button>
         ))}
 
@@ -244,12 +252,12 @@ export default function SourcesPage() {
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value as SourcePriority | "all")}
         >
-          <option value="all">All priorities</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-          <option value="experimental">Experimental</option>
+          <option value="all">全部优先级</option>
+          <option value="critical">关键</option>
+          <option value="high">高</option>
+          <option value="medium">中</option>
+          <option value="low">低</option>
+          <option value="experimental">实验</option>
         </select>
 
         <select
@@ -257,16 +265,16 @@ export default function SourcesPage() {
           value={filterHealth}
           onChange={(e) => setFilterHealth(e.target.value as SourceHealthStatus | "all")}
         >
-          <option value="all">All health</option>
-          <option value="healthy">Healthy</option>
-          <option value="degraded">Degraded</option>
-          <option value="failing">Failing</option>
-          <option value="untested">Untested</option>
-          <option value="unsupported">Unsupported</option>
+          <option value="all">全部健康</option>
+          <option value="healthy">健康</option>
+          <option value="degraded">降级</option>
+          <option value="failing">故障</option>
+          <option value="untested">未测试</option>
+          <option value="unsupported">不支持</option>
         </select>
 
         <span className="ml-auto text-xs text-muted-foreground">
-          {filtered.length} of {sources.length} sources
+          {filtered.length} / {sources.length} 个源
         </span>
       </div>
 
@@ -288,45 +296,45 @@ export default function SourcesPage() {
               <TableRow className="border-b text-left text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
                 <TableHead className="px-4 py-3">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("name")}>
-                    Source <ArrowUpDown className="h-3 w-3" />
+                    数据源 <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="px-4 py-3 text-center">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("priority")}>
-                    Priority <ArrowUpDown className="h-3 w-3" />
+                    优先级 <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
-                <TableHead className="px-4 py-3">Type</TableHead>
-                <TableHead className="px-4 py-3">Access</TableHead>
-                <TableHead className="px-4 py-3">Region</TableHead>
+                <TableHead className="px-4 py-3">类型</TableHead>
+                <TableHead className="px-4 py-3">接入</TableHead>
+                <TableHead className="px-4 py-3">地区</TableHead>
                 <TableHead className="px-4 py-3 text-center">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("fit")}>
-                    Fit <ArrowUpDown className="h-3 w-3" />
+                    匹配 <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="px-4 py-3 text-right">
                   <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("total")}>
-                    Opps <ArrowUpDown className="h-3 w-3" />
+                    机会 <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="px-4 py-3 text-right">
                   <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("relevant")}>
-                    Relevant <ArrowUpDown className="h-3 w-3" />
+                    相关 <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="px-4 py-3 text-right">
                   <button className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort("yield")}>
-                    Yield% <ArrowUpDown className="h-3 w-3" />
+                    转化% <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
-                <TableHead className="px-4 py-3 text-center">Runs</TableHead>
+                <TableHead className="px-4 py-3 text-center">运行</TableHead>
                 <TableHead className="px-4 py-3">
                   <button className="inline-flex items-center gap-1" onClick={() => toggleSort("health")}>
-                    Health <ArrowUpDown className="h-3 w-3" />
+                    健康 <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
-                <TableHead className="px-4 py-3 whitespace-nowrap">Last Crawled</TableHead>
-                <TableHead className="px-4 py-3 text-center">Active</TableHead>
+                <TableHead className="px-4 py-3 whitespace-nowrap">上次抓取</TableHead>
+                <TableHead className="px-4 py-3 text-center">活跃</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y">
@@ -350,7 +358,7 @@ export default function SourcesPage() {
                     </TableCell>
                     <TableCell className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold capitalize ${priorityBadge[source.sourcePriority] ?? priorityBadge.medium}`}>
-                        {source.sourcePriority}
+                        {PRIORITY_LABELS[source.sourcePriority] ?? source.sourcePriority}
                       </span>
                     </TableCell>
                     <TableCell className="px-4 py-3">
@@ -423,7 +431,7 @@ export default function SourcesPage() {
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={13} className="px-4 py-12 text-center text-muted-foreground">
-                    {search ? "No sources match your search." : "No sources configured yet."}
+                    {search ? "没有匹配的数据源。" : "尚未配置数据源。"}
                   </TableCell>
                 </TableRow>
               )}

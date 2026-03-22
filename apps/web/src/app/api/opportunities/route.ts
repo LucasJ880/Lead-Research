@@ -12,6 +12,7 @@ import type {
 interface RawOpportunityRow {
   id: string;
   title: string;
+  title_zh: string | null;
   status: string;
   workflow_status: string;
   organization_name: string | null;
@@ -42,7 +43,8 @@ interface RawOpportunityRow {
 function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
   return {
     id: row.id,
-    title: row.title,
+    title: row.title_zh || row.title,
+    titleZh: row.title_zh ?? undefined,
     status: row.status as OpportunityStatus,
     workflowStatus: (row.workflow_status ?? "new") as WorkflowStatus,
     organization: row.organization_name ?? undefined,
@@ -260,7 +262,7 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
 
   const dataQuery = `
     SELECT
-      o.id, o.title, o.status::text, o.workflow_status::text,
+      o.id, o.title, o.title_zh, o.status::text, o.workflow_status::text,
       org.name AS organization_name,
       o.country, o.region, o.city, o.category,
       o.posted_date, o.closing_date,
@@ -408,7 +410,7 @@ async function handlePrismaSearch(params: SearchParams) {
 
   const dataQuery = `
     SELECT
-      o.id, o.title, o.status::text, o.workflow_status::text,
+      o.id, o.title, o.title_zh, o.status::text, o.workflow_status::text,
       org.name AS organization_name,
       o.country, o.region, o.city, o.category,
       o.posted_date, o.closing_date,

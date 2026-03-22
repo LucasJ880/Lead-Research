@@ -62,7 +62,8 @@ export async function GET(
 
     const detail: OpportunityDetail = {
       id: opp.id,
-      title: opp.title,
+      title: (opp as any).titleZh || opp.title,
+      titleZh: (opp as any).titleZh ?? undefined,
       status: opp.status as OpportunityStatus,
       organization: opp.organization?.name ?? undefined,
       country: opp.country ?? undefined,
@@ -82,8 +83,10 @@ export async function GET(
       estimatedValue: opp.estimatedValue ? Number(opp.estimatedValue) : undefined,
       currency: opp.currency ?? undefined,
       externalId: opp.externalId ?? undefined,
-      descriptionSummary: opp.descriptionSummary ?? undefined,
-      descriptionFull: opp.descriptionFull ?? undefined,
+      descriptionSummary: (opp as any).descriptionSummaryZh || opp.descriptionSummary ?? undefined,
+      descriptionSummaryZh: (opp as any).descriptionSummaryZh ?? undefined,
+      descriptionFull: (opp as any).descriptionFullZh || opp.descriptionFull ?? undefined,
+      descriptionFullZh: (opp as any).descriptionFullZh ?? undefined,
       locationRaw: opp.locationRaw ?? undefined,
       projectType: opp.projectType ?? undefined,
       solicitationNumber: opp.solicitationNumber ?? undefined,

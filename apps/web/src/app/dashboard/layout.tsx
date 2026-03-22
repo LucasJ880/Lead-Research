@@ -34,44 +34,44 @@ import { Separator } from "@/components/ui/separator";
 
 const NAV_SECTIONS = [
   {
-    label: "Intelligence",
+    label: "智能分析",
     items: [
-      { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-      { href: "/dashboard/opportunities", label: "Opportunities", icon: FileSearch },
-      { href: "/dashboard/intelligence", label: "AI Analysis", icon: Sparkles },
+      { href: "/dashboard", label: "概览", icon: LayoutDashboard },
+      { href: "/dashboard/opportunities", label: "招标机会", icon: FileSearch },
+      { href: "/dashboard/intelligence", label: "AI 分析", icon: Sparkles },
     ],
   },
   {
-    label: "Operations",
+    label: "运营",
     items: [
-      { href: "/dashboard/sources", label: "Sources", icon: Globe },
-      { href: "/dashboard/logs", label: "Crawl Logs", icon: Activity },
-      { href: "/dashboard/saved-searches", label: "Saved Searches", icon: Bookmark },
+      { href: "/dashboard/sources", label: "数据源", icon: Globe },
+      { href: "/dashboard/logs", label: "抓取日志", icon: Activity },
+      { href: "/dashboard/saved-searches", label: "保存搜索", icon: Bookmark },
     ],
   },
   {
-    label: "System",
+    label: "系统",
     items: [
-      { href: "/dashboard/settings", label: "Settings", icon: Settings },
+      { href: "/dashboard/settings", label: "设置", icon: Settings },
     ],
   },
 ];
 
 function getBreadcrumbs(pathname: string) {
   const labels: Record<string, string> = {
-    opportunities: "Opportunities",
-    intelligence: "AI Analysis",
-    sources: "Sources",
-    logs: "Crawl Logs",
-    settings: "Settings",
-    "saved-searches": "Saved Searches",
+    opportunities: "招标机会",
+    intelligence: "AI 分析",
+    sources: "数据源",
+    logs: "抓取日志",
+    settings: "设置",
+    "saved-searches": "保存搜索",
   };
   const segments = pathname.replace("/dashboard", "").split("/").filter(Boolean);
-  if (segments.length === 0) return [{ label: "Overview", href: "/dashboard" }];
+  if (segments.length === 0) return [{ label: "概览", href: "/dashboard" }];
 
   const crumbs: { label: string; href?: string }[] = [];
   if (segments[0] === "opportunities") {
-    crumbs.push({ label: "Opportunities", href: "/dashboard/opportunities" });
+    crumbs.push({ label: "招标机会", href: "/dashboard/opportunities" });
     if (segments.length >= 2) {
       crumbs.push({ label: `#${segments[1].slice(0, 8)}` });
     }
@@ -150,7 +150,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           {!collapsed && (
             <div className="min-w-0">
               <span className="text-sm font-bold text-white tracking-tight block">BidToGo</span>
-              <span className="text-[10px] text-sidebar-muted leading-none">Intelligence</span>
+              <span className="text-[10px] text-sidebar-muted leading-none">采购情报</span>
             </div>
           )}
         </div>
@@ -229,7 +229,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard/settings" className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
-                    Settings
+                    设置
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -238,7 +238,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   className="text-red-600 focus:text-red-600 cursor-pointer"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
+                  退出登录
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -262,7 +262,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <DropdownMenuItem asChild>
                   <Link href="/dashboard/settings" className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
-                    Settings
+                    设置
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -271,7 +271,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   className="text-red-600 focus:text-red-600 cursor-pointer"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
+                  退出登录
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -319,7 +319,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search opportunities..."
+                  placeholder="搜索招标机会..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-8 w-56 rounded-md border bg-muted/40 pl-8 pr-8 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring focus:bg-background transition-colors"
@@ -339,13 +339,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {showExpiryWarning && (
           <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-5 py-2 shrink-0">
             <p className="text-xs text-amber-800 font-medium">
-              Your session will expire soon due to inactivity.
+              由于长时间未操作，您的会话即将过期。
             </p>
             <button
               onClick={() => { setShowExpiryWarning(false); fetch("/api/auth/session"); }}
               className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 transition-colors shrink-0"
             >
-              Stay Signed In
+              保持登录
             </button>
           </div>
         )}

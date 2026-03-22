@@ -48,10 +48,10 @@ interface IntelItem {
 }
 
 const FILTER_TABS = [
-  { label: "All Reports", value: "all", icon: Sparkles },
-  { label: "Pursue", value: "pursue", icon: CheckCircle2 },
-  { label: "Review", value: "review", icon: AlertTriangle },
-  { label: "Skip", value: "skip", icon: XCircle },
+  { label: "全部报告", value: "all", icon: Sparkles },
+  { label: "推进", value: "pursue", icon: CheckCircle2 },
+  { label: "待审", value: "review", icon: AlertTriangle },
+  { label: "跳过", value: "skip", icon: XCircle },
 ] as const;
 
 const recStyles: Record<string, { bg: string; text: string; icon: typeof CheckCircle2 }> = {
@@ -114,11 +114,11 @@ function IntelligencePage() {
       <div>
         <div className="flex items-center gap-2">
           <Sparkles className="h-6 w-6 text-blue-600" />
-          <h1 className="text-xl font-bold tracking-tight">AI Intelligence Reports</h1>
+          <h1 className="text-xl font-bold tracking-tight">AI 智能分析报告</h1>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          AI-powered tender analysis with feasibility scoring, scope extraction, and business recommendations.
-          {!loading && <span className="ml-1 font-medium">{total} reports available.</span>}
+          AI 驱动的招标分析，含可行性评分、范围提取和业务建议。
+          {!loading && <span className="ml-1 font-medium">{total} 份报告。</span>}
         </p>
       </div>
 
@@ -152,10 +152,9 @@ function IntelligencePage() {
           <Card>
             <CardContent className="p-12 text-center">
               <Sparkles className="mx-auto h-10 w-10 text-muted-foreground/50 mb-3" />
-              <h3 className="text-lg font-semibold">No Intelligence Reports Yet</h3>
+              <h3 className="text-lg font-semibold">暂无分析报告</h3>
               <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-                Run the AI analysis pipeline on MERX opportunities to generate detailed tender intelligence reports
-                with feasibility scoring and business recommendations.
+                对招标机会运行 AI 分析管线以生成详细的招标情报报告。
               </p>
             </CardContent>
           </Card>
@@ -185,7 +184,7 @@ function IntelligencePage() {
                         >
                           {item.feasibilityScore ?? "—"}
                         </div>
-                        <span className="text-[10px] text-muted-foreground">Feasibility</span>
+                        <span className="text-[10px] text-muted-foreground">可行性</span>
                       </div>
 
                       {/* Main content */}
@@ -226,7 +225,7 @@ function IntelligencePage() {
                               {item.closingDate && (
                                 <span className="flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
-                                  Closes {formatDate(item.closingDate)}
+                                  截止 {formatDate(item.closingDate)}
                                 </span>
                               )}
                               {item.docCount > 0 && (
@@ -242,7 +241,7 @@ function IntelligencePage() {
                               )}
                               {item.chinaViable != null && (
                                 <span className={`flex items-center gap-1 ${item.chinaViable ? "text-green-600" : "text-red-500"}`}>
-                                  {item.chinaViable ? "CN Sourcing Viable" : "CN Sourcing Limited"}
+                                  {item.chinaViable ? "中国采购可行" : "中国采购受限"}
                                 </span>
                               )}
                             </div>
@@ -251,7 +250,7 @@ function IntelligencePage() {
                           {/* View report arrow */}
                           <div className="shrink-0 mt-1">
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                              View Report <ArrowRight className="h-3.5 w-3.5" />
+                              查看报告 <ArrowRight className="h-3.5 w-3.5" />
                             </span>
                           </div>
                         </div>
@@ -265,7 +264,7 @@ function IntelligencePage() {
                         {item.businessFitExplanation && (
                           <div className="mt-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-2">
                             <p className="text-xs text-blue-800 line-clamp-2">
-                              <span className="font-semibold">Business Fit:</span> {item.businessFitExplanation}
+                              <span className="font-semibold">业务匹配：</span> {item.businessFitExplanation}
                             </p>
                           </div>
                         )}
@@ -301,7 +300,7 @@ function IntelligencePage() {
       {total > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} of {total} reports
+            显示 {(page - 1) * 20 + 1}–{Math.min(page * 20, total)} / {total} 份报告
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>

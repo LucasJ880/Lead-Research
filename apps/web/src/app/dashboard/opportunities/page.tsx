@@ -45,44 +45,44 @@ const QUICK_FILTERS = [
 ] as const;
 
 const BUCKET_OPTIONS: { label: string; value: string }[] = [
-  { label: "Relevant Only", value: "relevant" },
-  { label: "Highly Relevant", value: "highly_relevant" },
-  { label: "Moderate", value: "moderately_relevant" },
-  { label: "Low Relevance", value: "low_relevance" },
-  { label: "Irrelevant", value: "irrelevant" },
-  { label: "All Buckets", value: "all" },
+  { label: "仅相关", value: "relevant" },
+  { label: "高关联", value: "highly_relevant" },
+  { label: "中关联", value: "moderately_relevant" },
+  { label: "低关联", value: "low_relevance" },
+  { label: "无关联", value: "irrelevant" },
+  { label: "全部分类", value: "all" },
 ];
 
 const SORT_OPTIONS = [
-  { label: "Highest Relevance", value: "relevance" },
-  { label: "Newest", value: "newest" },
-  { label: "Closing Soon", value: "closing_soon" },
+  { label: "最高关联度", value: "relevance" },
+  { label: "最新", value: "newest" },
+  { label: "即将截止", value: "closing_soon" },
 ];
 
 const STATUS_OPTIONS: { label: string; value: OpportunityStatus | "" }[] = [
-  { label: "All Statuses", value: "" },
-  { label: "Open", value: "open" },
-  { label: "Closed", value: "closed" },
-  { label: "Awarded", value: "awarded" },
-  { label: "Cancelled", value: "cancelled" },
+  { label: "全部状态", value: "" },
+  { label: "开放", value: "open" },
+  { label: "已关闭", value: "closed" },
+  { label: "已授标", value: "awarded" },
+  { label: "已取消", value: "cancelled" },
 ];
 
 const COUNTRY_OPTIONS = [
-  { label: "All Countries", value: "" },
-  { label: "Canada", value: "CA" },
-  { label: "United States", value: "US" },
+  { label: "全部国家", value: "" },
+  { label: "加拿大", value: "CA" },
+  { label: "美国", value: "US" },
 ];
 
 const WORKFLOW_OPTIONS: { label: string; value: string }[] = [
-  { label: "All Stages", value: "" },
-  { label: "New", value: "new" },
-  { label: "Hot", value: "hot" },
-  { label: "Review", value: "review" },
-  { label: "Shortlisted", value: "shortlisted" },
-  { label: "Pursuing", value: "pursuing" },
-  { label: "Monitor", value: "monitor" },
-  { label: "Passed", value: "passed" },
-  { label: "Not Relevant", value: "not_relevant" },
+  { label: "全部阶段", value: "" },
+  { label: "新建", value: "new" },
+  { label: "紧急", value: "hot" },
+  { label: "待审", value: "review" },
+  { label: "候选", value: "shortlisted" },
+  { label: "跟进中", value: "pursuing" },
+  { label: "监控", value: "monitor" },
+  { label: "已跳过", value: "passed" },
+  { label: "不相关", value: "not_relevant" },
 ];
 
 function buildQueryString(params: Record<string, string | number>): string {
@@ -111,27 +111,27 @@ function AnalysisBadge({ opp }: { opp: OpportunitySummary }) {
   if (!opp.hasIntelligence) {
     return (
       <span className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
-        <Sparkles className="h-3 w-3" /> None
+        <Sparkles className="h-3 w-3" /> 无
       </span>
     );
   }
   if (opp.analysisMode === "deep") {
     return (
       <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-medium text-emerald-700">
-        <Sparkles className="h-3 w-3" /> Deep
+        <Sparkles className="h-3 w-3" /> 深度
       </span>
     );
   }
   if (opp.analysisModel === "fallback_rule_based") {
     return (
       <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
-        <Sparkles className="h-3 w-3" /> Rule
+        <Sparkles className="h-3 w-3" /> 规则
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-medium text-blue-700">
-      <Sparkles className="h-3 w-3" /> Quick
+      <Sparkles className="h-3 w-3" /> 快速
     </span>
   );
 }
@@ -228,7 +228,7 @@ function OpportunitiesPage() {
     });
     fetch(`/api/opportunities?${qs}`)
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to load opportunities");
+        if (!res.ok) throw new Error("加载招标机会失败");
         return res.json();
       })
       .then((result: PaginatedResponse<OpportunitySummary>) => {
@@ -296,9 +296,9 @@ function OpportunitiesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Opportunities</h1>
+          <h1 className="text-xl font-bold tracking-tight">招标机会</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {loading ? "Loading…" : `${total.toLocaleString()} result${total !== 1 ? "s" : ""}`}
+            {loading ? "加载中…" : `${total.toLocaleString()} 条结果`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -309,11 +309,11 @@ function OpportunitiesPage() {
             }`}
           >
             <Eye className="h-3.5 w-3.5" />
-            Focus Mode
+            聚焦模式
           </button>
           <button onClick={handleExport} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             <Download className="h-3.5 w-3.5" />
-            Export
+            导出
           </button>
         </div>
       </div>
@@ -322,7 +322,7 @@ function OpportunitiesPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
-          placeholder="Search blinds, curtains, shades, linen…"
+          placeholder="搜索百叶窗、窗帘、遮光帘、床品…"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           className="h-10 w-full rounded-lg border bg-card pl-10 pr-4 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
@@ -351,12 +351,12 @@ function OpportunitiesPage() {
           className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-sm font-medium transition-colors ${showAdvanced ? "bg-muted text-foreground" : "bg-card text-muted-foreground hover:text-foreground"}`}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          More
+          更多
           <ChevronDown className={`h-3 w-3 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
         </button>
         {activeFilterCount > 0 && (
           <button onClick={clearFilters} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <X className="h-3.5 w-3.5" /> Clear ({activeFilterCount})
+            <X className="h-3.5 w-3.5" /> 清除 ({activeFilterCount})
           </button>
         )}
       </div>
@@ -365,16 +365,16 @@ function OpportunitiesPage() {
       {showAdvanced && (
         <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/30 px-4 py-3">
           <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground whitespace-nowrap">Min Score:</label>
+            <label className="text-sm text-muted-foreground whitespace-nowrap">最低评分:</label>
             <input type="range" min={0} max={100} step={5} value={minRelevance} onChange={(e) => { setMinRelevance(Number(e.target.value)); setPage(1); }} className="w-24 accent-primary" />
             <span className="text-sm font-medium text-tabular w-6">{minRelevance}</span>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">After</label>
+            <label className="text-sm text-muted-foreground">之后</label>
             <input type="date" value={closingAfter} onChange={(e) => { setClosingAfter(e.target.value); setPage(1); }} className="h-8 rounded-md border bg-card px-2 text-sm" />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">Before</label>
+            <label className="text-sm text-muted-foreground">之前</label>
             <input type="date" value={closingBefore} onChange={(e) => { setClosingBefore(e.target.value); setPage(1); }} className="h-8 rounded-md border bg-card px-2 text-sm" />
           </div>
         </div>
@@ -422,12 +422,12 @@ function OpportunitiesPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="font-semibold">Opportunity</TableHead>
-                <TableHead className="font-semibold w-28">Score</TableHead>
-                <TableHead className="font-semibold">Bucket</TableHead>
-                <TableHead className="font-semibold">Organization</TableHead>
-                <TableHead className="font-semibold whitespace-nowrap">Closing</TableHead>
-                <TableHead className="font-semibold">Analysis</TableHead>
+                <TableHead className="font-semibold">招标机会</TableHead>
+                <TableHead className="font-semibold w-28">评分</TableHead>
+                <TableHead className="font-semibold">关联度</TableHead>
+                <TableHead className="font-semibold">发标机构</TableHead>
+                <TableHead className="font-semibold whitespace-nowrap">截止日期</TableHead>
+                <TableHead className="font-semibold">分析</TableHead>
                 <TableHead className="font-semibold w-16" />
               </TableRow>
             </TableHeader>
@@ -475,7 +475,7 @@ function OpportunitiesPage() {
                       href={`/dashboard/opportunities/${opp.id}`}
                       className="invisible group-hover:visible inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
                     >
-                      Open
+                      查看
                     </Link>
                   </TableCell>
                 </TableRow>
@@ -484,8 +484,8 @@ function OpportunitiesPage() {
                 <TableRow>
                   <TableCell colSpan={7} className="py-16 text-center">
                     <FileSearch className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
-                    <p className="text-sm font-medium text-muted-foreground">No opportunities match your filters</p>
-                    <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filter criteria</p>
+                    <p className="text-sm font-medium text-muted-foreground">没有匹配筛选条件的机会</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">请调整搜索或筛选条件</p>
                   </TableCell>
                 </TableRow>
               )}
@@ -498,7 +498,7 @@ function OpportunitiesPage() {
       {total > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground text-tabular">
-            Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total.toLocaleString()}
+            显示 {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)}，共 {total.toLocaleString()} 条
           </p>
           <div className="flex items-center gap-1">
             <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-md border px-2.5 py-1.5 text-sm disabled:opacity-30 hover:bg-muted transition-colors">

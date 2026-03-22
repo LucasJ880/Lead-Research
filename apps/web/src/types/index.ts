@@ -152,6 +152,7 @@ export interface DashboardStats {
 export interface OpportunitySummary {
   id: string;
   title: string;
+  titleZh?: string;
   status: OpportunityStatus;
   workflowStatus: WorkflowStatus;
   organization?: string;
@@ -181,7 +182,9 @@ export interface OpportunitySummary {
 export interface OpportunityDetail extends OpportunitySummary {
   externalId?: string;
   descriptionSummary?: string;
+  descriptionSummaryZh?: string;
   descriptionFull?: string;
+  descriptionFullZh?: string;
   locationRaw?: string;
   projectType?: string;
   solicitationNumber?: string;

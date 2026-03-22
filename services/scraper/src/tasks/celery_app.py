@@ -36,7 +36,12 @@ celery_app.conf.beat_schedule = {
         "task": "src.tasks.extract_documents.extract_pending_documents",
         "schedule": crontab(hour="*/6", minute=15),
     },
+    "translate-pending-opportunities": {
+        "task": "src.tasks.translate_tasks.translate_pending_opportunities",
+        "schedule": crontab(hour="*/6", minute=30),
+    },
 }
 
 celery_app.autodiscover_tasks(["src.tasks"], related_name="crawl_tasks")
 celery_app.autodiscover_tasks(["src.tasks"], related_name="extract_documents")
+celery_app.autodiscover_tasks(["src.tasks"], related_name="translate_tasks")

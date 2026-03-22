@@ -47,7 +47,7 @@ function LoginForm() {
     setLoading(false);
 
     if (result?.error) {
-      setError("Invalid email or password");
+      setError("邮箱或密码错误");
       return;
     }
 
@@ -78,22 +78,22 @@ function LoginForm() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">BidToGo</h1>
-          <p className="mt-1 text-sm text-slate-400">Bid Intelligence Platform</p>
+          <p className="mt-1 text-sm text-slate-400">采购情报平台</p>
         </div>
 
         {/* Login card */}
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-xl">
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-white">Welcome back</h2>
+            <h2 className="text-lg font-semibold text-white">欢迎回来</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Sign in to your intelligence dashboard
+              登录您的情报仪表盘
             </p>
           </div>
 
           {expired === "inactivity" && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
               <ShieldCheck className="h-4 w-4 shrink-0" />
-              Session expired due to inactivity
+              会话因长时间未操作已过期
             </div>
           )}
 
@@ -107,7 +107,7 @@ function LoginForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="email" className="text-sm font-medium text-slate-300">
-                Email address
+                邮箱地址
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -126,14 +126,14 @@ function LoginForm() {
 
             <div className="space-y-1.5">
               <label htmlFor="password" className="text-sm font-medium text-slate-300">
-                Password
+                密码
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder="输入密码"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -150,10 +150,10 @@ function LoginForm() {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
+                  登录中...
                 </>
               ) : (
-                "Sign in"
+                "登录"
               )}
             </Button>
           </form>
@@ -163,23 +163,23 @@ function LoginForm() {
         <div className="mt-6 flex items-center justify-center gap-4">
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <Zap className="h-3.5 w-3.5 text-blue-400" />
-            <span>AI-Powered</span>
+            <span>AI 驱动</span>
           </div>
           <div className="h-3 w-px bg-slate-700" />
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <BarChart3 className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Real-time Data</span>
+            <span>实时数据</span>
           </div>
           <div className="h-3 w-px bg-slate-700" />
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <ShieldCheck className="h-3.5 w-3.5 text-amber-400" />
-            <span>Enterprise</span>
+            <span>企业级</span>
           </div>
         </div>
 
         {/* Footer */}
         <p className="mt-6 text-center text-xs text-slate-600">
-          &copy; {new Date().getFullYear()} BidToGo · Procurement Intelligence for North America
+          &copy; {new Date().getFullYear()} BidToGo · 北美采购情报
         </p>
       </div>
     </div>

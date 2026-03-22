@@ -45,7 +45,7 @@ export default function DashboardPage() {
   const fetchStats = useCallback(() => {
     fetch("/api/stats")
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to load dashboard stats");
+        if (!res.ok) throw new Error("加载仪表板统计失败");
         return res.json();
       })
       .then((data: DashboardStats) => {
@@ -63,15 +63,15 @@ export default function DashboardPage() {
       const res = await fetch("/api/crawler/trigger", { method: "POST" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setCrawlMessage(`Error: ${body.error || res.statusText}`);
+        setCrawlMessage(`错误：${body.error || res.statusText}`);
       } else {
-        setCrawlMessage("Crawler dispatched. Check logs for progress.");
+        setCrawlMessage("抓取器已启动，请查看日志了解进度。");
         setTimeout(fetchStats, 5000);
         setTimeout(fetchStats, 15000);
         setTimeout(fetchStats, 30000);
       }
     } catch {
-      setCrawlMessage("Failed to connect to crawler service.");
+      setCrawlMessage("无法连接抓取服务。");
     } finally {
       setCrawlRunning(false);
     }
@@ -108,7 +108,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-bold tracking-tight">Overview</h1>
+        <h1 className="text-xl font-bold tracking-tight">概览</h1>
         <div className="rounded-lg border bg-card p-8 text-center space-y-3">
           <AlertTriangle className="mx-auto h-8 w-8 text-muted-foreground" />
           <p className="text-sm text-destructive">{error}</p>
@@ -117,7 +117,7 @@ export default function DashboardPage() {
             className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Try again
+            重试
           </button>
         </div>
       </div>
@@ -133,29 +133,36 @@ export default function DashboardPage() {
   const intel = stats.intelligence;
 
   const METRICS = [
-    { label: "Total Leads", value: stats.openOpportunities, icon: FolderOpen, color: "text-emerald-600 bg-emerald-50", href: "/dashboard/opportunities" },
-    { label: "Highly Relevant", value: stats.highRelevanceLeads, icon: TrendingUp, color: "text-blue-600 bg-blue-50", href: "/dashboard/opportunities?bucket=highly_relevant" },
-    { label: "New (24h)", value: stats.newLast24h, icon: Sparkles, color: "text-violet-600 bg-violet-50", href: "/dashboard/opportunities?sort=newest" },
-    { label: "Closing Soon", value: stats.closingThisWeek, icon: CalendarClock, color: "text-amber-600 bg-amber-50", href: "/dashboard/opportunities?sort=closing_soon" },
+    { label: "相关线索", value: stats.openOpportunities, icon: FolderOpen, color: "text-emerald-600 bg-emerald-50", href: "/dashboard/opportunities" },
+    { label: "高关联", value: stats.highRelevanceLeads, icon: TrendingUp, color: "text-blue-600 bg-blue-50", href: "/dashboard/opportunities?bucket=highly_relevant" },
+    { label: "新增 (24h)", value: stats.newLast24h, icon: Sparkles, color: "text-violet-600 bg-violet-50", href: "/dashboard/opportunities?sort=newest" },
+    { label: "即将截止", value: stats.closingThisWeek, icon: CalendarClock, color: "text-amber-600 bg-amber-50", href: "/dashboard/opportunities?sort=closing_soon" },
   ];
 
   const pipelineStages = [
-    { key: "hot", icon: Flame, label: "Hot" },
-    { key: "review", icon: Eye, label: "Review" },
-    { key: "shortlisted", icon: Bookmark, label: "Shortlisted" },
-    { key: "pursuing", icon: TrendingUp, label: "Pursuing" },
-    { key: "monitor", icon: Radio, label: "Monitor" },
+    { key: "hot", icon: Flame, label: "紧急" },
+    { key: "review", icon: Eye, label: "待审" },
+    { key: "shortlisted", icon: Bookmark, label: "候选" },
+    { key: "pursuing", icon: TrendingUp, label: "跟进中" },
+    { key: "monitor", icon: Radio, label: "监控" },
   ] as const;
+
+  const healthLabels = {
+    healthy: "健康",
+    degraded: "降级",
+    failing: "故障",
+    untested: "未测试",
+  } as const;
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Command Center</h1>
+          <h1 className="text-xl font-bold tracking-tight">指挥中心</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {sn ? `${sn.activeSources} active source${sn.activeSources !== 1 ? "s" : ""}` : "Procurement intelligence"}
-            {stats.totalOpportunities > 0 && ` · ${stats.totalOpportunities.toLocaleString()} total opportunities`}
+            {sn ? `${sn.activeSources} 个活跃源` : "采购智能平台"}
+            {stats.totalOpportunities > 0 && ` · ${stats.totalOpportunities.toLocaleString()} 个招标机会`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -168,7 +175,7 @@ export default function DashboardPage() {
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm"
           >
             {crawlRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            Run Crawler
+            运行抓取
           </button>
         </div>
       </div>
@@ -193,7 +200,7 @@ export default function DashboardPage() {
               {stats.lastCrawlRun.sourceName} · {stats.lastCrawlRun.opportunitiesFound} found, {stats.lastCrawlRun.opportunitiesCreated} new
             </span>
           </div>
-          <Link href="/dashboard/logs" className="text-sm font-medium text-primary hover:underline">View logs</Link>
+          <Link href="/dashboard/logs" className="text-sm font-medium text-primary hover:underline">查看日志</Link>
         </div>
       )}
 
@@ -221,9 +228,9 @@ export default function DashboardPage() {
           {/* Top Opportunities */}
           <div className="rounded-lg border bg-card">
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="text-sm font-semibold">Top Opportunities</h3>
+              <h3 className="text-sm font-semibold">热门机会</h3>
               <Link href="/dashboard/opportunities" className="text-xs font-medium text-primary hover:underline flex items-center gap-0.5">
-                View all <ArrowUpRight className="h-3 w-3" />
+                查看全部 <ArrowUpRight className="h-3 w-3" />
               </Link>
             </div>
             <div className="divide-y">
@@ -239,8 +246,8 @@ export default function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{opp.title}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {opp.organization || "Unknown"} · {opp.sourceName}
-                      {opp.closingDate && ` · Closes ${formatDate(opp.closingDate)}`}
+                      {opp.organization || "未知"} · {opp.sourceName}
+                      {opp.closingDate && ` · 截止 ${formatDate(opp.closingDate)}`}
                     </p>
                   </div>
                   <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium ${getBucketColor(opp.relevanceBucket)}`}>
@@ -251,7 +258,7 @@ export default function DashboardPage() {
               {stats.recentOpportunities.length === 0 && (
                 <div className="px-4 py-10 text-center">
                   <FileSearch className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
-                  <p className="text-sm text-muted-foreground">No opportunities yet. Run the crawler to start collecting.</p>
+                  <p className="text-sm text-muted-foreground">暂无招标机会，运行抓取器开始收集。</p>
                 </div>
               )}
             </div>
@@ -261,7 +268,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             {bd && (
               <div className="rounded-lg border bg-card p-4">
-                <h3 className="text-sm font-semibold mb-3">Relevance Distribution</h3>
+                <h3 className="text-sm font-semibold mb-3">关联度分布</h3>
                 <div className="space-y-3">
                   {(["highly_relevant", "moderately_relevant", "low_relevance", "irrelevant"] as const).map((bucket) => {
                     const count = bd[bucket];
@@ -291,8 +298,8 @@ export default function DashboardPage() {
             {topSources.length > 0 && (
               <div className="rounded-lg border bg-card p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold">Source Performance</h3>
-                  <Link href="/dashboard/sources" className="text-xs font-medium text-primary hover:underline">All</Link>
+                  <h3 className="text-sm font-semibold">数据源表现</h3>
+                  <Link href="/dashboard/sources" className="text-xs font-medium text-primary hover:underline">全部</Link>
                 </div>
                 <div className="space-y-2.5">
                   {topSources.slice(0, 5).map((s) => {
@@ -322,41 +329,41 @@ export default function DashboardPage() {
             <div className="rounded-lg border border-blue-200/60 bg-card p-4">
               <div className="flex items-center gap-1.5 mb-3">
                 <Sparkles className="h-4 w-4 text-blue-600" />
-                <h3 className="text-sm font-semibold">AI Intelligence</h3>
+                <h3 className="text-sm font-semibold">AI 分析</h3>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div className="rounded-md bg-blue-50 p-2.5 text-center">
                   <p className="text-xl font-bold text-blue-600 text-tabular">{intel.analyzedCount}</p>
-                  <p className="text-[10px] text-blue-600/60 font-medium uppercase tracking-wide">Analyzed</p>
+                  <p className="text-[10px] text-blue-600/60 font-medium uppercase tracking-wide">已分析</p>
                 </div>
                 <div className="rounded-md bg-muted/50 p-2.5 text-center">
                   <p className="text-xl font-bold text-tabular">{intel.avgFeasibility}</p>
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Avg Score</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">平均分</p>
                 </div>
               </div>
               <div className="flex items-center justify-between text-xs mb-3">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Pursue <span className="font-bold text-tabular">{intel.pursueCount}</span>
+                  推进 <span className="font-bold text-tabular">{intel.pursueCount}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  Review <span className="font-bold text-tabular">{intel.reviewCount}</span>
+                  待审 <span className="font-bold text-tabular">{intel.reviewCount}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-slate-400" />
-                  Skip <span className="font-bold text-tabular">{intel.skipCount}</span>
+                  跳过 <span className="font-bold text-tabular">{intel.skipCount}</span>
                 </span>
               </div>
               <Link href="/dashboard/intelligence" className="block text-center text-xs font-medium text-primary hover:underline py-1">
-                View all reports →
+                查看所有报告 →
               </Link>
             </div>
           )}
 
           {/* Pipeline */}
           <div className="rounded-lg border bg-card p-4">
-            <h3 className="text-sm font-semibold mb-3">Pipeline</h3>
+            <h3 className="text-sm font-semibold mb-3">工作流</h3>
             <div className="space-y-1">
               {pipelineStages.map(({ key, icon: Icon, label }) => {
                 const count = wd[key] ?? 0;
@@ -383,17 +390,17 @@ export default function DashboardPage() {
           {sn && (
             <div className="rounded-lg border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold">Source Health</h3>
-                <Link href="/dashboard/sources" className="text-xs font-medium text-primary hover:underline">Details</Link>
+                <h3 className="text-sm font-semibold">数据源健康</h3>
+                <Link href="/dashboard/sources" className="text-xs font-medium text-primary hover:underline">详情</Link>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div className="rounded-md bg-muted/50 p-2.5 text-center">
                   <p className="text-xl font-bold text-tabular">{sn.activeSources}</p>
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Active</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">活跃</p>
                 </div>
                 <div className="rounded-md bg-muted/50 p-2.5 text-center">
                   <p className="text-xl font-bold text-tabular">{sn.crawlRunsLast24h}</p>
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Crawls 24h</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">24h 抓取</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -410,7 +417,7 @@ export default function DashboardPage() {
                   return (
                     <span key={h} className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-1 text-xs">
                       <HIcon className={`h-3.5 w-3.5 ${colors[h]}`} />
-                      <span className="capitalize">{h}</span>
+                      <span>{healthLabels[h]}</span>
                       <span className="font-bold">{count}</span>
                     </span>
                   );

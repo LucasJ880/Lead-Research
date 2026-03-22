@@ -12,6 +12,7 @@ To add a new custom crawler:
 from __future__ import annotations
 
 from src.crawlers.base import BaseCrawler
+from src.crawlers.bcbid import BCBidCrawler
 from src.crawlers.biddingo import BiddingoCrawler
 from src.crawlers.canadabuys import CanadaBuysCrawler
 from src.crawlers.generic import GenericCrawler
@@ -22,6 +23,7 @@ from src.crawlers.sasktenders import SaskTendersCrawler
 from src.crawlers.vancouver import VancouverCrawler
 
 CRAWLER_REGISTRY: dict[str, type[BaseCrawler]] = {
+    "bcbid": BCBidCrawler,
     "biddingo": BiddingoCrawler,
     "canadabuys": CanadaBuysCrawler,
     "generic": GenericCrawler,

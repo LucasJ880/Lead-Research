@@ -6,6 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const APP_TIMEZONE = "America/Toronto";
+const APP_LOCALE = "zh-CN";
 
 const PATTERN_OPTIONS: Record<string, Intl.DateTimeFormatOptions> = {
   "MMM d, yyyy": { month: "short", day: "numeric", year: "numeric" },
@@ -20,7 +21,7 @@ export function formatDate(
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
   const opts = PATTERN_OPTIONS[pattern] ?? PATTERN_OPTIONS["MMM d, yyyy"];
-  return new Intl.DateTimeFormat("en-US", { ...opts, timeZone: APP_TIMEZONE }).format(d);
+  return new Intl.DateTimeFormat(APP_LOCALE, { ...opts, timeZone: APP_TIMEZONE }).format(d);
 }
 
 export function formatDateTime(
@@ -28,7 +29,7 @@ export function formatDateTime(
 ): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     timeZone: APP_TIMEZONE,
     month: "short",
     day: "numeric",
@@ -44,7 +45,7 @@ export function formatCurrency(
   currency = "USD"
 ): string {
   if (amount == null) return "—";
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(APP_LOCALE, {
     style: "currency",
     currency,
     minimumFractionDigits: 0,
@@ -67,10 +68,10 @@ export function getRelevanceColor(score: number): string {
 
 export function getBucketLabel(bucket: string): string {
   const labels: Record<string, string> = {
-    highly_relevant: "Highly Relevant",
-    moderately_relevant: "Moderate",
-    low_relevance: "Low",
-    irrelevant: "Irrelevant",
+    highly_relevant: "高关联",
+    moderately_relevant: "中关联",
+    low_relevance: "低关联",
+    irrelevant: "无关联",
   };
   return labels[bucket] ?? bucket;
 }
@@ -87,19 +88,19 @@ export function getBucketColor(bucket: string): string {
 
 export function getWorkflowLabel(status: string): string {
   const labels: Record<string, string> = {
-    new: "New",
-    hot: "Hot",
-    review: "Review",
-    shortlisted: "Shortlisted",
-    pursuing: "Pursuing",
-    bid_submitted: "Bid Submitted",
-    won: "Won",
-    lost: "Lost",
-    passed: "Passed",
-    not_relevant: "Not Relevant",
-    monitor: "Monitor",
-    rfq_sent: "RFQ Sent",
-    bid_drafted: "Bid Drafted",
+    new: "新建",
+    hot: "紧急",
+    review: "待审",
+    shortlisted: "候选",
+    pursuing: "跟进中",
+    bid_submitted: "已投标",
+    won: "已中标",
+    lost: "未中标",
+    passed: "已跳过",
+    not_relevant: "不相关",
+    monitor: "监控",
+    rfq_sent: "已发询价",
+    bid_drafted: "标书草拟",
   };
   return labels[status] ?? status;
 }

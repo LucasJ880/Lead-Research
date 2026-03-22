@@ -19,16 +19,16 @@ import { formatDate } from "@/lib/utils";
 import type { SavedSearch } from "@/types";
 
 const FILTER_LABELS: Record<string, string> = {
-  keyword: "Keyword",
-  bucket: "Relevance",
-  status: "Status",
-  country: "Country",
-  workflow: "Stage",
-  tag: "Tag",
-  sort: "Sort",
-  minRelevance: "Min Score",
-  closingAfter: "Closing After",
-  closingBefore: "Closing Before",
+  keyword: "关键词",
+  bucket: "关联度",
+  status: "状态",
+  country: "国家",
+  workflow: "阶段",
+  tag: "标签",
+  sort: "排序",
+  minRelevance: "最低评分",
+  closingAfter: "截止日期之后",
+  closingBefore: "截止日期之前",
 };
 
 function formatFilterDisplay(filters: Record<string, string | number>): { label: string; value: string }[] {
@@ -101,7 +101,7 @@ export default function SavedSearchesPage() {
       setShowForm(false);
       fetchSearches();
     } catch {
-      setSaveError("Failed to save search. Please try again.");
+      setSaveError("保存失败，请重试。");
     } finally {
       setSaving(false);
     }
@@ -115,7 +115,7 @@ export default function SavedSearchesPage() {
       if (!res.ok) throw new Error("Failed to delete search");
       fetchSearches();
     } catch {
-      setSaveError("Failed to delete search. Please try again.");
+      setSaveError("删除失败，请重试。");
     } finally {
       setDeletingId(null);
     }
@@ -130,14 +130,14 @@ export default function SavedSearchesPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Saved Searches</h1>
+          <h1 className="text-xl font-bold tracking-tight">保存搜索</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Save filter combinations to quickly access them later
+            保存筛选组合以便快速访问
           </p>
         </div>
         <Button size="sm" onClick={() => setShowForm(!showForm)}>
           <Plus className="mr-2 h-4 w-4" />
-          New Search
+          新建搜索
         </Button>
       </div>
 
@@ -146,55 +146,55 @@ export default function SavedSearchesPage() {
           <CardContent className="p-4 space-y-3">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1">
-                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Name *</label>
+                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">名称 *</label>
                 <Input
-                  placeholder="e.g. Ontario Window Coverings"
+                  placeholder="例如：安大略窗帘"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Keyword</label>
+                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">关键词</label>
                 <Input
-                  placeholder="e.g. blinds, shades"
+                  placeholder="例如：百叶窗、遮光帘"
                   value={newKeyword}
                   onChange={(e) => setNewKeyword(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Relevance</label>
+                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">关联度</label>
                 <select
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                   value={newBucket}
                   onChange={(e) => setNewBucket(e.target.value)}
                 >
-                  <option value="">Any</option>
-                  <option value="highly_relevant">Highly Relevant</option>
-                  <option value="moderately_relevant">Moderately Relevant</option>
-                  <option value="low_relevance">Low Relevance</option>
+                  <option value="">任意</option>
+                  <option value="highly_relevant">高关联</option>
+                  <option value="moderately_relevant">中关联</option>
+                  <option value="low_relevance">低关联</option>
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Country</label>
+                <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">国家</label>
                 <select
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                   value={newCountry}
                   onChange={(e) => setNewCountry(e.target.value)}
                 >
-                  <option value="">Any</option>
-                  <option value="US">United States</option>
-                  <option value="CA">Canada</option>
+                  <option value="">任意</option>
+                  <option value="US">美国</option>
+                  <option value="CA">加拿大</option>
                 </select>
               </div>
             </div>
             <div className="flex items-center gap-2 pt-1">
               <Button onClick={handleSave} disabled={!newName.trim() || saving} size="sm">
                 {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Bookmark className="mr-2 h-3.5 w-3.5" />}
-                Save Search
+                保存搜索
               </Button>
               <Button variant="outline" size="sm" onClick={() => { setShowForm(false); setNewName(""); setNewKeyword(""); setNewBucket(""); setNewCountry(""); }}>
-                Cancel
+                取消
               </Button>
             </div>
           </CardContent>
@@ -204,7 +204,7 @@ export default function SavedSearchesPage() {
       {saveError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center justify-between">
           <span>{saveError}</span>
-          <button onClick={() => setSaveError(null)} className="text-xs font-medium hover:underline">Dismiss</button>
+          <button onClick={() => setSaveError(null)} className="text-xs font-medium hover:underline">关闭</button>
         </div>
       )}
 
@@ -224,10 +224,10 @@ export default function SavedSearchesPage() {
           <Table>
             <TableHeader>
               <TableRow className="border-b text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-                <TableHead className="px-4 py-3">Name</TableHead>
-                <TableHead className="px-4 py-3">Filters</TableHead>
-                <TableHead className="px-4 py-3 whitespace-nowrap">Created</TableHead>
-                <TableHead className="px-4 py-3 text-right">Actions</TableHead>
+                <TableHead className="px-4 py-3">名称</TableHead>
+                <TableHead className="px-4 py-3">筛选条件</TableHead>
+                <TableHead className="px-4 py-3 whitespace-nowrap">创建时间</TableHead>
+                <TableHead className="px-4 py-3 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y">
@@ -251,7 +251,7 @@ export default function SavedSearchesPage() {
                           ))}
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">All opportunities</span>
+                        <span className="text-xs text-muted-foreground">全部机会</span>
                       )}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
@@ -266,7 +266,7 @@ export default function SavedSearchesPage() {
                           onClick={() => handleApply(search)}
                         >
                           <ExternalLink className="h-3 w-3" />
-                          Apply
+                          应用
                         </Button>
                         <Button
                           variant="ghost"
@@ -290,8 +290,8 @@ export default function SavedSearchesPage() {
                 <TableRow>
                   <TableCell colSpan={4} className="px-4 py-12 text-center">
                     <Search className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
-                    <p className="text-sm text-muted-foreground">No saved searches yet.</p>
-                    <p className="text-xs text-muted-foreground mt-1">Create a search above with your common filter combinations.</p>
+                    <p className="text-sm text-muted-foreground">暂无保存搜索。</p>
+                    <p className="text-xs text-muted-foreground mt-1">在上方创建常用筛选组合的搜索。</p>
                   </TableCell>
                 </TableRow>
               )}
