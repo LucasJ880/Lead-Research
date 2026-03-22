@@ -531,7 +531,7 @@ async def upload_document_files(
                         extracted_text, text_extracted
                     ) VALUES (
                         :opp_id, :title, :url, :ft,
-                        :size, 'agent_upload',
+                        :size, 'tender_document',
                         :text, :extracted
                     )
                 """),

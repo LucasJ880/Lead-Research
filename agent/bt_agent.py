@@ -149,52 +149,94 @@ class BTBrowser:
         except Exception:
             pass
 
-    def login(self) -> bool:
+    _logged_in_hosts: set = set()
+
+    def login_for_url(self, view_url: str) -> bool:
+        """Login on the specific organization subdomain.
+
+        B&T uses per-org subdomains with login at:
+        /Module/Tenders/en/Login/Index/{org-uuid}
+        We discover the login URL by visiting the tenders index page.
+        """
         if not BT_EMAIL or not BT_PASSWORD:
             log("BT_EMAIL or BT_PASSWORD not set!")
             return False
 
+        from urllib.parse import urlparse
+        parsed = urlparse(view_url)
+        host = parsed.hostname or ""
+
+        if host in self._logged_in_hosts:
+            return True
+
+        base = f"{parsed.scheme}://{host}"
         page = self._page
+
         try:
-            log("Navigating to bidsandtenders login...")
-            page.goto(f"{_BT_BASE}/login", wait_until="networkidle", timeout=30000)
+            log("Discovering login page on %s ...", host)
+            page.goto(f"{base}/Module/Tenders/", wait_until="networkidle", timeout=30000)
             time.sleep(2)
 
-            email_field = page.query_selector('input[type="email"], input[name="email"], #email')
-            pwd_field = page.query_selector('input[type="password"], input[name="password"], #password')
+            login_link = page.query_selector('a[href*="/Login/Index/"]')
+            if not login_link:
+                log("No login link found on %s — trying direct access", host)
+                self._logged_in_hosts.add(host)
+                return True
+
+            login_href = login_link.get_attribute("href") or ""
+            if login_href.startswith("/"):
+                login_href = f"{base}{login_href}"
+
+            log("Login URL: %s", login_href)
+            page.goto(login_href, wait_until="networkidle", timeout=30000)
+            time.sleep(2)
+
+            email_field = (
+                page.query_selector('#Username') or
+                page.query_selector('input[name="Username"]') or
+                page.query_selector('input[type="email"]') or
+                page.query_selector('input[name="email"]')
+            )
+            pwd_field = (
+                page.query_selector('#Password') or
+                page.query_selector('input[name="Password"]') or
+                page.query_selector('input[type="password"]')
+            )
 
             if not email_field or not pwd_field:
-                page.goto(f"{_BT_BASE}/suppliers-login", wait_until="networkidle", timeout=30000)
-                time.sleep(2)
-                email_field = page.query_selector('input[type="email"], input[name="email"], #email, input[name="username"]')
-                pwd_field = page.query_selector('input[type="password"], input[name="password"], #password')
-
-            if not email_field or not pwd_field:
-                log("Could not find login form fields. Page title: %s", page.title())
-                log("Current URL: %s", page.url)
+                log("Login form fields not found on %s. Title: %s", host, page.title())
                 return False
 
             email_field.fill(BT_EMAIL)
             pwd_field.fill(BT_PASSWORD)
+            time.sleep(0.5)
 
-            submit = page.query_selector('button[type="submit"], input[type="submit"], .btn-primary')
+            submit = (
+                page.query_selector('input[type="submit"]') or
+                page.query_selector('button[type="submit"]') or
+                page.query_selector('.btn-primary') or
+                page.query_selector('#loginBtn')
+            )
             if submit:
                 submit.click()
             else:
                 pwd_field.press("Enter")
 
-            page.wait_for_load_state("networkidle", timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=20000)
             time.sleep(3)
 
-            if "login" in page.url.lower() and "error" in page.content().lower():
-                log("Login failed — still on login page")
-                return False
+            if "/Login/" in page.url:
+                content = page.content().lower()
+                if "invalid" in content or "error" in content or "incorrect" in content:
+                    log("Login failed on %s — invalid credentials", host)
+                    return False
 
-            log("Login successful. Current URL: %s", page.url)
+            self._logged_in_hosts.add(host)
+            log("Login successful on %s. URL: %s", host, page.url)
             return True
 
         except Exception as exc:
-            log("Login error: %s", exc)
+            log("Login error on %s: %s", host, exc)
             return False
 
     def download_bid_documents(self, view_url: str, download_dir: Path) -> Path | None:
@@ -289,7 +331,6 @@ def run(dry_run: bool = False, headed: bool = False) -> None:
     if not browser.start():
         return
 
-    logged_in = False
     success_count = 0
     fail_count = 0
 
@@ -304,11 +345,10 @@ def run(dry_run: bool = False, headed: bool = False) -> None:
                 fail_count += 1
                 continue
 
-            if not logged_in:
-                if not browser.login():
-                    log("Login failed — aborting")
-                    return
-                logged_in = True
+            if not browser.login_for_url(view_url):
+                log("Login failed for %s — skipping", title)
+                fail_count += 1
+                continue
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 download_dir = Path(tmpdir)
