@@ -120,8 +120,8 @@ def crawl_all_active_sources() -> dict[str, Any]:
         ).fetchall()
 
     for row in rows:
-        access = getattr(row, "access_mode", "http") or "http"
-        if access == "local_authenticated_connector":
+        access = getattr(row, "access_mode", "http_scrape") or "http_scrape"
+        if access in ("local_connector", "local_authenticated_connector"):
             skipped_local.append(row.name)
             logger.info("Skipping local-agent source: %s", row.name)
             continue
@@ -169,8 +169,8 @@ def crawl_by_fit_tier(tier: str) -> dict[str, Any]:
         ).fetchall()
 
     for row in rows:
-        access = getattr(row, "access_mode", "http") or "http"
-        if access == "local_authenticated_connector":
+        access = getattr(row, "access_mode", "http_scrape") or "http_scrape"
+        if access in ("local_connector", "local_authenticated_connector"):
             skipped_local.append(row.name)
             logger.info("Skipping local-agent source in tier %s: %s", tier, row.name)
             continue
