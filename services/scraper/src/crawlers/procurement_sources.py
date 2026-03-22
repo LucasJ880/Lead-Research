@@ -15,6 +15,7 @@ from src.crawlers.base import BaseCrawler
 from src.crawlers.biddingo import BiddingoCrawler
 from src.crawlers.generic import GenericCrawler
 from src.crawlers.merx import MerxCrawler
+from src.crawlers.novascotia import NovaScotiaCrawler
 from src.crawlers.sam_gov import SamGovCrawler
 from src.crawlers.sasktenders import SaskTendersCrawler
 from src.crawlers.vancouver import VancouverCrawler
@@ -23,6 +24,7 @@ CRAWLER_REGISTRY: dict[str, type[BaseCrawler]] = {
     "biddingo": BiddingoCrawler,
     "generic": GenericCrawler,
     "merx": MerxCrawler,
+    "novascotia": NovaScotiaCrawler,
     "sam_gov": SamGovCrawler,
     "sasktenders": SaskTendersCrawler,
     "vancouver": VancouverCrawler,

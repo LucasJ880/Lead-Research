@@ -1,4 +1,30 @@
 sources:
+- source_id: novascotia_procurement
+  source_name: Nova Scotia Procurement Portal
+  country: CA
+  region: NS
+  organization_type: provincial_government
+  source_type: bid_portal
+  base_url: https://procurement-portal.novascotia.ca
+  listing_pattern: tenders
+  parser_class: NovaScotiaCrawler
+  crawl_frequency: daily
+  active: true
+  notes: >-
+    Official Government of Nova Scotia procurement portal. Covers all
+    provincial departments, municipalities, universities, health authorities,
+    and other public-sector entities across Nova Scotia. ~28,000+ tenders
+    total. Site uses F5/Shape Security bot protection; crawler uses
+    cloudscraper to handle JS challenges. Detail pages are server-rendered.
+  crawl_config:
+    crawler_class: novascotia
+    max_pages: 10
+    page_size: 50
+    fetch_detail: true
+    rate_limit_seconds: 3
+  industry_fit_score: 55
+  source_priority: high
+  listing_path: /tenders
 - source_id: merx
   source_name: MERX Canadian Public Tenders
   country: CA
