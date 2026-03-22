@@ -1,4 +1,45 @@
 sources:
+- source_id: canadabuys_federal
+  source_name: CanadaBuys (Federal)
+  country: CA
+  region: National
+  organization_type: federal_government
+  source_type: bid_portal
+  base_url: https://canadabuys.canada.ca
+  listing_pattern: tender-opportunities
+  parser_class: CanadaBuysCrawler
+  crawl_frequency: daily
+  active: true
+  notes: >-
+    Canadian federal procurement via Open Data CSV. Covers all Schedule I, II, III
+    departments, Crown corporations, and agencies. Open tender notices file refreshed
+    daily 7-8:30am EST. Authoritative source for Government of Canada tenders.
+  crawl_config:
+    crawler_class: canadabuys
+    csv_url: https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv
+  industry_fit_score: 75
+  source_priority: critical
+  listing_path: /en/tender-opportunities
+- source_id: toronto_bids
+  source_name: Toronto Bids Portal
+  country: CA
+  region: "ON"
+  organization_type: municipal_government
+  source_type: bid_portal
+  base_url: https://www.toronto.ca
+  listing_pattern: bids
+  parser_class: null
+  crawl_frequency: daily
+  active: false
+  notes: >-
+    City of Toronto procurement portal using SAP Ariba Business Network Discovery.
+    Content loads via JavaScript iframe; requires browser automation (Playwright).
+    Deactivated until browser-based crawling is implemented. Open Data portal
+    only has awarded contracts, not active tenders.
+  crawl_config: {}
+  industry_fit_score: 65
+  source_priority: high
+  listing_path: /business-economy/doing-business-with-the-city/searching-bidding-on-city-contracts/toronto-bids-portal/
 - source_id: novascotia_procurement
   source_name: Nova Scotia Procurement Portal
   country: CA

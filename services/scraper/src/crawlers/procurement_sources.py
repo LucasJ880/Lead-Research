@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from src.crawlers.base import BaseCrawler
 from src.crawlers.biddingo import BiddingoCrawler
+from src.crawlers.canadabuys import CanadaBuysCrawler
 from src.crawlers.generic import GenericCrawler
 from src.crawlers.merx import MerxCrawler
 from src.crawlers.novascotia import NovaScotiaCrawler
@@ -22,6 +23,7 @@ from src.crawlers.vancouver import VancouverCrawler
 
 CRAWLER_REGISTRY: dict[str, type[BaseCrawler]] = {
     "biddingo": BiddingoCrawler,
+    "canadabuys": CanadaBuysCrawler,
     "generic": GenericCrawler,
     "merx": MerxCrawler,
     "novascotia": NovaScotiaCrawler,

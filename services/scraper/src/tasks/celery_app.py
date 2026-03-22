@@ -23,49 +23,18 @@ celery_app.conf.update(
     result_expires=86400,
 )
 
-# Tiered schedule based on industry_fit_score:
-#   High-fit (>=60): every 6 hours → hospitals, housing, hospitality
-#   Medium-fit (30-59): daily → state/provincial, municipal, school, university
-#   Low-fit (<30): weekly → generic, less relevant sources
+# Daily crawl schedule — all active sources crawled once per day.
+# Runs at 9:00 AM UTC (5:00 AM Toronto / EST) so fresh data is ready
+# before the business day. CanadaBuys CSV refreshes at 7-8:30 AM EST,
+# so a second pass for high-priority sources catches that update.
 celery_app.conf.beat_schedule = {
-    "crawl-high-fit-0600": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=6, minute=0),
-        "args": ("high",),
-    },
-    "crawl-high-fit-1200": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=12, minute=0),
-        "args": ("high",),
-    },
-    "crawl-high-fit-1800": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=18, minute=0),
-        "args": ("high",),
-    },
-    "crawl-high-fit-0000": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=0, minute=0),
-        "args": ("high",),
-    },
-    "crawl-medium-fit-morning": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=7, minute=30),
-        "args": ("medium",),
-    },
-    "crawl-medium-fit-evening": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=19, minute=30),
-        "args": ("medium",),
-    },
-    "crawl-low-fit-weekly": {
-        "task": "src.tasks.crawl_tasks.crawl_by_fit_tier",
-        "schedule": crontab(hour=3, minute=0, day_of_week="sunday"),
-        "args": ("low",),
+    "crawl-all-daily": {
+        "task": "src.tasks.crawl_tasks.crawl_all_active_sources",
+        "schedule": crontab(hour=9, minute=0),
     },
     "extract-pending-documents": {
         "task": "src.tasks.extract_documents.extract_pending_documents",
-        "schedule": crontab(hour="*/4", minute=15),
+        "schedule": crontab(hour="*/6", minute=15),
     },
 }
 
