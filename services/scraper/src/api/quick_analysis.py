@@ -415,3 +415,36 @@ async def analysis_status(opportunity_id: str) -> dict:
         return {"exists": False}
     finally:
         session.close()
+
+
+@router.post("/cleanup-old-data", dependencies=[Depends(verify_api_key)])
+async def cleanup_old_analysis_data() -> dict:
+    """Remove all old v3 JSON analysis data. One-time migration endpoint."""
+    session = get_db_session()
+    try:
+        intel_count = session.execute(text("SELECT COUNT(*) FROM tender_intelligence")).scalar() or 0
+        if intel_count > 0:
+            session.execute(text("DELETE FROM tender_intelligence"))
+
+        biz_count = session.execute(
+            text("UPDATE opportunities SET business_fit_explanation = NULL WHERE business_fit_explanation IS NOT NULL")
+        ).rowcount
+
+        agent_docs = session.execute(
+            text("DELETE FROM opportunity_documents WHERE url LIKE 'agent-upload://%' OR url LIKE 'upload://%'")
+        ).rowcount
+
+        session.commit()
+
+        return {
+            "status": "ok",
+            "deleted_analyses": intel_count,
+            "cleared_biz_fit": biz_count,
+            "deleted_agent_docs": agent_docs,
+        }
+    except Exception as exc:
+        session.rollback()
+        logger.exception("Cleanup failed")
+        return {"status": "error", "message": str(exc)}
+    finally:
+        session.close()

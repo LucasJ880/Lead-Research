@@ -83,7 +83,7 @@ SOURCES = [
         "source_priority": "high",
         "industry_fit_score": 55,
         "health_status": "unsupported",
-        "notes": "NS portal table is JS-rendered. Needs Playwright browser automation.",
+        "notes": "NS 采购门户使用 JavaScript 渲染表格，需要浏览器自动化。NS 省招标信息可通过 CanadaBuys 联邦数据获取。",
     },
     {
         "name": "CanadaBuys",
@@ -162,7 +162,7 @@ SOURCES = [
         "source_priority": "high",
         "industry_fit_score": 65,
         "health_status": "unsupported",
-        "notes": "BC provincial procurement on Jaggaer platform. Requires Playwright browser automation. Deactivated until support is added.",
+        "notes": "BC Bid (Jaggaer 平台) 使用 JavaScript 反爬校验，无公开 API。暂不支持纯 HTTP 抓取。BC 省招标信息可通过 CanadaBuys 联邦数据获取。",
     },
     {
         "name": "SaskTenders",
@@ -218,7 +218,7 @@ SOURCES = [
         "source_priority": "medium",
         "industry_fit_score": 50,
         "health_status": "unsupported",
-        "notes": "Requires browser automation. Deactivated until Playwright support is added.",
+        "notes": "需要浏览器自动化登录。暂不支持。",
     },
 ]
 

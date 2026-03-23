@@ -36,50 +36,31 @@ export async function GET(
 
     let intelligence: Record<string, unknown> | null = null;
     try {
-      intelligence = await prisma.tenderIntelligence.findUnique({
-        where: { opportunityId: id },
-      });
-    } catch {
-      // Prisma client may not know the model yet; try raw SQL
-      try {
-        const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-          SELECT * FROM tender_intelligence WHERE opportunity_id = ${id}::uuid LIMIT 1
-        `;
-        if (rows[0]) {
-          intelligence = {
-            ...rows[0],
-            // Map snake_case → camelCase
-            projectOverview: rows[0].project_overview,
-            scopeOfWork: rows[0].scope_of_work,
-            scopeType: rows[0].scope_type,
-            technicalRequirements: rows[0].technical_requirements,
-            qualificationReqs: rows[0].qualification_reqs,
-            criticalDates: rows[0].critical_dates,
-            riskFactors: rows[0].risk_factors,
-            feasibilityScore: rows[0].feasibility_score,
-            recommendationStatus: rows[0].recommendation_status,
-            businessFitExplanation: rows[0].business_fit_explanation,
-            chinaSourceAnalysis: rows[0].china_source_analysis,
-            intelligenceSummary: rows[0].intelligence_summary,
-            analysisModel: rows[0].analysis_model,
-            analyzedAt: rows[0].analyzed_at,
-          };
+      const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+        SELECT id, opportunity_id, intelligence_summary, analysis_model,
+               analysis_mode, analysis_status, analyzed_at
+        FROM tender_intelligence WHERE opportunity_id = ${id}::uuid LIMIT 1
+      `;
+      if (rows[0]) {
+        let summary = rows[0].intelligence_summary;
+        if (typeof summary === "string") {
+          try { summary = JSON.parse(summary); } catch { /* keep as-is */ }
         }
-      } catch {
-        // Table doesn't exist yet
-      }
-    }
 
-    // Parse JSON fields if stored as strings
-    if (intelligence) {
-      for (const key of ["technicalRequirements", "qualificationReqs", "criticalDates", "riskFactors", "intelligenceSummary"]) {
-        if (typeof intelligence[key] === "string") {
-          try { intelligence[key] = JSON.parse(intelligence[key]); } catch { /* keep as-is */ }
-        }
+        // Only return v4 Markdown reports, discard old v3 JSON
+        const isV4 = typeof summary === "object" && summary !== null && (summary as any).report_markdown;
+        intelligence = isV4 ? {
+          id: rows[0].id,
+          opportunityId: rows[0].opportunity_id,
+          intelligenceSummary: summary,
+          analysisModel: rows[0].analysis_model,
+          analysisMode: rows[0].analysis_mode,
+          analysisStatus: rows[0].analysis_status,
+          analyzedAt: rows[0].analyzed_at,
+        } : null;
       }
-      if (typeof intelligence.chinaSourceAnalysis === "string") {
-        try { intelligence.chinaSourceAnalysis = JSON.parse(intelligence.chinaSourceAnalysis); } catch { /* keep as-is */ }
-      }
+    } catch {
+      // Table doesn't exist yet
     }
 
     let documents: Record<string, unknown>[] = [];
@@ -130,11 +111,7 @@ export async function GET(
       }));
     }
 
-    const analysisMetadata = intelligence?.intelligenceSummary
-      ? (intelligence.intelligenceSummary as Record<string, unknown>)?._analysis_metadata ?? null
-      : null;
-
-    return NextResponse.json({ opportunity, intelligence, documents, analysisMetadata });
+    return NextResponse.json({ opportunity, intelligence, documents });
   } catch (error) {
     console.error("GET /api/intelligence/[id] error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

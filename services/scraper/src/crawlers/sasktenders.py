@@ -48,7 +48,12 @@ class SaskTendersCrawler(BaseCrawler):
 
     def crawl(self) -> list[OpportunityCreate]:
         self.logger.info("Fetching SaskTenders listing page: %s", _SEARCH_URL)
-        html = self.fetch_page(_SEARCH_URL)
+
+        # Step 1: GET the page to obtain ASP.NET form state
+        html = self._fetch_with_form_post()
+        if not html:
+            html = self.fetch_page(_SEARCH_URL) or ""
+
         if not html:
             self.logger.error("Failed to fetch SaskTenders page")
             return []
@@ -76,6 +81,43 @@ class SaskTendersCrawler(BaseCrawler):
 
         self.logger.info("Parsed %d opportunities from SaskTenders", len(opportunities))
         return opportunities
+
+    def _fetch_with_form_post(self) -> str:
+        """Fetch the search page with proper ASP.NET form POST for results."""
+        self.rate_limit()
+        try:
+            # First GET to capture ViewState and form fields
+            resp = self._http.get(_SEARCH_URL, timeout=30)
+            resp.raise_for_status()
+            initial_html = resp.text
+            soup = BeautifulSoup(initial_html, "lxml")
+
+            # If the initial GET already has results, return it
+            if soup.find("div", class_="HeaderAccordionPlusFormat"):
+                return initial_html
+
+            # Extract ASP.NET hidden fields for POST
+            form_data = {}
+            for hidden in soup.find_all("input", {"type": "hidden"}):
+                name = hidden.get("name", "")
+                if name:
+                    form_data[name] = hidden.get("value", "")
+
+            if not form_data.get("__VIEWSTATE"):
+                self.logger.warning("No ViewState found, returning initial HTML")
+                return initial_html
+
+            # Submit search form with "Open" status filter
+            form_data["ctl00$cphContent$cbOpen"] = "on"
+            form_data["ctl00$cphContent$btnSearch"] = "Search"
+
+            self.rate_limit()
+            post_resp = self._http.post(_SEARCH_URL, data=form_data, timeout=30)
+            post_resp.raise_for_status()
+            return post_resp.text
+        except Exception as exc:
+            self.logger.warning("SaskTenders form POST failed: %s", exc)
+            return ""
 
     def _parse_pair(
         self, header_div: Tag, detail_div: Tag | None

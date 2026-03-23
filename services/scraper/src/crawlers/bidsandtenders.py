@@ -26,10 +26,10 @@ from datetime import datetime, timezone
 from src.crawlers.base import BaseCrawler
 from src.models.opportunity import OpportunityCreate, OpportunityStatus
 
-_API_URL = (
-    "https://bidsandtenders.ic9.esolg.ca"
-    "/Modules/BidsAndTenders/services/bidsSearch.ashx"
-)
+_API_URLS = [
+    "https://bidsandtenders.ic9.esolg.ca/Modules/BidsAndTenders/services/bidsSearch.ashx",
+    "https://www.bidsandtenders.ca/Module/Tenders/en/Tender/Search",
+]
 
 _SEARCH_KEYWORDS = [
     "blinds",
@@ -130,32 +130,46 @@ class BidsAndTendersCrawler(BaseCrawler):
         return results
 
     def _api_search(self, keyword: str, page_num: int, page_size: int) -> dict | None:
-        self.rate_limit()
-        try:
-            resp = self._http.get(
-                _API_URL,
-                params={
-                    "keywords": keyword,
-                    "statusId": "1",
-                    "pageNum": str(page_num),
-                    "pageSize": str(page_size),
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            self._diag.api_calls += 1
+        cfg_url = self.source_config.crawl_config.get("api_url")
+        urls = [cfg_url] if cfg_url else _API_URLS
 
-            if not payload.get("success"):
-                self.logger.warning("API returned success=false for kw=%s", keyword)
-                self._diag.api_failures += 1
-                return None
+        for api_url in urls:
+            self.rate_limit()
+            try:
+                resp = self._http.get(
+                    api_url,
+                    params={
+                        "keywords": keyword,
+                        "statusId": "1",
+                        "pageNum": str(page_num),
+                        "pageSize": str(page_size),
+                    },
+                    timeout=30,
+                )
+                resp.raise_for_status()
 
-            return payload.get("data", {})
-        except Exception as exc:
-            self.logger.warning("API search failed kw=%s: %s", keyword, exc)
-            self._diag.api_failures += 1
-            return None
+                ct = resp.headers.get("content-type", "")
+                if "json" not in ct and "javascript" not in ct:
+                    self.logger.warning("Non-JSON response from %s: %s", api_url[:60], ct)
+                    continue
+
+                payload = resp.json()
+                self._diag.api_calls += 1
+
+                if not payload.get("success") and not payload.get("data"):
+                    self.logger.warning("API returned empty for kw=%s from %s", keyword, api_url[:60])
+                    continue
+
+                data = payload.get("data", payload)
+                if isinstance(data, dict):
+                    return data
+                return {"tenders": data} if isinstance(data, list) else {}
+
+            except Exception as exc:
+                self.logger.warning("API search failed kw=%s at %s: %s", keyword, api_url[:60], exc)
+
+        self._diag.api_failures += 1
+        return None
 
     def _parse_tender(self, t: dict, seen: set[str]) -> OpportunityCreate | None:
         view_url = (t.get("viewUrl") or "").strip()

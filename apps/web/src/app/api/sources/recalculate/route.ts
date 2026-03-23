@@ -43,10 +43,13 @@ export async function POST() {
         failed_crawl_runs = COALESCE(r.fail_runs, 0),
         avg_crawl_duration_ms = COALESCE(r.avg_duration, 0),
         health_status = CASE
+          WHEN s.health_status = 'unsupported'::"SourceHealthStatus" THEN 'unsupported'::"SourceHealthStatus"
+          WHEN s.is_active = false THEN s.health_status
           WHEN r.total_runs IS NULL OR r.total_runs = 0 THEN 'untested'::"SourceHealthStatus"
           WHEN r.fail_runs::float / r.total_runs > 0.8 THEN 'failing'::"SourceHealthStatus"
           WHEN r.fail_runs::float / r.total_runs > 0.3 THEN 'degraded'::"SourceHealthStatus"
-          WHEN rr.status = 'completed' THEN 'healthy'::"SourceHealthStatus"
+          WHEN rr.status = 'completed' AND COALESCE(o.total_opps, 0) > 0 THEN 'healthy'::"SourceHealthStatus"
+          WHEN rr.status = 'completed' THEN 'degraded'::"SourceHealthStatus"
           ELSE 'degraded'::"SourceHealthStatus"
         END,
         yield_analytics_updated_at = NOW(),

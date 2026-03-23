@@ -68,19 +68,58 @@ class TorontoCrawler(BaseCrawler):
         return results
 
     def _fetch_json(self) -> list[dict] | None:
+        json_url = self.source_config.crawl_config.get("json_url", _JSON_URL)
         self.rate_limit()
+
+        urls_to_try = [json_url]
+        if json_url != _JSON_URL:
+            urls_to_try.append(_JSON_URL)
+
+        # Also try the CKAN package API to find the latest resource URL
+        ckan_package_url = (
+            "https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show"
+            "?id=tobids-all-open-solicitations"
+        )
+        urls_to_try.append(ckan_package_url)
+
+        for url in urls_to_try:
+            try:
+                self.logger.info("Trying Toronto data URL: %s", url[:100])
+                resp = self._http.get(url, timeout=60)
+                resp.raise_for_status()
+                raw = resp.json()
+
+                # Handle CKAN package API response — extract resource URL
+                if isinstance(raw, dict) and raw.get("success") and raw.get("result"):
+                    resources = raw["result"].get("resources", [])
+                    for r in resources:
+                        if r.get("format", "").upper() == "JSON" and r.get("url"):
+                            self.logger.info("Found CKAN resource URL: %s", r["url"])
+                            return self._fetch_resource(r["url"])
+                    continue
+
+                if isinstance(raw, list):
+                    self.logger.info("Fetched %d records from Toronto Open Data", len(raw))
+                    return raw
+
+                self.logger.warning("Toronto data is not a list: %s", type(raw))
+            except Exception as exc:
+                self.logger.warning("Toronto URL failed (%s): %s", url[:60], exc)
+
+        self.logger.error("All Toronto data URLs failed")
+        return None
+
+    def _fetch_resource(self, url: str) -> list[dict] | None:
         try:
-            resp = self._http.get(_JSON_URL, timeout=60)
+            resp = self._http.get(url, timeout=60)
             resp.raise_for_status()
             data = resp.json()
-            if not isinstance(data, list):
-                self.logger.warning("Toronto JSON is not a list: %s", type(data))
-                return None
-            self.logger.info("Fetched %d records from Toronto Open Data", len(data))
-            return data
+            if isinstance(data, list):
+                self.logger.info("Fetched %d records from CKAN resource", len(data))
+                return data
         except Exception as exc:
-            self.logger.error("Failed to fetch Toronto data: %s", exc)
-            return None
+            self.logger.warning("CKAN resource fetch failed: %s", exc)
+        return None
 
     def _parse_item(self, item: dict) -> OpportunityCreate | None:
         doc_num = str(item.get("Document Number", "")).strip()

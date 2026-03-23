@@ -404,6 +404,11 @@ export default function SettingsPage() {
                 <li>不支持的来源仅作记录，不予绕过</li>
               </ul>
             </div>
+            <div className="rounded-lg border p-4 space-y-3">
+              <h3 className="text-sm font-semibold">数据维护</h3>
+              <p className="text-xs text-muted-foreground">清除旧版分析数据（v3 JSON 格式），为新版 Markdown 分析腾出空间。</p>
+              <CleanupButton />
+            </div>
             <div className="rounded-lg border p-4 space-y-2">
               <h3 className="text-sm font-semibold">技术栈</h3>
               <div className="grid grid-cols-2 gap-1.5 text-xs">
@@ -420,6 +425,40 @@ export default function SettingsPage() {
       </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function CleanupButton() {
+  const [cleaning, setCleaning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function handleCleanup() {
+    if (!confirm("确定要清除所有旧版分析数据吗？此操作不可撤销。")) return;
+    setCleaning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/intelligence/cleanup", { method: "POST" });
+      const data = await res.json();
+      if (data.status === "ok") {
+        setResult(`已清除 ${data.deleted_analyses} 条旧分析，${data.cleared_biz_fit} 条旧评估，${data.deleted_agent_docs} 个代理文档`);
+      } else {
+        setResult(`清除失败: ${data.message || "未知错误"}`);
+      }
+    } catch {
+      setResult("清除失败: 网络错误");
+    } finally {
+      setCleaning(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button size="sm" variant="destructive" onClick={handleCleanup} disabled={cleaning}>
+        {cleaning ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <AlertTriangle className="mr-2 h-3 w-3" />}
+        清除旧版分析数据
+      </Button>
+      {result && <p className="text-xs text-muted-foreground">{result}</p>}
     </div>
   );
 }

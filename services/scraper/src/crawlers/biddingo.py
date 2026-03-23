@@ -147,6 +147,10 @@ class BiddingoCrawler(BaseCrawler):
             all_opps.extend(opps)
             self._diag.search_results.append((kw, len(opps)))
 
+        if not all_opps:
+            self.logger.info("V1 API returned 0 results, trying V2 fallback...")
+            all_opps = self._v2_fallback(page_size, max_pages, fetch_detail, seen_ids)
+
         d = self._diag
         self.logger.info(
             "Biddingo crawl complete: %d unique opps | "
@@ -166,6 +170,38 @@ class BiddingoCrawler(BaseCrawler):
             self.logger.info("  kw %-30s → %d opps", kw, count)
 
         return all_opps
+
+    def _v2_fallback(
+        self,
+        page_size: int,
+        max_pages: int,
+        fetch_detail: bool,
+        seen: set[int],
+    ) -> list[OpportunityCreate]:
+        """Try the V2 unauthenticated endpoint as fallback."""
+        results: list[OpportunityCreate] = []
+        v2_base = f"{_API_BASE}/v2/noauthorize/bids"
+
+        for page in range(max_pages):
+            offset = page * page_size
+            data = self._api_get(f"{v2_base}?limit={page_size}&offset={offset}&country=Canada")
+            if data is None:
+                break
+
+            items = data if isinstance(data, list) else data.get("bidInfoList", data.get("data", []))
+            if not items or not isinstance(items, list):
+                break
+
+            for item in items:
+                opp = self._parse_bid(item, fetch_detail, seen)
+                if opp:
+                    results.append(opp)
+
+            if len(items) < page_size:
+                break
+
+        self.logger.info("V2 fallback: %d opps", len(results))
+        return results
 
     # ─── Session ──────────────────────────────────────────────
 
@@ -202,6 +238,7 @@ class BiddingoCrawler(BaseCrawler):
             body = {
                 "searchString": keyword,
                 "bidStatus": "Open",
+                "country": "Canada",
                 "limit": page_size,
                 "offset": offset,
             }
@@ -307,7 +344,7 @@ class BiddingoCrawler(BaseCrawler):
             self._diag.rows_skipped_duplicate += 1
             return None
 
-        if posted_date and posted_date.year < 2024:
+        if posted_date and posted_date.year < 2025:
             self._diag.rows_skipped_duplicate += 1
             return None
 

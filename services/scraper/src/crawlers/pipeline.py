@@ -563,10 +563,12 @@ class CrawlPipeline:
                         last_run_status = :status,
                         health_status = (
                             SELECT CASE
+                                WHEN :current_status = 'completed' AND :found > 0 THEN 'healthy'::"SourceHealthStatus"
+                                WHEN :current_status = 'completed' AND :found = 0 THEN 'degraded'::"SourceHealthStatus"
+                                WHEN :current_status = 'failed' AND fails::float / GREATEST(cnt, 1) > 0.8 THEN 'failing'::"SourceHealthStatus"
+                                WHEN :current_status = 'failed' AND fails::float / GREATEST(cnt, 1) > 0.3 THEN 'degraded'::"SourceHealthStatus"
                                 WHEN cnt = 0 THEN 'untested'::"SourceHealthStatus"
-                                WHEN fails::float / cnt > 0.8 THEN 'failing'::"SourceHealthStatus"
-                                WHEN fails::float / cnt > 0.3 THEN 'degraded'::"SourceHealthStatus"
-                                WHEN :status = 'completed' THEN 'healthy'::"SourceHealthStatus"
+                                WHEN :current_status = 'completed' THEN 'healthy'::"SourceHealthStatus"
                                 ELSE 'degraded'::"SourceHealthStatus"
                             END
                             FROM (
@@ -582,6 +584,8 @@ class CrawlPipeline:
                 {
                     "now": datetime.now(timezone.utc),
                     "status": status.value,
+                    "current_status": status.value,
+                    "found": self._result.opportunities_found,
                     "source_id": self._source_config.id,
                 },
             )
