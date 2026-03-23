@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   Calendar,
@@ -27,24 +29,15 @@ import {
   ArrowRight,
   XCircle,
   Radio,
-  CheckCircle2,
   Sparkles,
-  AlertTriangle,
-  ChevronDown,
-  Shield,
-  Package,
-  ListChecks,
   MessageSquare,
   LayoutDashboard,
-  Zap,
   Upload,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   formatDate,
@@ -52,8 +45,6 @@ import {
   getRelevanceColor,
   getBucketLabel,
   getBucketColor,
-  getWorkflowLabel,
-  getWorkflowColor,
 } from "@/lib/utils";
 import type { OpportunityDetail, QingyanSyncInfo, WorkflowStatus } from "@/types";
 import { QingyanPushButton } from "@/components/qingyan/qingyan-push-button";
@@ -76,7 +67,7 @@ const WORKFLOW_ACTIONS: { value: WorkflowStatus; label: string; icon: typeof Fla
   { value: "not_relevant", label: "不相关", icon: XCircle, shortLabel: "不相关" },
 ];
 
-type TabId = "summary" | "analysis" | "documents" | "evidence" | "notes";
+type TabId = "summary" | "analysis" | "documents" | "notes";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -96,18 +87,20 @@ export default function OpportunityDetailPage() {
   const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
 
   const [intel, setIntel] = useState<any>(null);
-  const [intelLoading, setIntelLoading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [intelError, setIntelError] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("summary");
   const [qingyanSync, setQingyanSync] = useState<QingyanSyncInfo | null>(null);
   const [retryingQingyan, setRetryingQingyan] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Upload & analysis state
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null);
+
+  // Mini summary state
+  const [miniSummary, setMiniSummary] = useState<string | null>(null);
+  const [miniLoading, setMiniLoading] = useState(false);
 
   const fetchDetail = useCallback(() => {
     setLoading(true);
@@ -120,19 +113,19 @@ export default function OpportunityDetailPage() {
       .then((data: OpportunityDetail) => {
         setOpp(data);
         setError(null);
+        if (data.businessFitExplanation) {
+          setMiniSummary(data.businessFitExplanation);
+        }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
 
   const fetchIntelligence = useCallback(() => {
-    setIntelLoading(true);
-    setIntelError(false);
     fetch(`/api/intelligence/${id}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setIntel(data))
-      .catch(() => setIntelError(true))
-      .finally(() => setIntelLoading(false));
+      .catch(() => {});
   }, [id]);
 
   useEffect(() => {
@@ -140,37 +133,23 @@ export default function OpportunityDetailPage() {
     fetchIntelligence();
   }, [fetchDetail, fetchIntelligence]);
 
-  async function handleAnalyze(mode: "quick" | "deep" = "quick") {
-    setAnalyzing(true);
-    setAnalysisError(null);
-    setAnalysisPhase("Extracting documents...");
+  async function handleGenerateMiniSummary() {
+    setMiniLoading(true);
     try {
-      setTimeout(() => setAnalysisPhase("Analyzing with AI..."), 3000);
-      const res = await fetch("/api/intelligence/analyze", {
+      const res = await fetch("/api/intelligence/mini-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ opportunityId: id, mode }),
+        body: JSON.stringify({ opportunityId: id }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Analysis failed" }));
-        throw new Error(err.detail || err.error || "Analysis failed");
+      if (!res.ok) throw new Error("生成失败");
+      const data = await res.json();
+      if (data.summary) {
+        setMiniSummary(data.summary);
       }
-      const result = await res.json().catch(() => ({}));
-      if (result.status === "failed") {
-        throw new Error(result.message || "Analysis failed — model or API error");
-      }
-      if (result.status === "budget_exceeded") {
-        throw new Error(result.message || "AI budget limit reached. Try again later or contact admin.");
-      }
-      setAnalysisPhase("Loading results...");
-      await new Promise((r) => setTimeout(r, 800));
-      fetchIntelligence();
-      setActiveTab("analysis");
-    } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : "Analysis failed");
+    } catch {
+      // silently fail
     } finally {
-      setAnalyzing(false);
-      setAnalysisPhase(null);
+      setMiniLoading(false);
     }
   }
 
@@ -196,15 +175,13 @@ export default function OpportunityDetailPage() {
         throw new Error(err.detail || err.error || "上传分析失败");
       }
       const result = await res.json();
-      if (result.status === "error") {
-        throw new Error(result.message || "分析失败");
-      }
-      if (result.status === "budget_exceeded") {
-        throw new Error(result.message || "AI预算已用完");
-      }
+      if (result.status === "error") throw new Error(result.message || "分析失败");
+      if (result.status === "budget_exceeded") throw new Error(result.message || "AI预算已用完");
+
       setAnalysisPhase("加载结果...");
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 500));
       fetchIntelligence();
+      fetchDetail();
       setActiveTab("analysis");
       setUploadFiles([]);
     } catch (err) {
@@ -226,7 +203,7 @@ export default function OpportunityDetailPage() {
       if (!res.ok) throw new Error("Failed to update");
       fetchDetail();
     } catch {
-      setActionError("Failed to update workflow status.");
+      setActionError("操作失败，请重试。");
       setTimeout(() => setActionError(null), 5000);
     } finally {
       setUpdatingWorkflow(false);
@@ -246,12 +223,24 @@ export default function OpportunityDetailPage() {
       setNewNote("");
       fetchDetail();
     } catch {
-      setActionError("Failed to save note. Please try again.");
+      setActionError("备注保存失败，请重试。");
       setTimeout(() => setActionError(null), 5000);
     } finally {
       setSubmittingNote(false);
     }
   }
+
+  // Extract Markdown report from intelligence data
+  const reportMarkdown: string | null = (() => {
+    if (!intel?.intelligence) return null;
+    const summary = intel.intelligence.intelligenceSummary || intel.intelligence.intelligence_summary;
+    if (!summary) return null;
+    const parsed = typeof summary === "string" ? (() => { try { return JSON.parse(summary); } catch { return null; } })() : summary;
+    if (parsed?.report_markdown) return parsed.report_markdown;
+    return null;
+  })();
+
+  const hasReport = !!reportMarkdown;
 
   const backLink = (
     <Link href="/dashboard/opportunities" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -287,7 +276,7 @@ export default function OpportunityDetailPage() {
     );
   }
 
-  if (error) {
+  if (error || !opp) {
     return (
       <div className="space-y-4">
         {backLink}
@@ -296,38 +285,12 @@ export default function OpportunityDetailPage() {
     );
   }
 
-  if (!opp) return null;
-
-
-  const rpt: any = intel?.intelligence?.intelligenceSummary || intel?.intelligence?.intelligence_summary || {};
-  const isV2 = rpt.report_version === "2.0";
-  const verdict = rpt.verdict || {};
-  const scores = rpt.feasibility_scores || {};
-  const compliance = rpt.compliance_risks || {};
-  const overallScore: number | undefined = isV2 ? scores.overall_score : intel?.intelligence?.feasibilityScore;
-  const recommendation: string | undefined = isV2 ? verdict.recommendation : intel?.intelligence?.recommendationStatus;
-  const confidence: string | undefined = verdict.confidence;
-  const isFallback: boolean = (intel?.intelligence?.analysisModel || rpt.analysis_model) === "fallback_rule_based" || rpt.fallback_used === true;
-  const hasIntel = !!intel?.intelligence;
-
-  const fatalBlockers = (compliance.red_flags || []).filter(
-  
-    (rf: any) => rf.severity === "fatal_blocker"
-  );
-
-  const recColors: Record<string, string> = {
-    strongly_pursue: "bg-emerald-600 text-white",
-    pursue: "bg-emerald-600 text-white",
-    review_carefully: "bg-amber-500 text-white",
-    low_probability: "bg-orange-500 text-white",
-    skip: "bg-red-600 text-white",
-  };
+  const docs = intel?.documents?.length ? intel.documents : opp.documents;
 
   const tabs: { id: TabId; label: string; icon: typeof LayoutDashboard; count?: number }[] = [
     { id: "summary", label: "摘要", icon: LayoutDashboard },
     { id: "analysis", label: "分析", icon: Sparkles },
-    { id: "documents", label: "文件", icon: FileText, count: intel?.documents?.length || opp.documents.length },
-    { id: "evidence", label: "证据", icon: ListChecks },
+    { id: "documents", label: "文件", icon: FileText, count: docs?.length || 0 },
     { id: "notes", label: "备注", icon: MessageSquare, count: opp.notes.length },
   ];
 
@@ -335,85 +298,43 @@ export default function OpportunityDetailPage() {
     <div className="space-y-3">
       {backLink}
 
-      {/* ════════════════════ DECISION BAR — sticky ════════════════════ */}
+      {/* ══════ HEADER BAR ══════ */}
       <div className="sticky top-0 z-30 -mx-1 px-1">
-        <div className={`rounded-xl border p-4 shadow-sm backdrop-blur-sm ${
-          hasIntel && !isFallback
-            ? "bg-slate-900/95 border-slate-700 text-white"
-            : "bg-card/95 border-border text-foreground"
-        }`}>
+        <div className="rounded-xl border bg-card/95 border-border text-foreground p-4 shadow-sm backdrop-blur-sm">
           <div className="flex items-center gap-4 flex-wrap">
-            {/* Circular Score Gauge */}
-            {overallScore != null && (
-              <div className="relative h-14 w-14 shrink-0">
-                <svg className="h-14 w-14 -rotate-90" viewBox="0 0 56 56">
-                  <circle cx="28" cy="28" r="24" fill="none" strokeWidth="4"
-                    className={hasIntel && !isFallback ? "stroke-slate-700" : "stroke-muted"} />
-                  <circle cx="28" cy="28" r="24" fill="none" strokeWidth="4" strokeLinecap="round"
-                    className={
-                      overallScore >= 65 ? "stroke-emerald-500" : overallScore >= 40 ? "stroke-amber-500" : "stroke-red-500"
-                    }
-                    strokeDasharray={`${(overallScore / 100) * 150.8} 150.8`} />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-base font-bold">{overallScore}</span>
-                </div>
+            {/* Relevance Score */}
+            <div className="relative h-14 w-14 shrink-0">
+              <svg className="h-14 w-14 -rotate-90" viewBox="0 0 56 56">
+                <circle cx="28" cy="28" r="24" fill="none" strokeWidth="4" className="stroke-muted" />
+                <circle cx="28" cy="28" r="24" fill="none" strokeWidth="4" strokeLinecap="round"
+                  className={
+                    opp.relevanceScore >= 80 ? "stroke-emerald-500" : opp.relevanceScore >= 50 ? "stroke-amber-500" : "stroke-red-500"
+                  }
+                  strokeDasharray={`${(opp.relevanceScore / 100) * 150.8} 150.8`} />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-base font-bold">{opp.relevanceScore}</span>
               </div>
-            )}
+            </div>
 
-            {/* Title + Verdict */}
+            {/* Title */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-sm font-bold truncate max-w-[400px]">{opp.title}</h1>
+                <h1 className="text-sm font-bold truncate max-w-[500px]">{opp.title}</h1>
                 <Badge variant={statusVariant[opp.status] ?? "outline"} className="text-[10px] shrink-0">
-                  {opp.status.toUpperCase()}
+                  {opp.status === "open" ? "开放" : opp.status === "closed" ? "已关闭" : opp.status.toUpperCase()}
                 </Badge>
-                {recommendation && (
-                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wide shrink-0 ${recColors[recommendation] || "bg-gray-600 text-white"}`}>
-                    {recommendation.replace(/_/g, " ").toUpperCase()}
-                  </span>
-                )}
-                {confidence && (
-                  <span className={`text-[10px] font-medium shrink-0 ${
-                    hasIntel && !isFallback
-                      ? confidence === "high" ? "text-emerald-300" : confidence === "medium" ? "text-blue-300" : "text-amber-300"
-                      : confidence === "high" ? "text-emerald-700" : confidence === "medium" ? "text-blue-700" : "text-amber-700"
-                  }`}>
-                    {confidence.replace(/_/g, " ")} 置信度
+                {hasReport && (
+                  <span className="rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                    已分析
                   </span>
                 )}
               </div>
-              {verdict.one_line && (
-                <p className={`text-xs mt-0.5 truncate ${hasIntel && !isFallback ? "text-white/70" : "text-muted-foreground"}`}>
-                  {verdict.one_line}
-                </p>
-              )}
-
-              {/* Feasibility sub-scores inline */}
-              {isV2 && !isFallback && (scores.technical_feasibility != null || scores.compliance_feasibility != null || scores.commercial_feasibility != null) && (
-                <div className="flex items-center gap-4 mt-2">
-                  {[
-                    { label: "Tech", val: scores.technical_feasibility },
-                    { label: "Compliance", val: scores.compliance_feasibility },
-                    { label: "Commercial", val: scores.commercial_feasibility },
-                  ].map((s) => (
-                    <div key={s.label} className="flex items-center gap-1.5">
-                      <span className={`text-[10px] ${hasIntel && !isFallback ? "text-slate-400" : "text-muted-foreground"}`}>{s.label}</span>
-                      <div className={`w-12 h-1.5 rounded-full overflow-hidden ${hasIntel && !isFallback ? "bg-slate-700" : "bg-muted"}`}>
-                        <div
-                          className={`h-full rounded-full ${
-                            (s.val ?? 0) >= 65 ? "bg-emerald-500" : (s.val ?? 0) >= 40 ? "bg-amber-500" : "bg-red-500"
-                          }`}
-                          style={{ width: `${Math.min(s.val ?? 0, 100)}%` }}
-                        />
-                      </div>
-                      <span className={`text-[10px] font-bold ${
-                        (s.val ?? 0) >= 65 ? "text-emerald-500" : (s.val ?? 0) >= 40 ? "text-amber-500" : "text-red-500"
-                      }`}>{s.val ?? "—"}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {opp.organization && `${opp.organization} · `}
+                {[opp.city, opp.region].filter(Boolean).join(", ")}
+                {opp.closingDate && ` · 截止 ${formatDate(opp.closingDate)}`}
+              </p>
             </div>
 
             {/* Workflow actions */}
@@ -427,12 +348,8 @@ export default function OpportunityDetailPage() {
                     disabled={updatingWorkflow || isActive}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium transition-all disabled:opacity-50 ${
                       isActive
-                        ? hasIntel && !isFallback
-                          ? "bg-white/15 ring-1 ring-white/30 text-white"
-                          : "bg-primary/10 ring-1 ring-primary/30 text-primary"
-                        : hasIntel && !isFallback
-                          ? "border border-slate-600 text-slate-300 hover:bg-slate-700"
-                          : "border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        ? "bg-primary/10 ring-1 ring-primary/30 text-primary"
+                        : "border text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
                     <action.icon className="h-3 w-3" />
@@ -441,12 +358,12 @@ export default function OpportunityDetailPage() {
                 );
               })}
 
-              <div className={`ml-1 pl-1.5 ${hasIntel && !isFallback ? "border-l border-slate-600" : "border-l"}`}>
+              <div className="ml-1 pl-1.5 border-l">
                 <QingyanPushButton
                   opportunity={opp}
-                  recommendation={recommendation}
-                  feasibilityScore={overallScore}
-                  darkMode={hasIntel && !isFallback}
+                  recommendation={undefined}
+                  feasibilityScore={opp.relevanceScore}
+                  darkMode={false}
                   onSyncUpdate={(sync) => setQingyanSync(sync)}
                 />
               </div>
@@ -455,51 +372,11 @@ export default function OpportunityDetailPage() {
         </div>
       </div>
 
-      {/* Fatal blockers — persistent red banners */}
-      {fatalBlockers.length > 0 && (
-        <div className="space-y-2">
-
-          {fatalBlockers.map((rf: any, i: number) => (
-            <div key={i} className="flex items-start gap-3 rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3">
-              <Shield className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-              <div>
-                <span className="text-xs font-bold text-red-800 uppercase tracking-wide">致命阻断</span>
-                <p className="text-sm font-medium text-red-800">{rf.requirement}</p>
-                {rf.explanation && <p className="text-xs text-red-600 mt-0.5">{rf.explanation}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Analysis Level Indicator ── */}
-      <AnalysisLevelBanner
-        hasIntel={hasIntel}
-        isFallback={isFallback}
-        analysisMode={intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode}
-        analysisModel={intel?.intelligence?.analysisModel || rpt.analysis_model}
-        analyzing={analyzing}
-        analysisPhase={analysisPhase}
-        docCount={(intel?.documents?.length || 0) || opp.documents.length}
-        onQuickAnalyze={() => handleAnalyze("quick")}
-        onDeepAnalyze={() => handleAnalyze("deep")}
-      />
-
-      {analysisError && (
-        <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${
-          analysisError.includes("budget") || analysisError.includes("Budget")
-            ? "border border-amber-300 bg-amber-50 text-amber-800"
-            : "border border-destructive/30 bg-destructive/10 text-destructive"
-        }`}>
-          {(analysisError.includes("budget") || analysisError.includes("Budget")) && <DollarSign className="h-3.5 w-3.5 shrink-0" />}
-          {analysisError}
-        </div>
-      )}
       {actionError && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{actionError}</div>
       )}
 
-      {/* ════════════════════ TABS ════════════════════ */}
+      {/* ══════ TABS ══════ */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)}>
         <TabsList className="w-full justify-start h-10 bg-muted/50 rounded-lg p-1">
           {tabs.map((tab) => (
@@ -513,113 +390,112 @@ export default function OpportunityDetailPage() {
           ))}
         </TabsList>
 
-      {/* ════════════════════ TAB CONTENT ════════════════════ */}
-      <div className="grid gap-4 lg:grid-cols-3 mt-4">
-        <div className="lg:col-span-2 space-y-4">
-          {/* ── SUMMARY TAB ── */}
-          {activeTab === "summary" && (
-            <>
-              {/* Metadata grid */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold">机会详情</CardTitle>
-                    <a href={opp.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                      <ExternalLink className="h-3 w-3" /> 查看原文
-                    </a>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                    <MetaRow icon={Building2} label="机构" value={opp.organization} />
-                    <MetaRow icon={MapPin} label="地点" value={[opp.city, opp.region, opp.country].filter(Boolean).join(", ")} />
-                    <MetaRow icon={Hash} label="招标编号" value={opp.solicitationNumber} />
-                    <MetaRow icon={DollarSign} label="预估价值" value={formatCurrency(opp.estimatedValue, opp.currency)} />
-                    <MetaRow icon={Calendar} label="发布日期" value={formatDate(opp.postedDate)} />
-                    <MetaRow icon={Clock} label="截止日期" value={formatDate(opp.closingDate, "MMM d, yyyy h:mm a")} />
-                    <MetaRow icon={Tag} label="类别" value={opp.category} />
-                    <MetaRow icon={Globe} label="来源" value={opp.sourceName} />
-                    {opp.naicsName && <MetaRow icon={Tag} label="NAICS" value={opp.naicsName} />}
-                    {opp.setAside && <MetaRow icon={Tag} label="预留" value={opp.setAside} />}
-                    {opp.placeOfPerformance && <MetaRow icon={MapPin} label="履行地点" value={opp.placeOfPerformance} />}
-                    {opp.mandatorySiteVisit && <MetaRow icon={MapPin} label="现场考察" value={opp.mandatorySiteVisit} />}
-                  </div>
-                </CardContent>
-              </Card>
+        <div className="grid gap-4 lg:grid-cols-3 mt-4">
+          <div className="lg:col-span-2 space-y-4">
 
-              {/* Description */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">描述</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none text-foreground">
-                    {(() => {
-                      const desc = opp.descriptionFull || opp.descriptionSummary || "";
-                      if (!desc || desc.startsWith("http://") || desc.startsWith("https://")) {
-                        return <p className="text-xs text-muted-foreground italic">暂无描述 — 请查看原始招标文件。</p>;
-                      }
-                      return desc.split("\n").map((line, i) => (
-                        <p key={i} className={line.startsWith("-") ? "ml-4" : ""}>
-                          {line || <br />}
-                        </p>
-                      ));
-                    })()}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {/* ── ANALYSIS TAB ── */}
-          {activeTab === "analysis" && (
-            <>
-              {hasIntel ? (
-                <IntelligencePanel
-                  data={intel.intelligence}
-                  onReanalyze={() => handleAnalyze("quick")}
-                  onDeepAnalyze={() => handleAnalyze("deep")}
-                  reanalyzing={analyzing}
-                />
-              ) : (
+            {/* ══════ SUMMARY TAB ══════ */}
+            {activeTab === "summary" && (
+              <>
+                {/* AI 初步评估 */}
                 <Card>
-                  <CardContent className="p-8 text-center">
-                    <Sparkles className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-sm font-medium">暂无分析</p>
-                    <p className="text-xs text-muted-foreground mt-1 mb-4">运行 AI 分析以获取完整招标情报报告</p>
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => handleAnalyze("quick")}
-                        disabled={analyzing}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                        快速分析
-                      </button>
-                      <button
-                        onClick={() => handleAnalyze("deep")}
-                        disabled={analyzing}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        深度分析
-                      </button>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-blue-500" />
+                        AI 初步评估
+                      </CardTitle>
+                      {!miniSummary && (
+                        <button
+                          onClick={handleGenerateMiniSummary}
+                          disabled={miniLoading}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1 text-[10px] font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                          {miniLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                          生成评估
+                        </button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {miniSummary ? (
+                      <p className="text-sm leading-relaxed">{miniSummary}</p>
+                    ) : miniLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        正在生成 AI 初步评估...
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        点击&ldquo;生成评估&rdquo;按钮，AI 将根据招标描述给出 2-3 句话的初步匹配评估。
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Metadata */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-semibold">机会详情</CardTitle>
+                      <a href={opp.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                        <ExternalLink className="h-3 w-3" /> 查看原文
+                      </a>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      <MetaRow icon={Building2} label="机构" value={opp.organization} />
+                      <MetaRow icon={MapPin} label="地点" value={[opp.city, opp.region, opp.country].filter(Boolean).join(", ")} />
+                      <MetaRow icon={Hash} label="招标编号" value={opp.solicitationNumber} />
+                      <MetaRow icon={DollarSign} label="预估价值" value={formatCurrency(opp.estimatedValue, opp.currency)} />
+                      <MetaRow icon={Calendar} label="发布日期" value={formatDate(opp.postedDate)} />
+                      <MetaRow icon={Clock} label="截止日期" value={formatDate(opp.closingDate, "MMM d, yyyy h:mm a")} />
+                      <MetaRow icon={Tag} label="类别" value={opp.category} />
+                      <MetaRow icon={Globe} label="来源" value={opp.sourceName} />
                     </div>
                   </CardContent>
                 </Card>
-              )}
-              {/* Upload RFP Documents for Analysis */}
-              <Card className="mt-4">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Upload className="h-4 w-4" />
-                    上传 RFP 文档分析
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-xs text-muted-foreground">上传招标文件（PDF/DOCX），AI 将进行深度分析并生成中文投标策略报告</p>
-                  <div className="flex items-center gap-2">
-                    <label className="flex-1 cursor-pointer">
+
+                {/* Description */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold">描述</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none text-foreground">
+                      {(() => {
+                        const desc = opp.descriptionFull || opp.descriptionSummary || "";
+                        if (!desc || desc.startsWith("http://") || desc.startsWith("https://")) {
+                          return <p className="text-xs text-muted-foreground italic">暂无描述 — 请查看原始招标文件。</p>;
+                        }
+                        return desc.split("\n").map((line, i) => (
+                          <p key={i} className={line.startsWith("-") ? "ml-4" : ""}>
+                            {line || <br />}
+                          </p>
+                        ));
+                      })()}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
+            {/* ══════ ANALYSIS TAB ══════ */}
+            {activeTab === "analysis" && (
+              <>
+                {/* Upload Zone */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      上传招标文档进行 AI 深度分析
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      上传招标文件（最多 10 个 PDF/DOCX），AI 将使用 GPT-4o 进行全面分析并生成中文投标策略报告。
+                    </p>
+                    <label className="block cursor-pointer">
                       <input
                         type="file"
                         multiple
@@ -627,363 +503,256 @@ export default function OpportunityDetailPage() {
                         className="hidden"
                         onChange={(e) => {
                           const files = Array.from(e.target.files || []);
-                          setUploadFiles(files.slice(0, 5));
+                          setUploadFiles(files.slice(0, 10));
                           setUploadError(null);
                         }}
                       />
-                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center hover:border-blue-400 transition-colors">
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
                         {uploadFiles.length > 0 ? (
                           <div className="space-y-1">
                             {uploadFiles.map((f, i) => (
-                              <p key={i} className="text-xs text-foreground">{f.name} ({(f.size / 1024).toFixed(0)} KB)</p>
+                              <p key={i} className="text-xs text-foreground">
+                                📄 {f.name} ({(f.size / 1024).toFixed(0)} KB)
+                              </p>
                             ))}
+                            <p className="text-[10px] text-muted-foreground mt-2">
+                              共 {uploadFiles.length} 个文件，点击可重新选择
+                            </p>
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground">点击选择文件（最多5个，支持 PDF/DOCX/TXT/XLSX）</p>
+                          <div>
+                            <Upload className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                            <p className="text-xs text-muted-foreground">
+                              点击选择或拖拽文件（最多 10 个，支持 PDF/DOCX/TXT/XLSX）
+                            </p>
+                          </div>
                         )}
                       </div>
                     </label>
-                  </div>
-                  {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleUploadAnalyze}
-                      disabled={uploading || uploadFiles.length === 0}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                    >
-                      {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      {uploading ? "分析中..." : "上传并分析"}
-                    </button>
-                    {uploadFiles.length > 0 && !uploading && (
-                      <button
-                        onClick={() => { setUploadFiles([]); setUploadError(null); }}
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        清除文件
-                      </button>
+                    {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+                    {analysisPhase && (
+                      <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                          <p className="text-xs font-medium text-blue-800">{analysisPhase}</p>
+                        </div>
+                        <div className="mt-2 h-1 bg-blue-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: "60%" }} />
+                        </div>
+                      </div>
                     )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleUploadAnalyze}
+                        disabled={uploading || uploadFiles.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                      >
+                        {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        {uploading ? "分析中..." : "上传并分析"}
+                      </button>
+                      {uploadFiles.length > 0 && !uploading && (
+                        <button
+                          onClick={() => { setUploadFiles([]); setUploadError(null); }}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          清除文件
+                        </button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Markdown Report */}
+                {hasReport ? (
+                  <Card>
+                    <CardHeader className="pb-2 border-b bg-slate-50">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-blue-600" />
+                          AI 深度分析报告
+                        </CardTitle>
+                        <span className="text-[10px] text-muted-foreground">
+                          {intel?.intelligence?.analyzedAt && `分析于 ${formatDate(intel.intelligence.analyzedAt)}`}
+                          {" · GPT-4o · BidToGo AI"}
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-4">
+                      <article className="prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-blockquote:text-muted-foreground prose-blockquote:border-l-blue-400">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {reportMarkdown}
+                        </ReactMarkdown>
+                      </article>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <Sparkles className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+                      <p className="text-sm font-medium">暂无分析报告</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        上传招标文档后，AI 将生成完整的投标策略分析报告。
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {/* ══════ DOCUMENTS TAB ══════ */}
+            {activeTab === "documents" && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">
+                    文件 ({docs?.length || 0})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(!docs || docs.length === 0) ? (
+                    <div className="text-center py-6">
+                      <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">此机会无附件文件。</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {docs.map((doc: any) => {
+                        const ft = (doc.fileType || doc.file_type || "").toLowerCase();
+                        const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "link" ? "text-violet-500" : "text-muted-foreground";
+                        const extracted = doc.textExtracted || doc.text_extracted;
+
+                        return (
+                          <div key={doc.id} className="flex items-center gap-2.5 rounded-md border px-3 py-2 hover:bg-muted/30 transition-colors">
+                            <FileText className={`h-4 w-4 shrink-0 ${typeColor}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{doc.title || "未命名"}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {ft.toUpperCase() || "文件"}
+                                {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {extracted ? (
+                                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">已提取</span>
+                              ) : (
+                                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">待处理</span>
+                              )}
+                              {doc.url && (
+                                <a href={doc.url} target="_blank" rel="noopener noreferrer">
+                                  <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ══════ NOTES TAB ══════ */}
+            {activeTab === "notes" && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">备注</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {opp.notes.length === 0 && (
+                    <p className="text-sm text-muted-foreground">暂无备注。</p>
+                  )}
+                  {opp.notes.map((note) => (
+                    <div key={note.id} className="rounded-md border p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">{note.userName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(note.createdAt, "MMM d, yyyy h:mm a")}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.content}</p>
+                    </div>
+                  ))}
+                  <div className="space-y-2 pt-2 border-t">
+                    <textarea
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      placeholder="添加备注…"
+                      rows={3}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                    />
+                    <Button size="sm" onClick={handleAddNote} disabled={!newNote.trim() || submittingNote}>
+                      {submittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                      添加备注
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            </>
-          )}
+            )}
+          </div>
 
-          {/* ── DOCUMENTS TAB ── */}
-          {activeTab === "documents" && (
-            <DocumentsPanel
-              intel={intel}
-              opp={opp}
-            />
-          )}
+          {/* ══════ SIDEBAR ══════ */}
+          <div className="space-y-4">
+            {/* Contact */}
+            {(opp.contactName || opp.contactEmail || opp.contactPhone) && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">联系方式</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <MetaRow icon={User} label="姓名" value={opp.contactName} />
+                  <MetaRow icon={Mail} label="邮箱" value={opp.contactEmail} />
+                  <MetaRow icon={Phone} label="电话" value={opp.contactPhone} />
+                </CardContent>
+              </Card>
+            )}
 
-          {/* ── EVIDENCE TAB ── */}
-          {activeTab === "evidence" && (
-            <EvidencePanel rpt={rpt} isV2={isV2} />
-          )}
+            {/* Qingyan Integration */}
+            {(qingyanSync || opp.qingyanSync) && (
+              <QingyanSyncCard
+                syncInfo={qingyanSync || opp.qingyanSync!}
+                retrying={retryingQingyan}
+                onRetry={async () => {
+                  const sync = qingyanSync || opp.qingyanSync;
+                  if (!sync) return;
+                  setRetryingQingyan(true);
+                  try {
+                    const res = await fetch(`/api/qingyan/retry/${sync.id}`, { method: "POST" });
+                    const data = await res.json();
+                    if (data.status === "synced") {
+                      setQingyanSync({ ...sync, ...data, syncStatus: "synced" });
+                    }
+                  } catch { /* retry silently */ }
+                  finally { setRetryingQingyan(false); }
+                }}
+              />
+            )}
 
-          {/* ── NOTES TAB ── */}
-          {activeTab === "notes" && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">备注</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {opp.notes.length === 0 && (
-                  <p className="text-sm text-muted-foreground">暂无备注。</p>
-                )}
-                {opp.notes.map((note) => (
-                  <div key={note.id} className="rounded-md border p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">{note.userName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(note.createdAt, "MMM d, yyyy h:mm a")}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.content}</p>
+            {/* Matching Info */}
+            <MatchingPanel opp={opp} />
+
+            {/* Industry Tags */}
+            {opp.industryTags.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold">行业标签</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-1.5">
+                    {opp.industryTags.map((tag) => (
+                      <Badge key={tag} variant="default" className="text-xs">{tag}</Badge>
+                    ))}
                   </div>
-                ))}
-                <div className="space-y-2 pt-2 border-t">
-                  <textarea
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="添加备注…"
-                    rows={3}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                  />
-                  <Button size="sm" onClick={handleAddNote} disabled={!newNote.trim() || submittingNote}>
-                    {submittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                    添加备注
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
-
-        {/* ════════════════════ SIDEBAR ════════════════════ */}
-        <div className="space-y-4">
-          {/* Contact */}
-          {(opp.contactName || opp.contactEmail || opp.contactPhone || opp.officeAddress) && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">联系方式</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <MetaRow icon={User} label="姓名" value={opp.contactName} />
-                <MetaRow icon={Mail} label="邮箱" value={opp.contactEmail} />
-                <MetaRow icon={Phone} label="电话" value={opp.contactPhone} />
-                {opp.officeAddress && <MetaRow icon={MapPin} label="办公地址" value={opp.officeAddress} />}
-                {opp.department && <MetaRow icon={Building2} label="部门" value={opp.department} />}
-                {opp.office && <MetaRow icon={Building2} label="办公室" value={opp.office} />}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Qingyan Integration */}
-          {(qingyanSync || opp.qingyanSync) && (
-            <QingyanSyncCard
-              syncInfo={qingyanSync || opp.qingyanSync!}
-              retrying={retryingQingyan}
-              onRetry={async () => {
-                const sync = qingyanSync || opp.qingyanSync;
-                if (!sync) return;
-                setRetryingQingyan(true);
-                try {
-                  const res = await fetch(`/api/qingyan/retry/${sync.id}`, { method: "POST" });
-                  const data = await res.json();
-                  if (data.status === "synced") {
-                    setQingyanSync({ ...sync, ...data, syncStatus: "synced" });
-                  }
-                } catch { /* retry silently */ }
-                finally { setRetryingQingyan(false); }
-              }}
-            />
-          )}
-
-          {/* Why this matched */}
-          <MatchingPanel opp={opp} />
-
-          {/* Industry Tags */}
-          {opp.industryTags.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">行业标签</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1.5">
-                  {opp.industryTags.map((tag) => (
-                    <Badge key={tag} variant="default" className="text-xs">{tag}</Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Re-analyze controls */}
-          {hasIntel && !isFallback && (
-            <Card>
-              <CardContent className="p-4 space-y-2">
-                <p className="text-xs font-semibold">升级 / 重新分析</p>
-                {(intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode) !== "deep" && (
-                  <button
-                    onClick={() => handleAnalyze("deep")}
-                    disabled={analyzing}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 w-full justify-center"
-                  >
-                    {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                    升级为深度分析
-                  </button>
-                )}
-                <button
-                  onClick={() => handleAnalyze((intel?.intelligence?.analysisMode || intel?.intelligence?.analysis_mode) === "deep" ? "deep" : "quick")}
-                  disabled={analyzing}
-                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors disabled:opacity-50 w-full justify-center"
-                >
-                  {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-                  重新分析 (消耗 AI 额度)
-                </button>
-                <p className="text-[10px] text-muted-foreground">
-                  分析于 {formatDate(intel?.intelligence?.analyzedAt || intel?.intelligence?.analyzed_at)} · {intel?.intelligence?.analysisModel || rpt.analysis_model}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
       </Tabs>
     </div>
   );
 }
 
-/* ════════════════════════════════════════════════════════════
- * AnalysisLevelBanner — shows free vs paid analysis state
- * ════════════════════════════════════════════════════════════ */
-function AnalysisLevelBanner({
-  hasIntel,
-  isFallback,
-  analysisMode,
-  analysisModel,
-  analyzing,
-  analysisPhase,
-  docCount,
-  onQuickAnalyze,
-  onDeepAnalyze,
-}: {
-  hasIntel: boolean;
-  isFallback: boolean;
-  analysisMode?: string;
-  analysisModel?: string;
-  analyzing: boolean;
-  analysisPhase?: string | null;
-  docCount?: number;
-  onQuickAnalyze: () => void;
-  onDeepAnalyze: () => void;
-}) {
-  if (analyzing) {
-    return (
-      <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-          <div>
-            <p className="text-xs font-medium text-blue-800">正在运行 AI 分析...</p>
-            {analysisPhase && (
-              <p className="text-[11px] text-blue-600 mt-0.5">{analysisPhase}</p>
-            )}
-          </div>
-        </div>
-        <div className="mt-2 flex items-center gap-4">
-          <div className="flex-1 h-1 bg-blue-200 rounded-full overflow-hidden">
-            <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: "60%" }} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Level 1: No analysis at all
-  if (!hasIntel) {
-    return (
-      <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/10 px-4 py-4 space-y-3">
-        <div className="flex items-center gap-2.5">
-          <Shield className="h-4 w-4 text-emerald-600" />
-          <div>
-            <span className="text-xs font-semibold">免费规则筛选生效中</span>
-            <p className="text-2xs text-muted-foreground">
-              关联度评分、关键词匹配和基础行业匹配 — 零成本。
-            </p>
-          </div>
-        </div>
-          <div className="flex items-center gap-6 border-t border-dashed pt-3">
-          <div className="flex-1 space-y-1">
-            <p className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">升级为 AI 分析</p>
-            <p className="text-2xs text-muted-foreground">
-              AI 将提取并阅读全部 {docCount || 0} 个文件，然后生成包含可行性评分、引用证据和可操作建议的专业标书报告。
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={onQuickAnalyze}
-              className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
-            >
-              <Zap className="h-3.5 w-3.5" />
-              快速分析
-              <span className="text-[9px] opacity-75 ml-0.5">~$0.01</span>
-            </button>
-            <button
-              onClick={onDeepAnalyze}
-              className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              深度分析
-              <span className="text-[9px] opacity-60 ml-0.5">~$0.05</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Level 2: Fallback / rule-based only
-  if (isFallback) {
-    return (
-      <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-amber-800">仅规则估算</span>
-              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 uppercase">Free</span>
-            </div>
-            <p className="text-[11px] text-amber-600">AI 不可用。显示仅关键词评分。运行付费 AI 分析以获取完整报告。</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={onQuickAnalyze}
-            className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition-colors"
-          >
-            <Zap className="h-3 w-3" />
-            Quick ~$0.01
-          </button>
-          <button
-            onClick={onDeepAnalyze}
-            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors"
-          >
-            <Sparkles className="h-3 w-3" />
-            Deep ~$0.05
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Level 3: Quick analysis done
-  const isDeep = analysisMode === "deep";
-  const isQuick = !isDeep;
-
-  if (isQuick) {
-    return (
-      <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-blue-600" />
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-blue-800">快速 AI 分析</span>
-              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{analysisModel || "gpt-4o-mini"}</span>
-            </div>
-            <p className="text-[11px] text-blue-600">基于标题+描述+提取文件。升级为深度分析可获得更深入的文件分析和引用。</p>
-          </div>
-        </div>
-        <button
-          onClick={onDeepAnalyze}
-          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors shrink-0"
-        >
-          <Sparkles className="h-3 w-3" />
-          升级深度 ~$0.05
-        </button>
-      </div>
-    );
-  }
-
-  // Level 4: Deep analysis done
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-2.5">
-      <Sparkles className="h-4 w-4 text-emerald-600" />
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-emerald-800">深度 AI 分析</span>
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">{analysisModel || "gpt-4o"}</span>
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">文件感知</span>
-        </div>
-        <p className="text-[11px] text-emerald-600">包含引用和详细规格的完整文件级分析。</p>
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
- * MetaRow — key/value display
- * ════════════════════════════════════════════════════════════ */
+/* ══════ MetaRow ══════ */
 function MetaRow({
   icon: Icon,
   label,
@@ -1004,15 +773,12 @@ function MetaRow({
   );
 }
 
-/* ════════════════════════════════════════════════════════════
- * MatchingPanel — why this opportunity matched
- * ════════════════════════════════════════════════════════════ */
+/* ══════ MatchingPanel ══════ */
 function MatchingPanel({ opp }: { opp: OpportunityDetail }) {
   const breakdown = opp.relevanceBreakdown ?? {};
   const primaryMatches: string[] = (breakdown.primary_matches as string[]) ?? [];
   const secondaryMatches: string[] = (breakdown.secondary_matches as string[]) ?? [];
   const contextualMatches: string[] = (breakdown.contextual_matches as string[]) ?? [];
-  const semanticMatches: string[] = (breakdown.semantic_matches as string[]) ?? [];
 
   return (
     <Card>
@@ -1021,7 +787,7 @@ function MatchingPanel({ opp }: { opp: OpportunityDetail }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">评分</span>
+          <span className="text-muted-foreground">关联度</span>
           <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${getRelevanceColor(opp.relevanceScore)}`}>
             {opp.relevanceScore} / 100
           </span>
@@ -1033,47 +799,16 @@ function MatchingPanel({ opp }: { opp: OpportunityDetail }) {
           </span>
         </div>
 
-        {opp.businessFitExplanation && (
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-1">业务匹配</p>
-            <p className="text-sm leading-relaxed">{opp.businessFitExplanation}</p>
-          </div>
-        )}
-
-        {breakdown.positive_score != null && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">正面信号</span>
-            <span className="font-medium text-emerald-600">+{String(breakdown.positive_score)}</span>
-          </div>
-        )}
-        {breakdown.negative_penalty != null && Number(breakdown.negative_penalty) > 0 && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">负面惩罚</span>
-            <span className="font-medium text-red-600">−{String(breakdown.negative_penalty)}</span>
-          </div>
-        )}
-
-        {primaryMatches.length > 0 && (
-          <KeywordGroup label="主要匹配" keywords={primaryMatches} color="bg-emerald-50 text-emerald-700" />
-        )}
-        {secondaryMatches.length > 0 && (
-          <KeywordGroup label="次要匹配" keywords={secondaryMatches} color="bg-blue-50 text-blue-700" />
-        )}
-        {contextualMatches.length > 0 && (
-          <KeywordGroup label="上下文匹配" keywords={contextualMatches} color="bg-amber-50 text-amber-700" />
-        )}
-        {semanticMatches.length > 0 && (
-          <KeywordGroup label="语义匹配" keywords={semanticMatches} color="bg-violet-50 text-violet-700" />
-        )}
-        {opp.negativeKeywords.length > 0 && (
-          <KeywordGroup label="负面匹配" keywords={opp.negativeKeywords} color="bg-red-50 text-red-700" />
-        )}
+        {primaryMatches.length > 0 && <KWGroup label="主要匹配" keywords={primaryMatches} color="bg-emerald-50 text-emerald-700" />}
+        {secondaryMatches.length > 0 && <KWGroup label="次要匹配" keywords={secondaryMatches} color="bg-blue-50 text-blue-700" />}
+        {contextualMatches.length > 0 && <KWGroup label="上下文匹配" keywords={contextualMatches} color="bg-amber-50 text-amber-700" />}
+        {opp.negativeKeywords.length > 0 && <KWGroup label="负面匹配" keywords={opp.negativeKeywords} color="bg-red-50 text-red-700" />}
       </CardContent>
     </Card>
   );
 }
 
-function KeywordGroup({ label, keywords, color }: { label: string; keywords: string[]; color: string }) {
+function KWGroup({ label, keywords, color }: { label: string; keywords: string[]; color: string }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -1083,894 +818,5 @@ function KeywordGroup({ label, keywords, color }: { label: string; keywords: str
         ))}
       </div>
     </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
- * EvidencePanel — interactive checklist from report
- * ════════════════════════════════════════════════════════════ */
-
-function EvidencePanel({ rpt, isV2 }: { rpt: any; isV2: boolean }) {
-  const evidence = rpt.required_evidence || {};
-  const beforeBidding: string[] = evidence.before_bidding || [];
-  const withSubmission: string[] = evidence.with_submission || [];
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-
-  function toggle(item: string) {
-    setChecked(prev => {
-      const next = new Set(prev);
-      next.has(item) ? next.delete(item) : next.add(item);
-      return next;
-    });
-  }
-
-  if (!isV2 || (beforeBidding.length === 0 && withSubmission.length === 0)) {
-    return (
-      <Card>
-        <CardContent className="p-8 text-center">
-          <ListChecks className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium">暂无证据清单</p>
-          <p className="text-xs text-muted-foreground mt-1">运行 AI 分析以生成所需证据项</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const totalItems = beforeBidding.length + withSubmission.length;
-  const checkedCount = checked.size;
-  const progress = totalItems > 0 ? Math.round((checkedCount / totalItems) * 100) : 0;
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold">证据清单</CardTitle>
-          <span className="text-xs text-muted-foreground">{checkedCount}/{totalItems} 已完成 · {progress}%</span>
-        </div>
-        <div className="w-full bg-muted rounded-full h-1.5 mt-2">
-          <div
-            className="h-1.5 rounded-full bg-emerald-500 transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {beforeBidding.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">投标前</p>
-            <div className="space-y-1.5">
-              {beforeBidding.map((item, i) => {
-                const key = `before_${i}`;
-                const isChecked = checked.has(key);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => toggle(key)}
-                    className={`flex items-start gap-2.5 w-full text-left rounded-md border px-3 py-2 transition-colors ${
-                      isChecked ? "bg-emerald-50 border-emerald-200" : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      isChecked ? "bg-emerald-600 border-emerald-600" : "border-input"
-                    }`}>
-                      {isChecked && <CheckCircle2 className="h-3 w-3 text-white" />}
-                    </div>
-                    <span className={`text-xs ${isChecked ? "text-emerald-800 line-through" : ""}`}>{item}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        {withSubmission.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">随标书提交</p>
-            <div className="space-y-1.5">
-              {withSubmission.map((item, i) => {
-                const key = `with_${i}`;
-                const isChecked = checked.has(key);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => toggle(key)}
-                    className={`flex items-start gap-2.5 w-full text-left rounded-md border px-3 py-2 transition-colors ${
-                      isChecked ? "bg-emerald-50 border-emerald-200" : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      isChecked ? "bg-emerald-600 border-emerald-600" : "border-input"
-                    }`}>
-                      {isChecked && <CheckCircle2 className="h-3 w-3 text-white" />}
-                    </div>
-                    <span className={`text-xs ${isChecked ? "text-emerald-800 line-through" : ""}`}>{item}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
- * DocumentsPanel — Documents tab with extraction status, preview
- * ════════════════════════════════════════════════════════════ */
-
-function DocumentsPanel({ intel, opp }: { intel: any; opp: OpportunityDetail }) {
-  const [previewDoc, setPreviewDoc] = useState<any>(null);
-  const docs = intel?.documents?.length ? intel.documents : opp.documents;
-  const analysisMetadata = intel?.analysisMetadata?._analysis_metadata || intel?.analysisMetadata || null;
-  const docsUsedIds = new Set(
-    (analysisMetadata?.documents_used || []).map((d: any) => d.id)
-  );
-
-  const extractedCount = docs?.filter((d: any) => d.textExtracted || d.text_extracted).length || 0;
-  const totalCount = docs?.length || 0;
-
-  return (
-    <>
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">
-              文件 ({totalCount})
-            </CardTitle>
-            {totalCount > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground">
-                  {extractedCount}/{totalCount} 已提取
-                </span>
-                <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-all"
-                    style={{ width: `${totalCount > 0 ? (extractedCount / totalCount) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {(!docs || docs.length === 0) ? (
-            <div className="text-center py-6">
-              <FileText className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">此机会无附件文件。</p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {docs.map((doc: any) => {
-                const ft = (doc.fileType || "").toLowerCase();
-                const typeColor = ft === "pdf" ? "text-red-500" : ft === "doc" || ft === "docx" ? "text-blue-500" : ft === "xls" || ft === "xlsx" ? "text-green-600" : ft === "link" ? "text-violet-500" : "text-muted-foreground";
-                const extracted = doc.textExtracted || doc.text_extracted;
-                const hasPreview = doc.extractedTextPreview || doc.extracted_text_preview;
-                const usedInAnalysis = docsUsedIds.has(doc.id);
-                const textLen = doc.extractedTextLength || doc.extracted_text_length || 0;
-                const isLink = ft === "link" || ft === "html" || ft === "htm" || ft === "";
-
-                return (
-                  <div key={doc.id} className="rounded-md border hover:bg-muted/30 transition-colors">
-                    <div className="flex items-center gap-2.5 px-3 py-2">
-                      {isLink ? (
-                        <Globe className={`h-4 w-4 shrink-0 ${typeColor}`} />
-                      ) : (
-                        <FileText className={`h-4 w-4 shrink-0 ${typeColor}`} />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs font-medium truncate block hover:text-primary transition-colors"
-                        >
-                          {doc.title || "未命名"}
-                        </a>
-                        <p className="text-[10px] text-muted-foreground">
-                          {isLink ? "网页链接" : doc.fileType?.toUpperCase() || "文件"}
-                          {doc.fileSizeBytes ? ` · ${formatBytes(doc.fileSizeBytes)}` : ""}
-                          {doc.pageCount ? ` · ${doc.pageCount}p` : ""}
-                          {textLen > 0 ? ` · ${(textLen / 1000).toFixed(0)}K chars` : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {usedInAnalysis && (
-                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">已分析</span>
-                        )}
-                        {extracted ? (
-                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">已提取</span>
-                        ) : (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">待处理</span>
-                        )}
-                        {hasPreview && (
-                          <button
-                            onClick={() => setPreviewDoc(previewDoc?.id === doc.id ? null : doc)}
-                            className="rounded border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                          >
-                            {previewDoc?.id === doc.id ? "隐藏" : "预览"}
-                          </button>
-                        )}
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                        </a>
-                      </div>
-                    </div>
-                    {previewDoc?.id === doc.id && hasPreview && (
-                      <div className="border-t bg-slate-50 px-3 py-2.5">
-                        <p className="text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">提取文本预览</p>
-                        <pre className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
-                          {doc.extractedTextPreview || doc.extracted_text_preview}
-                        </pre>
-                        {textLen > 800 && (
-                          <p className="text-[10px] text-muted-foreground mt-1.5 italic">
-                            显示前 800 个字符，共 {(textLen / 1000).toFixed(0)}K 字符
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════
- * IntelligencePanel — Full report inside Analysis tab
- * ════════════════════════════════════════════════════════════ */
-
-function IntelligencePanel({ data, onReanalyze, onDeepAnalyze, reanalyzing }: { data: any; onReanalyze?: () => void; onDeepAnalyze?: () => void; reanalyzing?: boolean }) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["summary", "scope", "tech", "timeline", "fit", "compliance", "supply", "strategy", "bid_strategy", "company_risks", "addendum", "actions", "evidence", "quotes"])
-  );
-
-  if (!data) return null;
-
-
-  const rpt: any = data.intelligenceSummary || data.intelligence_summary || {};
-  const isV2 = rpt.report_version === "2.0" || rpt.report_version === "3.0";
-  const isV3 = rpt.report_version === "3.0";
-
-  const verdict = rpt.verdict || {};
-  const projSummary = rpt.project_summary || {};
-  const scope = rpt.scope_breakdown || {};
-  const techReqs = rpt.technical_requirements || {};
-  const timeline = rpt.timeline_milestones || {};
-  const evalStrategy = rpt.evaluation_strategy || {};
-  const bizFit = rpt.business_fit || {};
-  const compliance = rpt.compliance_risks || {};
-  const compat = rpt.compatibility_analysis || {};
-  const supplyChain = rpt.supply_chain_feasibility || {};
-  const participation = rpt.participation_strategy || {};
-  const bidStrategy = rpt.bid_strategy || {};
-  const addendumAnalysis: any[] = rpt.addendum_analysis || [];
-  const companyRisks: any[] = rpt.company_specific_risks || [];
-  const actionItems: any[] = rpt.action_items || [];
-  const evidence = rpt.required_evidence || {};
-  const scores = rpt.feasibility_scores || {};
-  const docsAnalyzed = rpt.documents_analyzed || {};
-  const evidenceQuotes: any[] = rpt.evidence_quotes || [];
-  const analysisMeta = rpt._analysis_metadata || {};
-
-  const overview: string | undefined = isV2
-    ? projSummary.overview
-    : (data.projectOverview || data.project_overview || rpt.project_overview);
-  const analyzedAt: string | undefined = data.analyzedAt || data.analyzed_at || rpt.analyzed_at;
-  const model: string | undefined = data.analysisModel || data.analysis_model || rpt.analysis_model;
-  const isFallback: boolean = model === "fallback_rule_based" || rpt.fallback_used === true;
-
-  const severityColors: Record<string, string> = {
-    fatal_blocker: "bg-red-100 text-red-800 border-red-300",
-    serious_risk: "bg-orange-100 text-orange-800 border-orange-300",
-    normal_requirement: "bg-slate-100 text-slate-700 border-slate-300",
-  };
-
-  function toggleSection(key: string) {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  }
-
-  const SectionHeader = ({ id, title }: { id: string; title: string }) => (
-    <button
-      onClick={() => toggleSection(id)}
-      className="flex items-center justify-between w-full py-2.5 text-left group"
-    >
-      <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 group-hover:text-foreground transition-colors">{title}</span>
-      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.has(id) ? "rotate-180" : ""}`} />
-    </button>
-  );
-
-  return (
-    <Card className="overflow-hidden">
-      {/* Header with re-analyze controls */}
-      <div className="px-5 py-3 bg-slate-50 border-b flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-blue-600" />
-          <span className="text-xs font-semibold">招标情报报告</span>
-          {isV2 && <span className="text-[10px] text-muted-foreground">{isV3 ? "v3.0" : "v2.0"}</span>}
-          {isFallback && <span className="text-[10px] text-amber-600 font-medium">(Fallback)</span>}
-        </div>
-        <div className="flex items-center gap-1.5">
-          {onReanalyze && (
-            <button
-              onClick={onReanalyze}
-              disabled={reanalyzing}
-              className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-              快速
-            </button>
-          )}
-          {onDeepAnalyze && (
-            <button
-              onClick={onDeepAnalyze}
-              disabled={reanalyzing}
-              className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {reanalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              深度
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="divide-y">
-        {/* Documents Analyzed Banner */}
-        {(analysisMeta.documents_used_count > 0 || docsAnalyzed.count > 0) && (
-          <div className="px-5 py-3 bg-blue-50/50 border-b">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100">
-                <FileText className="h-4 w-4 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-blue-900">
-                  {analysisMeta.documents_used_count || docsAnalyzed.count || 0} of {analysisMeta.total_documents || "?"} documents analyzed
-                </p>
-                <p className="text-[10px] text-blue-600">
-                  {docsAnalyzed.coverage_note || (analysisMeta.total_doc_chars
-                    ? `${(analysisMeta.total_doc_chars / 1000).toFixed(0)}K characters of document text processed`
-                    : "Document content included in analysis")}
-                </p>
-              </div>
-              {(docsAnalyzed.names?.length > 0 || analysisMeta.documents_used?.length > 0) && (
-                <div className="flex flex-wrap gap-1 max-w-[50%]">
-                  {(docsAnalyzed.names || analysisMeta.documents_used?.map((d: any) => d.title) || []).slice(0, 4).map((name: string, i: number) => (
-                    <span key={i} className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 truncate max-w-[120px]">
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 1. Project Summary */}
-        <div className="px-5">
-          <SectionHeader id="summary" title="项目概述" />
-          {expandedSections.has("summary") && (
-            <div className="pb-4 space-y-3">
-              {overview && <p className="text-sm leading-relaxed">{overview}</p>}
-              {isV2 && (
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {projSummary.issuing_body && <span>Issuing: <strong className="text-foreground">{projSummary.issuing_body}</strong></span>}
-                  {projSummary.project_type && projSummary.project_type !== "other" && (
-                    <span>Type: <strong className="text-foreground">{projSummary.project_type.replace(/_/g, " ")}</strong></span>
-                  )}
-                  {scope.scope_type && scope.scope_type !== "unclear" && (
-                    <span>Scope: <strong className="text-foreground">{scope.scope_type.replace(/_/g, " ")}</strong></span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 2. Scope Breakdown */}
-        {isV2 && (scope.main_deliverables?.length > 0 || scope.quantities || scope.intended_use) && (
-          <div className="px-5">
-            <SectionHeader id="scope" title="范围分析" />
-            {expandedSections.has("scope") && (
-              <div className="pb-4 space-y-2 text-sm">
-                {scope.main_deliverables?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">交付物：</span>
-                    <ul className="mt-1 space-y-0.5">
-                      {scope.main_deliverables.map((d: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0" />{d}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {scope.quantities && scope.quantities !== "Not specified" && <p><span className="text-muted-foreground">数量：</span> {scope.quantities}</p>}
-                {scope.intended_use && scope.intended_use !== "Not specified" && <p><span className="text-muted-foreground">Intended use:</span> {scope.intended_use}</p>}
-                {scope.service_scope && scope.service_scope !== "Not specified" && <p><span className="text-muted-foreground">Service scope:</span> {scope.service_scope}</p>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 3. Technical Requirements */}
-        {isV2 && (techReqs.product_requirements?.length > 0 || techReqs.standards_certifications?.length > 0 || techReqs.environmental_requirements?.length > 0) && (
-          <div className="px-5">
-            <SectionHeader id="tech" title="技术要求" />
-            {expandedSections.has("tech") && (
-              <div className="pb-4 space-y-3 text-sm">
-                {techReqs.product_requirements?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">Product specs:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {techReqs.product_requirements.map((r: string, i: number) => (
-                        <Badge key={i} variant="outline" className="text-xs">{r}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {techReqs.standards_certifications?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">Standards / certifications:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {techReqs.standards_certifications.map((s: string, i: number) => (
-                        <Badge key={i} variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200">{s}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {techReqs.environmental_requirements?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">Environmental:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {techReqs.environmental_requirements.map((e: string, i: number) => (
-                        <Badge key={i} variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">{e}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {techReqs.control_systems && techReqs.control_systems !== "Not specified" && (
-                  <p><span className="text-muted-foreground">Controls:</span> {techReqs.control_systems}</p>
-                )}
-                {techReqs.installation_requirements?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">Installation:</span>
-                    <ul className="mt-1 space-y-0.5">{techReqs.installation_requirements.map((r: string, i: number) => (
-                      <li key={i} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-slate-400 shrink-0" />{r}</li>
-                    ))}</ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 4. Timeline */}
-        {isV2 && (timeline.bid_closing || timeline.project_start || timeline.delivery_deadline || timeline.schedule_notes) && (
-          <div className="px-5">
-            <SectionHeader id="timeline" title="时间线与里程碑" />
-            {expandedSections.has("timeline") && (
-              <div className="pb-4 space-y-2 text-sm">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  {timeline.bid_closing && <p><span className="text-muted-foreground">Closing:</span> {timeline.bid_closing}</p>}
-                  {timeline.response_due && <p><span className="text-muted-foreground">Response due:</span> {timeline.response_due}</p>}
-                  {timeline.site_visit && <p><span className="text-muted-foreground">Site visit:</span> {timeline.site_visit}</p>}
-                  {timeline.pre_bid_meeting && <p><span className="text-muted-foreground">Pre-bid:</span> {timeline.pre_bid_meeting}</p>}
-                  {timeline.project_start && <p><span className="text-muted-foreground">Start:</span> {timeline.project_start}</p>}
-                  {timeline.delivery_deadline && <p><span className="text-muted-foreground">Delivery:</span> {timeline.delivery_deadline}</p>}
-                </div>
-                {timeline.schedule_pressure && timeline.schedule_pressure !== "realistic" && (
-                  <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
-                    timeline.schedule_pressure === "very_tight" ? "bg-red-100 text-red-700" :
-                    timeline.schedule_pressure === "tight" ? "bg-orange-100 text-orange-700" :
-                    "bg-amber-100 text-amber-700"
-                  }`}>
-                    <Clock className="h-3 w-3" />
-                    {timeline.schedule_pressure.replace(/_/g, " ")} schedule
-                  </div>
-                )}
-                {timeline.schedule_notes && <p className="text-xs text-muted-foreground">{timeline.schedule_notes}</p>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 5. Evaluation Strategy */}
-        {isV2 && (evalStrategy.pricing_weight || evalStrategy.likely_evaluator_focus) && evalStrategy.pricing_weight !== "Not specified" && (
-          <div className="px-5">
-            <SectionHeader id="eval" title="评估策略" />
-            {expandedSections.has("eval") && (
-              <div className="pb-4 space-y-2 text-sm">
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {evalStrategy.pricing_weight && evalStrategy.pricing_weight !== "Not specified" && <p><span className="text-muted-foreground">Price:</span> {evalStrategy.pricing_weight}</p>}
-                  {evalStrategy.technical_weight && evalStrategy.technical_weight !== "Not specified" && <p><span className="text-muted-foreground">Technical:</span> {evalStrategy.technical_weight}</p>}
-                  {evalStrategy.experience_weight && evalStrategy.experience_weight !== "Not specified" && <p><span className="text-muted-foreground">Experience:</span> {evalStrategy.experience_weight}</p>}
-                </div>
-                {evalStrategy.likely_evaluator_focus && evalStrategy.likely_evaluator_focus !== "Not specified" && evalStrategy.likely_evaluator_focus !== "招标文件未说明" && (
-                  <p className="text-xs text-blue-700 bg-blue-50 rounded p-2">{evalStrategy.likely_evaluator_focus}</p>
-                )}
-                {evalStrategy.scoring_optimization?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">评分优化建议：</span>
-                    <ul className="mt-1 space-y-1">
-                      {evalStrategy.scoring_optimization.map((s: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2 text-sm"><Zap className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 6. Business Fit */}
-        <div className="px-5">
-          <SectionHeader id="fit" title="业务匹配度" />
-          {expandedSections.has("fit") && (
-            <div className="pb-4 space-y-2">
-              {isV2 && bizFit.fit_assessment && (
-                <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
-                  bizFit.fit_assessment === "strong_fit" ? "bg-emerald-100 text-emerald-700" :
-                  bizFit.fit_assessment === "moderate_fit" ? "bg-blue-100 text-blue-700" :
-                  bizFit.fit_assessment === "weak_fit" ? "bg-amber-100 text-amber-700" :
-                  "bg-red-100 text-red-700"
-                }`}>
-                  {bizFit.fit_assessment.replace(/_/g, " ")}
-                </div>
-              )}
-              {bizFit.fit_explanation && (
-                <p className="text-sm">{bizFit.fit_explanation}</p>
-              )}
-              {isV2 && bizFit.recommended_role && bizFit.recommended_role !== "not_recommended" && (
-                <p className="text-xs text-muted-foreground">Recommended role: <strong className="text-foreground">{bizFit.recommended_role.replace(/_/g, " ")}</strong></p>
-              )}
-              {isV2 && bizFit.capability_gaps?.length > 0 && (
-                <div>
-                  <span className="text-xs text-muted-foreground font-medium">Capability gaps:</span>
-                  <ul className="mt-1 space-y-0.5 text-sm">
-                    {bizFit.capability_gaps.map((g: string, i: number) => (
-                      <li key={i} className="flex items-start gap-2 text-amber-700"><AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />{g}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 7. Compliance Red Flags */}
-        {isV2 && (compliance.red_flags?.length > 0 || compliance.mandatory_certifications?.length > 0 || (compliance.bonding_insurance && compliance.bonding_insurance !== "Not specified")) && (
-          <div className="px-5">
-            <SectionHeader id="compliance" title="合规风险" />
-            {expandedSections.has("compliance") && (
-              <div className="pb-4 space-y-3">
-                {compliance.red_flags?.length > 0 && (
-                  <div className="space-y-2">
-          
-                    {compliance.red_flags.map((rf: any, i: number) => (
-                      <div key={i} className={`rounded-md border px-3 py-2 ${severityColors[rf.severity] || "bg-slate-50 border-slate-200"}`}>
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wide">{(rf.severity || "").replace(/_/g, " ")}</span>
-                        </div>
-                        <p className="text-sm font-medium">{rf.requirement}</p>
-                        {rf.explanation && <p className="text-xs mt-0.5 opacity-80">{rf.explanation}</p>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {compliance.mandatory_certifications?.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {compliance.mandatory_certifications.map((c: string, i: number) => (
-                      <Badge key={i} variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">{c}</Badge>
-                    ))}
-                  </div>
-                )}
-                <div className="text-sm space-y-1">
-                  {compliance.experience_thresholds && compliance.experience_thresholds !== "Not specified" && <p><span className="text-muted-foreground">Experience:</span> {compliance.experience_thresholds}</p>}
-                  {compliance.bonding_insurance && compliance.bonding_insurance !== "Not specified" && <p><span className="text-muted-foreground">Bonding/Insurance:</span> {compliance.bonding_insurance}</p>}
-                  {compliance.local_requirements && compliance.local_requirements !== "Not specified" && <p><span className="text-muted-foreground">Local reqs:</span> {compliance.local_requirements}</p>}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 8. Compatibility Analysis */}
-        {isV2 && compat.compatibility_risk && compat.compatibility_risk !== "none" && (
-          <div className="px-5">
-            <SectionHeader id="compat" title="兼容性分析" />
-            {expandedSections.has("compat") && (
-              <div className="pb-4 space-y-2 text-sm">
-                <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
-                  compat.compatibility_risk === "high" ? "bg-red-100 text-red-700" :
-                  compat.compatibility_risk === "medium" ? "bg-amber-100 text-amber-700" :
-                  "bg-blue-100 text-blue-700"
-                }`}>
-                  {compat.compatibility_risk} risk
-                </div>
-                {compat.existing_system && compat.existing_system !== "Not specified" && <p><span className="text-muted-foreground">Existing system:</span> {compat.existing_system}</p>}
-                {compat.brand_compatibility && compat.brand_compatibility !== "Not specified" && <p><span className="text-muted-foreground">Brand compat:</span> {compat.brand_compatibility}</p>}
-                {compat.compatibility_notes && <p className="text-xs text-muted-foreground">{compat.compatibility_notes}</p>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 9. Supply Chain */}
-        <div className="px-5">
-          <SectionHeader id="supply" title="供应链与中国采购" />
-          {expandedSections.has("supply") && (
-            <div className="pb-4 space-y-2 text-sm">
-              {isV2 ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${supplyChain.china_sourcing_viable ? "bg-green-500" : "bg-red-500"}`} />
-                    <span className="font-medium">{supplyChain.china_sourcing_viable ? "中国采购可行" : "中国采购不可行"}</span>
-                  </div>
-                  {supplyChain.sourcing_explanation && <p>{supplyChain.sourcing_explanation}</p>}
-                  {supplyChain.buy_domestic_restrictions?.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {supplyChain.buy_domestic_restrictions.map((r: string, i: number) => (
-                        <Badge key={i} variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">{r}</Badge>
-                      ))}
-                    </div>
-                  )}
-                  {supplyChain.shipping_lead_time && supplyChain.shipping_lead_time !== "Not assessed" && <p><span className="text-muted-foreground">Lead time:</span> {supplyChain.shipping_lead_time}</p>}
-                  {supplyChain.local_installation && supplyChain.local_installation !== "Not specified" && <p><span className="text-muted-foreground">Local install:</span> {supplyChain.local_installation}</p>}
-                </>
-              ) : (
-                <p className="text-muted-foreground">未评估。</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 10. Participation Strategy */}
-        {isV2 && participation.recommended_approach && (
-          <div className="px-5">
-            <SectionHeader id="strategy" title="参与策略" />
-            {expandedSections.has("strategy") && (
-              <div className="pb-4 space-y-2 text-sm">
-                <div className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
-                  participation.recommended_approach.includes("prime") ? "bg-emerald-100 text-emerald-700" :
-                  participation.recommended_approach === "skip" ? "bg-red-100 text-red-700" :
-                  "bg-blue-100 text-blue-700"
-                }`}>
-                  {participation.recommended_approach.replace(/_/g, " ")}
-                </div>
-                {participation.strategy_rationale && <p>{participation.strategy_rationale}</p>}
-                {participation.potential_partners && participation.potential_partners !== "Not assessed" && <p><span className="text-muted-foreground">Partners:</span> {participation.potential_partners}</p>}
-                {participation.competitive_positioning && participation.competitive_positioning !== "Not assessed" && <p><span className="text-muted-foreground">Positioning:</span> {participation.competitive_positioning}</p>}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* V3: Bid Strategy — Go/No-Go Decision */}
-        {isV3 && bidStrategy.go_no_go && (
-          <div className="px-5">
-            <SectionHeader id="bid_strategy" title="投标策略 · Go/No-Go 决策" />
-            {expandedSections.has("bid_strategy") && (
-              <div className="pb-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className={`rounded-lg px-4 py-2.5 text-sm font-bold ${
-                    bidStrategy.go_no_go === "建议投标" ? "bg-emerald-100 text-emerald-800 border border-emerald-300" :
-                    bidStrategy.go_no_go === "不建议投标" ? "bg-red-100 text-red-800 border border-red-300" :
-                    "bg-amber-100 text-amber-800 border border-amber-300"
-                  }`}>
-                    {bidStrategy.go_no_go}
-                  </div>
-                  {bidStrategy.win_probability && (
-                    <div className={`rounded px-2.5 py-1 text-xs font-medium ${
-                      bidStrategy.win_probability === "high" ? "bg-emerald-50 text-emerald-700" :
-                      bidStrategy.win_probability === "medium" ? "bg-blue-50 text-blue-700" :
-                      "bg-slate-100 text-slate-600"
-                    }`}>
-                      中标概率: {bidStrategy.win_probability === "high" ? "高" : bidStrategy.win_probability === "medium" ? "中" : bidStrategy.win_probability === "low" ? "低" : "极低"}
-                    </div>
-                  )}
-                </div>
-                {bidStrategy.go_no_go_rationale && (
-                  <p className="text-sm leading-relaxed">{bidStrategy.go_no_go_rationale}</p>
-                )}
-                {bidStrategy.pricing_strategy && bidStrategy.pricing_strategy !== "未评估" && (
-                  <div className="rounded-md bg-blue-50 border border-blue-200 p-3">
-                    <p className="text-xs font-semibold text-blue-800 mb-1">定价策略</p>
-                    <p className="text-sm text-blue-900">{bidStrategy.pricing_strategy}</p>
-                  </div>
-                )}
-                {bidStrategy.scoring_optimization?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">评分最大化建议：</span>
-                    <ul className="mt-1 space-y-1">
-                      {bidStrategy.scoring_optimization.map((s: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2 text-sm"><Zap className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {bidStrategy.differentiation_points?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">差异化优势：</span>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {bidStrategy.differentiation_points.map((d: string, i: number) => (
-                        <Badge key={i} variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">{d}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {bidStrategy.executive_summary_outline && bidStrategy.executive_summary_outline !== "未评估" && (
-                  <div className="rounded-md bg-slate-50 border p-3">
-                    <p className="text-xs font-semibold text-slate-700 mb-1">执行摘要建议要点</p>
-                    <p className="text-sm">{bidStrategy.executive_summary_outline}</p>
-                  </div>
-                )}
-                {bidStrategy.win_probability_rationale && (
-                  <p className="text-xs text-muted-foreground">{bidStrategy.win_probability_rationale}</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* V3: Company-Specific Risks */}
-        {isV3 && companyRisks.length > 0 && (
-          <div className="px-5">
-            <SectionHeader id="company_risks" title="公司维度风险" />
-            {expandedSections.has("company_risks") && (
-              <div className="pb-4 space-y-2">
-                {companyRisks.map((r: any, i: number) => (
-                  <div key={i} className={`rounded-md border px-3 py-2 ${
-                    r.severity === "high" ? "bg-red-50 border-red-200" :
-                    r.severity === "medium" ? "bg-amber-50 border-amber-200" :
-                    "bg-slate-50 border-slate-200"
-                  }`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`h-2 w-2 rounded-full ${
-                        r.severity === "high" ? "bg-red-500" : r.severity === "medium" ? "bg-amber-500" : "bg-green-500"
-                      }`} />
-                      <span className="text-xs font-semibold">{r.risk}</span>
-                    </div>
-                    {r.mitigation && <p className="text-xs text-muted-foreground ml-4">{r.mitigation}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* V3: Addendum Analysis */}
-        {isV3 && addendumAnalysis.length > 0 && (
-          <div className="px-5">
-            <SectionHeader id="addendum" title="Addendum 变更追踪" />
-            {expandedSections.has("addendum") && (
-              <div className="pb-4 space-y-2">
-                {addendumAnalysis.map((a: any, i: number) => (
-                  <div key={i} className="rounded-md border border-purple-200 bg-purple-50/50 px-3 py-2">
-                    <p className="text-xs font-bold text-purple-800">{a.number}</p>
-                    {a.key_changes?.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-sm">
-                        {a.key_changes.map((c: string, j: number) => (
-                          <li key={j} className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400 shrink-0" />{c}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {a.impact && <p className="text-xs text-purple-700 mt-1">{a.impact}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* V3: Action Items */}
-        {isV3 && actionItems.length > 0 && (
-          <div className="px-5">
-            <SectionHeader id="actions" title="团队待办清单" />
-            {expandedSections.has("actions") && (
-              <div className="pb-4 space-y-2">
-                {actionItems.map((item: any, i: number) => (
-                  <div key={i} className="flex items-start gap-3 rounded-md border px-3 py-2">
-                    <div className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                      item.priority === "high" ? "bg-red-100 text-red-700" :
-                      item.priority === "medium" ? "bg-amber-100 text-amber-700" :
-                      "bg-slate-100 text-slate-600"
-                    }`}>
-                      {item.priority === "high" ? "紧急" : item.priority === "medium" ? "中" : "低"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{item.action}</p>
-                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                        {item.responsible && <span>负责: {item.responsible}</span>}
-                        {item.deadline && <span>截止: {item.deadline}</span>}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 11. Required Evidence */}
-        {isV2 && (evidence.before_bidding?.length > 0 || evidence.with_submission?.length > 0) && (
-          <div className="px-5">
-            <SectionHeader id="evidence" title="所需证据与后续行动" />
-            {expandedSections.has("evidence") && (
-              <div className="pb-4 space-y-3 text-sm">
-                {evidence.before_bidding?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">投标前：</span>
-                    <ul className="mt-1 space-y-1">
-                      {evidence.before_bidding.map((e: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-500" />{e}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {evidence.with_submission?.length > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground font-medium">随标书提交：</span>
-                    <ul className="mt-1 space-y-1">
-                      {evidence.with_submission.map((e: string, i: number) => (
-                        <li key={i} className="flex items-start gap-2"><FileText className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-500" />{e}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Evidence Quotes from Documents */}
-        {evidenceQuotes.length > 0 && (
-          <div className="px-5">
-            <SectionHeader id="quotes" title="文件证据引用" />
-            {expandedSections.has("quotes") && (
-              <div className="pb-4 space-y-2">
-                {evidenceQuotes.map((eq: any, i: number) => (
-                  <div key={i} className="rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FileText className="h-3 w-3 text-amber-600 shrink-0" />
-                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">
-                        {eq.document || "Document"}
-                      </span>
-                      {eq.section && (
-                        <span className="text-[10px] text-amber-600">· {eq.section}</span>
-                      )}
-                    </div>
-                    <blockquote className="text-xs italic text-foreground border-l-2 border-amber-400 pl-2.5 my-1.5 leading-relaxed">
-                      &ldquo;{eq.quote}&rdquo;
-                    </blockquote>
-                    {eq.relevance && (
-                      <p className="text-[10px] text-muted-foreground mt-1">{eq.relevance}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="px-5 py-3 flex items-center justify-between text-[10px] text-muted-foreground bg-slate-50">
-          <span>
-            {analyzedAt && `分析于 ${formatDate(analyzedAt)}`}
-            {model && ` · ${isFallback ? "基于规则回退" : model}`}
-            {isV2 && ` · ${isV3 ? "v3.0" : "v2.0"}`}
-          </span>
-          <span className="flex items-center gap-1 font-medium">
-            {isFallback ? (
-              <><AlertTriangle className="h-3 w-3 text-amber-500" /> 关键词估算</>
-            ) : (
-              <><Sparkles className="h-3 w-3" /> BidToGo AI</>
-            )}
-          </span>
-        </div>
-      </div>
-    </Card>
   );
 }

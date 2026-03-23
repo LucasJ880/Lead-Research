@@ -3,7 +3,6 @@
 Security:
   - Authenticated via X-Agent-Key header (AGENT_API_KEY env var)
   - Separate from the SCRAPER_API_KEY used by the web app
-  - No secrets exposed in responses
 
 Endpoints:
   GET  /api/agent/jobs               — fetch pending jobs for local_connector sources
@@ -11,18 +10,15 @@ Endpoints:
   POST /api/agent/jobs/{id}/status   — update job status
   POST /api/agent/opportunities      — upload batch of normalized opportunities
   POST /api/agent/documents          — upload document metadata for an opportunity
-  GET  /api/agent/pending-documents  — list high-relevance opps needing document download
-  POST /api/agent/upload-documents   — upload actual document files + trigger analysis
 """
 
 from __future__ import annotations
 
-import io
 import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from typing import Any
@@ -313,19 +309,6 @@ async def upload_opportunities(batch: AgentOpportunityUpload) -> dict:
                 _insert_opp(session, opp)
                 created += 1
 
-                if (opp.relevance_score or 0) >= 80 and opp.external_id:
-                    try:
-                        row = session.execute(
-                            text("SELECT id FROM opportunities WHERE external_id = :eid AND source_id = :sid LIMIT 1"),
-                            {"eid": opp.external_id, "sid": opp.source_id},
-                        ).fetchone()
-                        if row:
-                            from src.tasks.auto_analyze import auto_analyze_opportunity
-                            auto_analyze_opportunity.apply_async(args=[str(row.id)], countdown=60)
-                            logger.info("Dispatched auto-analysis for agent-uploaded opp: %s", opp.title[:60])
-                    except Exception as aa_exc:
-                        logger.warning("Failed to dispatch auto-analysis for agent opp: %s", aa_exc)
-
             except Exception as exc:
                 errors.append(f"{opp.title[:60]}: {exc}")
                 logger.exception("Agent upload: failed to process %s", opp.title[:60])
@@ -415,217 +398,6 @@ async def upload_documents(batch: AgentDocumentUpload) -> dict:
     finally:
         session.close()
 
-
-# ─── GET /api/agent/pending-documents ────────────────────────
-
-
-@router.get("/pending-documents", dependencies=[Depends(verify_agent_key)])
-async def get_pending_documents(
-    source_name: str | None = None,
-    min_score: int = 80,
-    limit: int = 20,
-) -> list[dict]:
-    """Return high-relevance opportunities that need document download.
-
-    Used by local agents (e.g. BT Agent) to know which opportunities
-    to fetch bid documents for.
-    """
-    session = get_db_session()
-    try:
-        params: dict[str, Any] = {"min_score": min_score, "limit": limit}
-        source_filter = ""
-        if source_name:
-            source_filter = "AND s.name = :source_name"
-            params["source_name"] = source_name
-
-        rows = session.execute(
-            text(f"""
-                SELECT o.id, o.external_id, o.title, o.title_zh,
-                       o.relevance_score, o.source_url, o.closing_date,
-                       o.has_documents,
-                       org.name as organization_name,
-                       s.name as source_name
-                FROM opportunities o
-                JOIN sources s ON o.source_id = s.id
-                LEFT JOIN organizations org ON o.organization_id = org.id
-                WHERE o.relevance_score >= :min_score
-                  AND o.has_documents = false
-                  AND o.status = 'open'
-                  {source_filter}
-                ORDER BY o.relevance_score DESC, o.created_at DESC
-                LIMIT :limit
-            """),
-            params,
-        ).fetchall()
-
-        results = []
-        for r in rows:
-            results.append({
-                "opportunity_id": str(r.id),
-                "external_id": r.external_id,
-                "title": r.title_zh or r.title,
-                "relevance_score": r.relevance_score,
-                "source_url": r.source_url,
-                "closing_date": r.closing_date.isoformat() if r.closing_date else None,
-                "organization_name": r.organization_name,
-                "source_name": r.source_name,
-            })
-
-        logger.info("Pending documents query: %d results (source=%s, min_score=%d)",
-                     len(results), source_name, min_score)
-        return results
-    finally:
-        session.close()
-
-
-# ─── POST /api/agent/upload-documents ────────────────────────
-
-
-_ALLOWED_EXTENSIONS = {"pdf", "docx", "doc", "txt", "xlsx", "xls", "csv"}
-_MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
-
-
-@router.post("/upload-documents", dependencies=[Depends(verify_agent_key)])
-async def upload_document_files(
-    opportunity_id: str = Form(...),
-    files: list[UploadFile] = File(...),
-    trigger_analysis: bool = Form(True),
-) -> dict:
-    """Upload actual document files for an opportunity and optionally trigger AI analysis.
-
-    Accepts multipart/form-data with 1-10 files. Extracts text from each,
-    stores in opportunity_documents, and dispatches auto_analyze_opportunity.
-    """
-    if not files or len(files) > 10:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Must upload 1-10 files")
-
-    session = get_db_session()
-    try:
-        opp = session.execute(
-            text("SELECT id, title FROM opportunities WHERE id = :id"),
-            {"id": opportunity_id},
-        ).fetchone()
-        if not opp:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Opportunity {opportunity_id} not found")
-
-        inserted = 0
-        for upload in files:
-            filename = upload.filename or "document"
-            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-            if ext not in _ALLOWED_EXTENSIONS:
-                logger.warning("Skipping unsupported file type: %s", filename)
-                continue
-
-            content = await upload.read()
-            if len(content) > _MAX_FILE_SIZE:
-                logger.warning("File too large (%d bytes): %s", len(content), filename)
-                continue
-
-            extracted_text = _extract_text_from_bytes(content, ext, filename)
-
-            session.execute(
-                text("""
-                    INSERT INTO opportunity_documents (
-                        opportunity_id, title, url, file_type,
-                        file_size_bytes, doc_category,
-                        extracted_text, text_extracted
-                    ) VALUES (
-                        :opp_id, :title, :url, :ft,
-                        :size, 'tender_document',
-                        :text, :extracted
-                    )
-                """),
-                {
-                    "opp_id": opportunity_id,
-                    "title": filename,
-                    "url": f"agent-upload://{filename}",
-                    "ft": ext,
-                    "size": len(content),
-                    "text": extracted_text,
-                    "extracted": bool(extracted_text),
-                },
-            )
-            inserted += 1
-            logger.info("Stored uploaded document: %s (%d bytes, %d chars text)",
-                        filename, len(content), len(extracted_text or ""))
-
-        if inserted > 0:
-            session.execute(
-                text("UPDATE opportunities SET has_documents = true WHERE id = :id"),
-                {"id": opportunity_id},
-            )
-            session.commit()
-
-            if trigger_analysis:
-                try:
-                    from src.tasks.auto_analyze import auto_analyze_opportunity
-                    auto_analyze_opportunity.apply_async(args=[opportunity_id], countdown=10)
-                    logger.info("Dispatched auto-analysis after document upload for %s", opportunity_id)
-                except Exception as exc:
-                    logger.warning("Failed to dispatch analysis: %s", exc)
-        else:
-            session.commit()
-
-        return {
-            "status": "ok",
-            "documents_stored": inserted,
-            "analysis_triggered": trigger_analysis and inserted > 0,
-        }
-    except HTTPException:
-        raise
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
-
-def _extract_text_from_bytes(content: bytes, ext: str, filename: str) -> str | None:
-    """Extract text from file bytes. Returns None on failure."""
-    try:
-        if ext == "pdf":
-            from pypdf import PdfReader
-            reader = PdfReader(io.BytesIO(content))
-            pages = []
-            for page in reader.pages:
-                t = page.extract_text()
-                if t:
-                    pages.append(t)
-            return "\n\n".join(pages)[:200_000] if pages else None
-
-        if ext in ("docx", "doc"):
-            from docx import Document
-            doc = Document(io.BytesIO(content))
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            return "\n".join(paragraphs)[:200_000] if paragraphs else None
-
-        if ext == "txt":
-            for enc in ("utf-8", "latin-1", "cp1252"):
-                try:
-                    return content.decode(enc)[:200_000]
-                except UnicodeDecodeError:
-                    continue
-            return None
-
-        if ext in ("xlsx", "xls"):
-            from openpyxl import load_workbook
-            wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-            rows_text = []
-            for ws in wb.worksheets[:5]:
-                for row in ws.iter_rows(max_row=500, values_only=True):
-                    cells = [str(c) for c in row if c is not None]
-                    if cells:
-                        rows_text.append("\t".join(cells))
-            return "\n".join(rows_text)[:200_000] if rows_text else None
-
-        if ext == "csv":
-            text_content = content.decode("utf-8", errors="replace")
-            return text_content[:200_000]
-
-        return None
-    except Exception as exc:
-        logger.warning("Text extraction failed for %s: %s", filename, exc)
-        return None
 
 
 # ─── Internal helpers ───────────────────────────────────────

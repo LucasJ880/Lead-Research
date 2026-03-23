@@ -358,8 +358,6 @@ class CrawlPipeline:
             if resource_links and opp.external_id:
                 self._insert_documents(opp.external_id, opp.source_id, resource_links)
 
-            self._maybe_trigger_auto_analysis(opp)
-
         except Exception:
             logger.exception("Failed to insert opportunity: %s", opp.title)
             self._result.errors.append(f"Insert failed: {opp.title}")
@@ -443,44 +441,6 @@ class CrawlPipeline:
                 self._session.execute(text("ROLLBACK TO SAVEPOINT opp_update"))
             except Exception:
                 pass
-
-    _AGENT_DOCUMENT_SOURCES = {"bids and tenders"}
-
-    def _maybe_trigger_auto_analysis(self, opp: OpportunityCreate) -> None:
-        """Dispatch auto-analysis for high-relevance new opportunities.
-
-        Sources in _AGENT_DOCUMENT_SOURCES are skipped here — their documents
-        are downloaded by a local agent, which triggers analysis after upload.
-        """
-        if (opp.relevance_score or 0) < 80:
-            return
-        if not opp.external_id:
-            return
-
-        source_name = (self._source_config.name or "").lower()
-        if source_name in self._AGENT_DOCUMENT_SOURCES:
-            logger.info(
-                "Skipping auto-analysis for '%s' source opp (agent handles docs+analysis): %s",
-                self._source_config.name, opp.title[:60],
-            )
-            return
-
-        try:
-            row = self._session.execute(
-                text("SELECT id FROM opportunities WHERE external_id = :eid AND source_id = :sid LIMIT 1"),
-                {"eid": opp.external_id, "sid": opp.source_id},
-            ).fetchone()
-            if not row:
-                return
-            opp_id = str(row.id)
-            from src.tasks.auto_analyze import auto_analyze_opportunity
-            auto_analyze_opportunity.apply_async(
-                args=[opp_id],
-                countdown=60,
-            )
-            logger.info("Dispatched auto-analysis for high-relevance opp: %s (score=%s)", opp.title[:60], opp.relevance_score)
-        except Exception as exc:
-            logger.warning("Failed to dispatch auto-analysis: %s", exc)
 
     def _insert_documents(
         self, external_id: str, source_id: str, docs: list[dict],
