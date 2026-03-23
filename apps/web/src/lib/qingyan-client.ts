@@ -35,7 +35,7 @@ export interface QingyanProjectPayload {
     risk_level: "low" | "medium" | "high" | "unassessed";
     fit_score: number | null;
     summary: string | null;
-    full_report_url: string;
+    full_report_url: string | null;
     full_report: Record<string, unknown> | null;
   };
   documents: Array<{

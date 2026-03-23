@@ -95,6 +95,8 @@ export default function OpportunityDetailPage() {
 
   const [miniSummary, setMiniSummary] = useState<string | null>(null);
   const [miniLoading, setMiniLoading] = useState(false);
+  const [pushingReport, setPushingReport] = useState(false);
+  const [pushResult, setPushResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -221,6 +223,29 @@ export default function OpportunityDetailPage() {
       fetchDetail();
     } catch { setActionError("备注保存失败"); setTimeout(() => setActionError(null), 4000); }
     finally { setSubmittingNote(false); }
+  }
+
+  async function handlePushReportToQingyan() {
+    setPushingReport(true);
+    setPushResult(null);
+    try {
+      const res = await fetch("/api/qingyan/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opportunityId: id }),
+      });
+      const data = await res.json();
+      if (res.ok && (data.status === "synced" || data.qingyanProjectId)) {
+        setPushResult({ ok: true, msg: `已发送至青砚 (${data.qingyanProjectId || "OK"})` });
+        if (data.qingyanUrl) setQingyanSync(data);
+      } else {
+        setPushResult({ ok: false, msg: data.error || "发送失败" });
+      }
+    } catch {
+      setPushResult({ ok: false, msg: "网络错误" });
+    } finally {
+      setPushingReport(false);
+    }
   }
 
   function removeFile(index: number) {
@@ -588,9 +613,28 @@ export default function OpportunityDetailPage() {
                         <Sparkles className="h-4 w-4 text-emerald-600" />
                         <span className="text-sm font-semibold text-emerald-900">AI 深度分析报告</span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        {analyzedAt && `${formatDate(analyzedAt)}`} · GPT-4o · BidToGo AI
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-muted-foreground">
+                          {analyzedAt && `${formatDate(analyzedAt)}`} · GPT-4o · BidToGo AI
+                        </span>
+                        {pushResult?.ok ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-2.5 py-1 text-[10px] font-medium text-violet-700">
+                            <CheckCircle className="h-3 w-3" />{pushResult.msg}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={handlePushReportToQingyan}
+                            disabled={pushingReport}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-[10px] font-medium text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
+                          >
+                            {pushingReport ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+                            发送报告给青砚
+                          </button>
+                        )}
+                        {pushResult && !pushResult.ok && (
+                          <span className="text-[10px] text-red-500">{pushResult.msg}</span>
+                        )}
+                      </div>
                     </div>
                     <CardContent className="pt-6 pb-8 px-6">
                       <article className="prose prose-sm max-w-none

@@ -96,7 +96,6 @@ export async function POST(request: NextRequest) {
     const intel = opp.intelligence;
     const intelSummary = (intel?.intelligenceSummary as Record<string, unknown>) ?? {};
 
-    // Extract Markdown report (v4) or fall back to old format
     let markdownReport: string | null = null;
     if (typeof intelSummary.report_markdown === "string") {
       markdownReport = intelSummary.report_markdown as string;
@@ -106,9 +105,9 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXTAUTH_URL || "https://bidtogo.ca";
     const oppUrl = `${baseUrl}/dashboard/opportunities/${opp.id}`;
 
-    const description = markdownReport
+    // Short summary for project.description (not the full report)
+    const shortSummary = opp.descriptionSummary
       || intel?.projectOverview
-      || opp.descriptionSummary
       || opp.title;
 
     const payload: QingyanProjectPayload = {
@@ -119,7 +118,7 @@ export async function POST(request: NextRequest) {
       },
       project: {
         name: `[招标] ${(opp as any).titleZh || opp.title}`,
-        description,
+        description: shortSummary,
         category: "tender_opportunity",
         priority: options?.priority || "medium",
         deadline: opp.closingDate ? opp.closingDate.toISOString() : null,
@@ -134,8 +133,8 @@ export async function POST(request: NextRequest) {
         recommendation: intel?.recommendationStatus || null,
         risk_level: mapFeasibilityToRiskLevel(intel?.feasibilityScore),
         fit_score: opp.relevanceScore || null,
-        summary: intel?.projectOverview || null,
-        full_report_url: `${oppUrl}#analysis`,
+        summary: opp.businessFitExplanation || intel?.projectOverview || null,
+        full_report_url: null,
         full_report: markdownReport ? { report_markdown: markdownReport } : null,
       },
       documents: opp.documents.map((doc) => ({
