@@ -42,6 +42,8 @@ _INDUSTRY_KEYWORDS = [
     "roller shade", "blackout", "motorized shade", "solar shade",
     "window shade", "hospital curtain", "privacy divider",
     "interior fit-out", "tenant improvement",
+    "standing agreement", "window", "liner", "blanket", "textiles",
+    "shutters", "bedding", "towel", "bag", "sock", "mask",
 ]
 
 _STATE_MAP = {

@@ -24,19 +24,24 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const PRIMARY_KEYWORDS = [
   "blinds", "blind", "roller shade", "roller shades", "roller blind", "roller blinds",
-  "zebra blind", "zebra blinds", "window covering", "window coverings",
+  "zebra blind", "zebra blinds", "window covering", "window coverings", "window",
   "shade", "shades", "curtain", "curtains", "drapery", "drape", "drapes",
   "window treatment", "motorized shades", "solar shades", "blackout shades",
   "skylight shades", "privacy curtain", "cubicle curtain", "hospital curtain",
   "drapery track", "window blind", "venetian blinds", "vertical blinds",
+  "shutters", "shutter", "plantation shutters", "interior shutters",
+  "liner", "liners", "curtain liner",
 ];
 
 const SECONDARY_KEYWORDS = [
-  "fabric", "textile", "soft furnishing", "soft goods",
+  "fabric", "textile", "textiles", "soft furnishing", "soft goods",
   "furnishing", "interior furnishing", "furniture",
   "FF&E", "interior finishing", "interior finishings",
   "interior fit-out", "commercial furnishing", "commercial interiors",
   "tenant improvement", "office fit-out",
+  "standing agreement", "standing offer", "supply agreement",
+  "blanket", "bedding", "bed linen", "towel", "linen",
+  "bag", "sock", "socks", "mask", "face mask",
 ];
 
 const CONTEXT_KEYWORDS = [
@@ -54,9 +59,8 @@ const NEGATIVE_KEYWORDS = [
   "snow removal", "heavy equipment", "paving", "excavat", "culvert",
   "pharmaceutical", "policing", "ambulance", "demolition only",
   "vehicles", "diesel", "landscaping", "waste management",
-  "laundry", "laundry service", "commercial laundry", "linen rental",
-  "linen service", "linen supply", "dry cleaning", "uniform supply",
-  "towel supply", "bedding supply", "cleaning service",
+  "laundry service", "commercial laundry", "industrial laundry",
+  "dry cleaning", "washing service", "cleaning service",
 ];
 
 export default function SettingsPage() {

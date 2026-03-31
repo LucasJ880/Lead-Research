@@ -97,26 +97,62 @@ PRIMARY_KEYWORDS: dict[str, int] = {
     "thermal curtain": 40,
     "blackout curtain": 50,
     "blackout curtains": 50,
+    # ── shutters ───────────────────────────
+    "shutters": 40,
+    "shutter": 35,
+    "plantation shutters": 45,
+    "plantation shutter": 45,
+    "interior shutters": 45,
+    "window shutters": 45,
+    # ── liners ────────────────────────────
+    "liner": 30,
+    "liners": 30,
+    "curtain liner": 45,
+    "curtain liners": 45,
+    "shower liner": 25,
     # ── window covering catch-all ─────────
     "window covering": 50,
     "window coverings": 50,
     "window treatment": 50,
     "window treatments": 50,
     "motorized window": 45,
-    "plantation shutters": 40,
     "window film": 30,
     "window shade": 45,
     "window blind": 45,
+    "window": 8,
 }
 
 SECONDARY_KEYWORDS: dict[str, int] = {
-    # ── textile / fabric (weak standalone signals) ──────────
+    # ── textile / fabric ──────────────────
     "fabric": 12,
-    "textile": 10,
-    "textiles": 10,
+    "textile": 15,
+    "textiles": 15,
     "soft furnishing": 30,
     "soft furnishings": 30,
     "soft goods": 25,
+    # ── bedding / towels / linen (textile supply) ──
+    "blanket": 20,
+    "blankets": 20,
+    "bedding": 20,
+    "bed linen": 20,
+    "towel": 15,
+    "towels": 15,
+    "linen": 15,
+    "linens": 15,
+    "bag": 10,
+    "bags": 10,
+    "tote bag": 12,
+    "sock": 10,
+    "socks": 10,
+    "mask": 10,
+    "masks": 10,
+    "face mask": 12,
+    # ── standing agreement / contract types ──
+    "standing agreement": 25,
+    "standing offer": 25,
+    "supply agreement": 20,
+    "blanket purchase agreement": 20,
+    "master agreement": 20,
     # ── furnishing / FF&E / furniture ──────
     "furniture": 25,
     "furnishing": 20,
@@ -267,30 +303,17 @@ NEGATIVE_KEYWORDS: dict[str, int] = {
     "waste management": 20,
     "garbage": 20,
     "recycling": 15,
-    # laundry / linen / bedding — different business from window coverings
+    # laundry services (different from textile supply)
     "laundry service": 35,
     "commercial laundry": 35,
     "industrial laundry": 35,
     "laundry equipment": 30,
-    "laundry": 20,
-    "linen rental": 30,
-    "linen service": 30,
-    "linen supply": 25,
-    "bed linen": 25,
-    "bed linen supply": 30,
-    "towel supply": 25,
-    "towel service": 25,
+    "laundry": 15,
     "dry cleaning": 30,
     "washing service": 25,
     "housekeeping": 15,
-    "uniform supply": 20,
-    "uniform rental": 20,
     "cleaning service": 20,
     "cleaning supplies": 20,
-    "bedding supply": 20,
-    "sheet supply": 20,
-    "linen and towel": 25,
-    "towel and linen": 25,
 }
 
 # ───────────────────────────────────────────────────────────────────────
@@ -361,6 +384,15 @@ SEMANTIC_PATTERNS = [
     # Track and hardware
     (re.compile(r"(curtain|drapery|track)\s+(track|rod|rail|hardware)", re.I), 35, "curtain hardware/track"),
     (re.compile(r"(ceiling|wall)\s+mount.{0,15}(track|rail|curtain)", re.I), 30, "mounted track system"),
+
+    # Textile product supply
+    (re.compile(r"(supply|procure|deliver)\w*\s+(blanket|bedding|towel|linen|textile)", re.I), 30, "textile supply"),
+    (re.compile(r"(blanket|bedding|towel|linen|textile)\w*\s+(supply|procurement|contract|agreement)", re.I), 30, "textile supply"),
+    (re.compile(r"standing\s+(agreement|offer)\s+.{0,30}(textile|linen|towel|blanket|curtain|blind|shade|window)", re.I), 35, "standing agreement textile"),
+    (re.compile(r"(shutter|shutters)\s+(install|supply|replace|procure)", re.I), 40, "shutter supply/install"),
+    (re.compile(r"(install|supply|replace|procure)\w*\s+(shutter|shutters)", re.I), 40, "shutter supply/install"),
+    (re.compile(r"(bag|bags|tote)\s+(supply|procure|manufacture|custom)", re.I), 20, "bag supply"),
+    (re.compile(r"(sock|socks|mask|masks)\s+(supply|procure|manufacture)", re.I), 20, "textile product supply"),
 ]
 
 # ───────────────────────────────────────────────────────────────────────
@@ -369,8 +401,8 @@ SEMANTIC_PATTERNS = [
 # If the opportunity's category field itself signals relevance.
 
 _CATEGORY_PATTERNS = [
-    (re.compile(r"window|blind|shade|curtain|drap|furnish|textile|ff&?e|interior", re.I), 12),
-    (re.compile(r"renovation|remodel|fitout|fit-out|tenant improve", re.I), 5),
+    (re.compile(r"window|blind|shade|curtain|drap|furnish|textile|ff&?e|interior|shutter|bedding|linen|towel", re.I), 12),
+    (re.compile(r"renovation|remodel|fitout|fit-out|tenant improve|standing agreement|standing offer", re.I), 5),
 ]
 
 _ORG_TYPE_BONUS = {
@@ -408,8 +440,15 @@ _TAG_RULES = [
     (re.compile(r"shade|blackout|solar shade|skylight", re.I), "shades"),
     (re.compile(r"curtain|privacy curtain|cubicle curtain|hospital curtain|room divider", re.I), "curtains"),
     (re.compile(r"drape|drapery", re.I), "drapery"),
+    (re.compile(r"shutter", re.I), "shutters"),
+    (re.compile(r"liner", re.I), "liners"),
     (re.compile(r"window covering|window treatment", re.I), "window coverings"),
-    (re.compile(r"fabric|textile|soft goods", re.I), "fabric"),
+    (re.compile(r"fabric|textile|soft goods", re.I), "textiles"),
+    (re.compile(r"blanket|bedding|bed linen|towel|linen", re.I), "bedding & linen"),
+    (re.compile(r"\bbag\b|\btote\b", re.I), "bags"),
+    (re.compile(r"\bsock\b|\bsocks\b", re.I), "socks"),
+    (re.compile(r"\bmask\b|\bface mask\b", re.I), "masks"),
+    (re.compile(r"standing agreement|standing offer|supply agreement", re.I), "standing agreement"),
     (re.compile(r"ff&e|ffe|furniture fixtures", re.I), "FF&E"),
     (re.compile(r"interior fit|fitout|tenant improvement", re.I), "interior fit-out"),
     (re.compile(r"motorized|automated", re.I), "motorized systems"),

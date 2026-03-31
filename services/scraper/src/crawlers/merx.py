@@ -68,6 +68,17 @@ _SEARCH_KEYWORDS = [
     "furnishing",
     "interior fit-out",
     "tenant improvement",
+    "standing agreement",
+    "window",
+    "liner",
+    "blanket",
+    "textiles",
+    "shutters",
+    "bedding",
+    "towel",
+    "bag",
+    "sock",
+    "mask",
 ]
 
 _CATEGORY_SEARCHES = [
