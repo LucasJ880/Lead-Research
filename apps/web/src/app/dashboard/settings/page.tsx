@@ -412,6 +412,10 @@ export default function SettingsPage() {
               <h3 className="text-sm font-semibold">数据维护</h3>
               <p className="text-xs text-muted-foreground">清除旧版分析数据（v3 JSON 格式），为新版 Markdown 分析腾出空间。</p>
               <CleanupButton />
+              <div className="border-t pt-3">
+                <p className="mb-2 text-xs text-muted-foreground">清理截止日期已过 14 天以上的旧项目，让前端默认只保留可行动机会。</p>
+                <PurgeExpiredButton />
+              </div>
             </div>
             <div className="rounded-lg border p-4 space-y-2">
               <h3 className="text-sm font-semibold">技术栈</h3>
@@ -461,6 +465,40 @@ function CleanupButton() {
       <Button size="sm" variant="destructive" onClick={handleCleanup} disabled={cleaning}>
         {cleaning ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <AlertTriangle className="mr-2 h-3 w-3" />}
         清除旧版分析数据
+      </Button>
+      {result && <p className="text-xs text-muted-foreground">{result}</p>}
+    </div>
+  );
+}
+
+function PurgeExpiredButton() {
+  const [cleaning, setCleaning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function handlePurge() {
+    if (!confirm("确定要删除过期超过 14 天的项目吗？相关文档和分析报告也会删除。")) return;
+    setCleaning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/maintenance/purge-expired", { method: "POST" });
+      const data = await res.json();
+      if (data.status === "ok") {
+        setResult(`已删除 ${data.deleted} 个过期项目（截止线：${new Date(data.cutoff).toLocaleDateString("zh-CN")}）`);
+      } else {
+        setResult(`清理失败: ${data.error || "未知错误"}`);
+      }
+    } catch {
+      setResult("清理失败: 网络错误");
+    } finally {
+      setCleaning(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button size="sm" variant="outline" onClick={handlePurge} disabled={cleaning}>
+        {cleaning ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Database className="mr-2 h-3 w-3" />}
+        清理过期项目
       </Button>
       {result && <p className="text-xs text-muted-foreground">{result}</p>}
     </div>

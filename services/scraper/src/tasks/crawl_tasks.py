@@ -56,6 +56,10 @@ def crawl_source(self: Any, source_id: str) -> dict[str, Any]:
     Returns:
         Serialized CrawlResult dict.
     """
+    if source_id == "all":
+        logger.warning("Received legacy crawl_source('all') task; dispatching crawl_all_active_sources instead")
+        return crawl_all_active_sources()
+
     logger.info("Starting crawl for source %s", source_id)
 
     try:

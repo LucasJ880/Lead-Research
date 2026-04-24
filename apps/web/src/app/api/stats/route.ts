@@ -17,6 +17,7 @@ export async function GET() {
     const liveFilter = { ingestionMode: "live" } as const;
     const relevantBuckets = ["highly_relevant", "moderately_relevant"] as string[];
     const relevantFilter = { ...liveFilter, relevanceBucket: { in: relevantBuckets } };
+    const activeRelevantWhere = { ...relevantFilter, OR: [{ closingDate: null }, { closingDate: { gte: now } }] };
 
     const [
       totalOpportunities,
@@ -37,9 +38,11 @@ export async function GET() {
       healthCountsRaw,
       crawlRunsLast24h,
       sourceRunsTotal,
+      lifecycleStatsRaw,
+      samSetAsideSkippedRaw,
     ] = await Promise.all([
       prisma.opportunity.count({ where: liveFilter }),
-      prisma.opportunity.count({ where: relevantFilter }),
+      prisma.opportunity.count({ where: activeRelevantWhere }),
       prisma.opportunity.count({
         where: { ...relevantFilter, status: "open", closingDate: { gte: now, lte: oneWeekFromNow } },
       }),
@@ -61,7 +64,7 @@ export async function GET() {
         LIMIT 10
       `,
       prisma.opportunity.findMany({
-        where: relevantFilter,
+        where: activeRelevantWhere,
         orderBy: [{ relevanceScore: "desc" }, { createdAt: "desc" }],
         take: 8,
         include: {
@@ -76,6 +79,26 @@ export async function GET() {
       prisma.source.groupBy({ by: ["healthStatus"], _count: true }),
       prisma.sourceRun.count({ where: { createdAt: { gte: oneDayAgo } } }),
       prisma.sourceRun.count(),
+      prisma.$queryRaw<{ actionable: bigint; expired: bigint }[]>`
+        SELECT
+          COUNT(*) FILTER (
+            WHERE ingestion_mode = 'live'
+              AND COALESCE(set_aside_restricted, false) = false
+              AND relevance_bucket IN ('highly_relevant', 'moderately_relevant')
+              AND (closing_date IS NULL OR closing_date >= NOW())
+          )::bigint AS actionable,
+          COUNT(*) FILTER (
+            WHERE ingestion_mode = 'live'
+              AND closing_date IS NOT NULL
+              AND closing_date < NOW()
+          )::bigint AS expired
+        FROM opportunities
+      `,
+      prisma.$queryRaw<{ skipped: bigint }[]>`
+        SELECT COALESCE(SUM((metadata->>'samgov_set_aside_skipped')::int), 0)::bigint AS skipped
+        FROM source_runs
+        WHERE created_at >= NOW() - INTERVAL '24 hours'
+      `,
     ]);
 
     // Last crawl run info
@@ -138,6 +161,8 @@ export async function GET() {
       total: Number(r.total),
       relevant: Number(r.relevant),
     }));
+    const lifecycleStats = lifecycleStatsRaw[0];
+    const samSetAsideSkipped24h = Number(samSetAsideSkippedRaw[0]?.skipped ?? 0);
 
     const priorityCounts: Record<string, number> = {};
     for (const row of priorityCountsRaw) {
@@ -174,10 +199,13 @@ export async function GET() {
 
     const stats: DashboardStats = {
       totalOpportunities,
-      openOpportunities: relevantOpportunities,
+      openOpportunities: Number(lifecycleStats?.actionable ?? 0) || relevantOpportunities,
       closingThisWeek,
       highRelevanceLeads: highlyRelevant,
       newLast24h,
+      actionableOpportunities: Number(lifecycleStats?.actionable ?? 0),
+      expiredOpportunities: Number(lifecycleStats?.expired ?? 0),
+      samSetAsideSkipped24h,
       recentOpportunities,
       bucketDistribution: {
         highly_relevant: highlyRelevant,

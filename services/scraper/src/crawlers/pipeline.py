@@ -58,6 +58,7 @@ class CrawlPipeline:
         self._source_config = source_config
         self._session = db_session
         self._result = CrawlResult(source_id=source_config.id)
+        self._crawler_diagnostics: dict = {}
 
     def run(self, triggered_by: TriggerType = TriggerType.SCHEDULE) -> CrawlResult:
         """Execute the full pipeline and return a summary.
@@ -116,7 +117,7 @@ class CrawlPipeline:
             self._finalize_source_run(
                 source_run_id, RunStatus.COMPLETED,
                 metadata={"crawl_ms": crawl_ms, "process_ms": process_ms, "total_ms": total_ms,
-                          "access_mode": str(access_mode)},
+                          "access_mode": str(access_mode), **self._crawler_diagnostics},
             )
 
         except Exception as exc:
@@ -148,6 +149,13 @@ class CrawlPipeline:
             crawler = GenericCrawler(self._source_config, self._session)
 
         opportunities = crawler.crawl()
+        diagnostics_fn = getattr(crawler, "diagnostics", None)
+        if callable(diagnostics_fn):
+            try:
+                self._crawler_diagnostics = diagnostics_fn() or {}
+            except Exception:
+                logger.exception("Failed to read crawler diagnostics for %s", self._source_config.name)
+                self._crawler_diagnostics = {}
         self._result.pages_crawled = self._source_config.crawl_config.get(
             "max_pages", settings.DEFAULT_MAX_PAGES_PER_SOURCE
         )
@@ -292,6 +300,7 @@ class CrawlPipeline:
                         mandatory_site_visit, pre_bid_meeting, addenda_count,
                         keywords_matched, negative_keywords, relevance_score,
                         relevance_bucket, relevance_breakdown, industry_tags,
+                        set_aside, set_aside_restricted,
                         ingestion_mode, raw_data, fingerprint, updated_at
                     ) VALUES (
                         :source_id, :source_run_id, :external_id,
@@ -305,6 +314,7 @@ class CrawlPipeline:
                         :mandatory_site_visit, :pre_bid_meeting, :addenda_count,
                         :keywords_matched, :negative_keywords, :relevance_score,
                         :relevance_bucket, :relevance_breakdown, :industry_tags,
+                        :set_aside, :set_aside_restricted,
                         'live', :raw_data, :fingerprint, NOW()
                     )
                 """),
@@ -345,6 +355,8 @@ class CrawlPipeline:
                     "relevance_bucket": opp.relevance_bucket,
                     "relevance_breakdown": _safe_json_dumps(opp.relevance_breakdown),
                     "industry_tags": opp.industry_tags,
+                    "set_aside": (opp.raw_data or {}).get("set_aside"),
+                    "set_aside_restricted": bool((opp.raw_data or {}).get("set_aside_restricted", False)),
                     "raw_data": _safe_json_dumps(opp.raw_data),
                     "fingerprint": opp.fingerprint,
                 },
@@ -395,6 +407,8 @@ class CrawlPipeline:
                         relevance_bucket = :relevance_bucket,
                         relevance_breakdown = :relevance_breakdown,
                         industry_tags = :industry_tags,
+                        set_aside = COALESCE(:set_aside, set_aside),
+                        set_aside_restricted = :set_aside_restricted,
                         raw_data = COALESCE(:raw_data, raw_data),
                         updated_at = NOW()
                     WHERE id = :id
@@ -422,6 +436,8 @@ class CrawlPipeline:
                     "relevance_bucket": opp.relevance_bucket,
                     "relevance_breakdown": _safe_json_dumps(opp.relevance_breakdown),
                     "industry_tags": opp.industry_tags,
+                    "set_aside": (opp.raw_data or {}).get("set_aside"),
+                    "set_aside_restricted": bool((opp.raw_data or {}).get("set_aside_restricted", False)),
                     "raw_data": _safe_json_dumps(opp.raw_data) if opp.raw_data else None,
                 },
             )
@@ -539,7 +555,8 @@ class CrawlPipeline:
                         opportunities_updated = :updated,
                         opportunities_skipped = :skipped,
                         error_message = :error_message,
-                        error_details = :error_details
+                        error_details = :error_details,
+                        metadata = COALESCE(CAST(:metadata AS jsonb), metadata)
                     WHERE id = :id
                 """),
                 {
@@ -553,6 +570,7 @@ class CrawlPipeline:
                     "skipped": self._result.opportunities_skipped,
                     "error_message": error_message,
                     "error_details": json.dumps(error_details_payload) if error_details_payload else None,
+                    "metadata": json.dumps(metadata) if metadata else None,
                 },
             )
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import type {
+  OpportunityLifecycleState,
   OpportunityStatus,
   OpportunitySummary,
   PaginatedResponse,
@@ -22,6 +23,9 @@ interface RawOpportunityRow {
   category: string | null;
   posted_date: Date | null;
   closing_date: Date | null;
+  lifecycle_state: OpportunityLifecycleState;
+  set_aside: string | null;
+  set_aside_restricted: boolean | null;
   relevance_score: number;
   relevance_bucket: string;
   keywords_matched: string[];
@@ -54,6 +58,9 @@ function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
     category: row.category ?? undefined,
     postedDate: row.posted_date ? new Date(row.posted_date).toISOString() : undefined,
     closingDate: row.closing_date ? new Date(row.closing_date).toISOString() : undefined,
+    lifecycleState: row.lifecycle_state,
+    setAside: row.set_aside ?? undefined,
+    setAsideRestricted: row.set_aside_restricted ?? false,
     relevanceScore: Number(row.relevance_score),
     relevanceBucket: row.relevance_bucket as RelevanceBucket,
     keywordsMatched: row.keywords_matched ?? [],
@@ -94,6 +101,7 @@ export async function GET(request: NextRequest) {
     const closingAfter = searchParams.get("closingAfter");
     const closingBefore = searchParams.get("closingBefore");
     const minRelevance = searchParams.get("minRelevance");
+    const lifecycle = searchParams.get("lifecycle") || "actionable";
     const sort = searchParams.get("sort") || "relevance";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
@@ -114,6 +122,7 @@ export async function GET(request: NextRequest) {
       closingAfter,
       closingBefore,
       minRelevance,
+      lifecycle,
       sort,
       page,
       pageSize,
@@ -145,6 +154,7 @@ interface SearchParams {
   closingAfter: string | null;
   closingBefore: string | null;
   minRelevance: string | null;
+  lifecycle: string | null;
   sort: string;
   page: number;
   pageSize: number;
@@ -162,6 +172,38 @@ function addBucketCondition(conditions: string[], values: unknown[], bucket: str
   }
 }
 
+const LIFECYCLE_SQL = `
+  CASE
+    WHEN o.closing_date IS NOT NULL AND o.closing_date < NOW() THEN 'expired'
+    WHEN o.closing_date IS NOT NULL AND o.closing_date <= NOW() + INTERVAL '7 days' THEN 'closing_soon'
+    ELSE 'active'
+  END
+`;
+
+function addLifecycleCondition(conditions: string[], lifecycle: string | null) {
+  if (!lifecycle || lifecycle === "all") return;
+  if (lifecycle === "actionable") {
+    conditions.push(`(o.closing_date IS NULL OR o.closing_date >= NOW())`);
+    return;
+  }
+  if (lifecycle === "watch") {
+    conditions.push(`(o.closing_date IS NULL OR o.closing_date >= NOW())`);
+    conditions.push(`o.relevance_bucket = 'low_relevance'`);
+    return;
+  }
+  if (lifecycle === "active") {
+    conditions.push(`(o.closing_date IS NULL OR o.closing_date > NOW() + INTERVAL '7 days')`);
+    return;
+  }
+  if (lifecycle === "closing_soon") {
+    conditions.push(`o.closing_date IS NOT NULL AND o.closing_date >= NOW() AND o.closing_date <= NOW() + INTERVAL '7 days'`);
+    return;
+  }
+  if (lifecycle === "expired") {
+    conditions.push(`o.closing_date IS NOT NULL AND o.closing_date < NOW()`);
+  }
+}
+
 async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
   const conditions: string[] = [];
   const values: unknown[] = [];
@@ -172,6 +214,8 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
   idx.v++;
 
   conditions.push(`o.ingestion_mode = 'live'`);
+  conditions.push(`COALESCE(o.set_aside_restricted, false) = false`);
+  addLifecycleCondition(conditions, params.lifecycle);
   addBucketCondition(conditions, values, params.bucket, idx);
 
   if (params.workflow) {
@@ -266,6 +310,8 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
       org.name AS organization_name,
       o.country, o.region, o.city, o.category,
       o.posted_date, o.closing_date,
+      ${LIFECYCLE_SQL} AS lifecycle_state,
+      o.set_aside, o.set_aside_restricted,
       o.relevance_score, o.relevance_bucket,
       o.keywords_matched, o.industry_tags,
       o.source_url, s.name AS source_name,
@@ -311,9 +357,11 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
 
 async function handlePrismaSearch(params: SearchParams) {
   // Use raw SQL to always include intelligence status (resilient to Prisma client sync issues)
-  const conditions: string[] = ["o.ingestion_mode = 'live'"];
+  const conditions: string[] = ["o.ingestion_mode = 'live'", "COALESCE(o.set_aside_restricted, false) = false"];
   const values: unknown[] = [];
   const idx = { v: 1 };
+
+  addLifecycleCondition(conditions, params.lifecycle);
 
   if (params.bucket && params.bucket !== "all") {
     if (params.bucket === "relevant") {
@@ -414,6 +462,8 @@ async function handlePrismaSearch(params: SearchParams) {
       org.name AS organization_name,
       o.country, o.region, o.city, o.category,
       o.posted_date, o.closing_date,
+      ${LIFECYCLE_SQL} AS lifecycle_state,
+      o.set_aside, o.set_aside_restricted,
       o.relevance_score, o.relevance_bucket,
       o.keywords_matched, o.industry_tags,
       o.source_url, s.name AS source_name,

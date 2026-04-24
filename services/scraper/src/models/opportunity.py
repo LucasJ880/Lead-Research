@@ -126,6 +126,8 @@ class OpportunityCreate(BaseModel):
     relevance_bucket: str = "irrelevant"
     relevance_breakdown: dict[str, Any] = Field(default_factory=dict)
     industry_tags: list[str] = Field(default_factory=list)
+    set_aside: str | None = None
+    set_aside_restricted: bool = False
     raw_data: dict[str, Any] | None = None
     fingerprint: str
 

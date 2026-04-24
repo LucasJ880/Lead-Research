@@ -133,10 +133,10 @@ export default function DashboardPage() {
   const intel = stats.intelligence;
 
   const METRICS = [
-    { label: "相关线索", value: stats.openOpportunities, icon: FolderOpen, color: "text-emerald-600 bg-emerald-50", href: "/dashboard/opportunities" },
-    { label: "高关联", value: stats.highRelevanceLeads, icon: TrendingUp, color: "text-blue-600 bg-blue-50", href: "/dashboard/opportunities?bucket=highly_relevant" },
+    { label: "可投标", value: stats.actionableOpportunities ?? stats.openOpportunities, icon: FolderOpen, color: "text-emerald-600 bg-emerald-50", href: "/dashboard/opportunities?lifecycle=actionable" },
+    { label: "即将截止", value: stats.closingThisWeek, icon: TrendingUp, color: "text-blue-600 bg-blue-50", href: "/dashboard/opportunities?lifecycle=closing_soon&sort=closing_soon" },
     { label: "新增 (24h)", value: stats.newLast24h, icon: Sparkles, color: "text-violet-600 bg-violet-50", href: "/dashboard/opportunities?sort=newest" },
-    { label: "即将截止", value: stats.closingThisWeek, icon: CalendarClock, color: "text-amber-600 bg-amber-50", href: "/dashboard/opportunities?sort=closing_soon" },
+    { label: "Set-Aside 已拦截", value: stats.samSetAsideSkipped24h ?? 0, icon: CalendarClock, color: "text-amber-600 bg-amber-50", href: "/dashboard/logs" },
   ];
 
   const pipelineStages = [

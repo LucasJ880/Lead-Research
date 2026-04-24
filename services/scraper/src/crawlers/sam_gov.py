@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
+from src.core.config import settings
 from src.crawlers.base import BaseCrawler
 from src.models.opportunity import OpportunityCreate, OpportunityStatus
 
@@ -67,6 +68,51 @@ _KEYWORD_RE = re.compile(
     re.IGNORECASE,
 )
 
+_SET_ASIDE_FIELDS = (
+    "typeOfSetAside",
+    "typeOfSetAsideDescription",
+    "setAside",
+    "setAsideCode",
+)
+
+_NO_SET_ASIDE_VALUES = {
+    "",
+    "none",
+    "null",
+    "n/a",
+    "na",
+    "no set aside used",
+    "no set-aside used",
+    "not set aside",
+}
+
+
+def _normalize_set_aside_value(value: Any) -> str:
+    """Normalize SAM.gov set-aside values for eligibility checks."""
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        value = value.get("description") or value.get("name") or value.get("code") or ""
+    return re.sub(r"\s+", " ", str(value)).strip().lower()
+
+
+def _extract_set_aside(record: dict) -> dict[str, str]:
+    """Return all set-aside fields present on a SAM.gov listing record."""
+    values: dict[str, str] = {}
+    for field in _SET_ASIDE_FIELDS:
+        normalized = _normalize_set_aside_value(record.get(field))
+        if normalized:
+            values[field] = normalized
+    return values
+
+
+def _is_no_set_aside(record: dict) -> bool:
+    """Only keep records that are explicitly unrestricted or have empty set-aside fields."""
+    values = _extract_set_aside(record)
+    if not values:
+        return True
+    return all(value in _NO_SET_ASIDE_VALUES for value in values.values())
+
 
 def _parse_date(date_str: str | None) -> datetime | None:
     if not date_str:
@@ -83,6 +129,8 @@ class SamGovCrawler(BaseCrawler):
     """Crawl SAM.gov for US federal procurement opportunities."""
 
     def crawl(self) -> list[OpportunityCreate]:
+        self._diag_setaside_skipped = 0
+        self._diag_setaside_examples: list[dict[str, str]] = []
         cfg = self.source_config.crawl_config
         max_pages = cfg.get("max_pages", 10)
         per_page = cfg.get("per_page", 100)
@@ -167,7 +215,7 @@ class SamGovCrawler(BaseCrawler):
             params = {
                 "limit": per_page,
                 "offset": page_offset,
-                "api_key": "",
+                "api_key": settings.SAM_GOV_API_KEY,
                 "postedFrom": date_from,
                 "postedTo": date_to,
                 "ptype": _NOTICE_TYPES,
@@ -193,6 +241,16 @@ class SamGovCrawler(BaseCrawler):
             for record in records:
                 notice_id = record.get("noticeId", "")
                 if notice_id in seen_ids:
+                    continue
+                if not _is_no_set_aside(record):
+                    seen_ids.add(notice_id)
+                    self._diag_setaside_skipped += 1
+                    if len(self._diag_setaside_examples) < 5:
+                        self._diag_setaside_examples.append({
+                            "notice_id": notice_id,
+                            "title": record.get("title", "")[:160],
+                            "set_aside": "; ".join(_extract_set_aside(record).values())[:250],
+                        })
                     continue
                 opp = self._parse_record(record, pre_filter)
                 if opp:
@@ -407,6 +465,9 @@ class SamGovCrawler(BaseCrawler):
         return docs
 
     def _parse_record(self, record: dict, pre_filter: bool) -> OpportunityCreate | None:
+        if not _is_no_set_aside(record):
+            return None
+
         title = record.get("title", "").strip()[:250]
         if not title:
             return None
@@ -458,6 +519,8 @@ class SamGovCrawler(BaseCrawler):
         naics = record.get("naicsCode", "")
         classification = record.get("classificationCode", "")
         psc_name = record.get("classificationName", "")
+        set_aside_raw = _extract_set_aside(record)
+        set_aside_display = "No set aside used"
 
         # Pre-filter: skip obvious non-matches to reduce DB volume
         if pre_filter:
@@ -547,6 +610,8 @@ class SamGovCrawler(BaseCrawler):
             contact_phone=contact_phone,
             source_url=ui_link,
             has_documents=len(resource_links) > 0,
+            set_aside=set_aside_display or "No set aside used",
+            set_aside_restricted=False,
             organization_name=org_name,
             raw_data={
                 "parser_version": "samgov_v4",
@@ -566,7 +631,9 @@ class SamGovCrawler(BaseCrawler):
                 "department": record.get("department", ""),
                 "sub_tier": record.get("subtierAgency", record.get("subTier", "")),
                 "office": record.get("office", ""),
-                "set_aside": record.get("typeOfSetAsideDescription", record.get("setAside", "")),
+                "set_aside": set_aside_display or "No set aside used",
+                "set_aside_raw": set_aside_raw,
+                "set_aside_restricted": False,
                 "award": record.get("award") or {},
                 "estimated_value": record.get("estimatedValue") or record.get("baseAndAllOptionsValue"),
                 "contract_type": record.get("contractType", ""),
@@ -581,3 +648,10 @@ class SamGovCrawler(BaseCrawler):
             },
             fingerprint="",
         )
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Expose crawl diagnostics to the pipeline run metadata."""
+        return {
+            "samgov_set_aside_skipped": getattr(self, "_diag_setaside_skipped", 0),
+            "samgov_set_aside_examples": getattr(self, "_diag_setaside_examples", []),
+        }

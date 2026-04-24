@@ -40,8 +40,13 @@ celery_app.conf.beat_schedule = {
         "task": "src.tasks.translate_tasks.translate_pending_opportunities",
         "schedule": crontab(hour="*/6", minute=30),
     },
+    "purge-expired-opportunities": {
+        "task": "src.tasks.cleanup_tasks.purge_expired_opportunities",
+        "schedule": crontab(hour=3, minute=0),
+    },
 }
 
 celery_app.autodiscover_tasks(["src.tasks"], related_name="crawl_tasks")
 celery_app.autodiscover_tasks(["src.tasks"], related_name="extract_documents")
 celery_app.autodiscover_tasks(["src.tasks"], related_name="translate_tasks")
+celery_app.autodiscover_tasks(["src.tasks"], related_name="cleanup_tasks")

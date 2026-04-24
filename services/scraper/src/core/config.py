@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # OpenAI for document intelligence
     OPENAI_API_KEY: str = ""
 
+    # SAM.gov public API key. Empty is allowed but rate limits are stricter.
+    SAM_GOV_API_KEY: str = ""
+
     # Google Translate
     GOOGLE_TRANSLATE_API_KEY: str = ""
 

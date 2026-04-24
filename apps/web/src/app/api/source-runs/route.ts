@@ -42,9 +42,11 @@ export async function GET(request: NextRequest) {
       opportunitiesFound: run.opportunitiesFound,
       opportunitiesCreated: run.opportunitiesCreated,
       opportunitiesUpdated: run.opportunitiesUpdated,
+      setAsideSkipped: Number((run.metadata as Record<string, unknown> | null)?.samgov_set_aside_skipped ?? 0),
       errorMessage: run.errorMessage ?? undefined,
       triggeredBy: run.triggeredBy,
       createdAt: run.createdAt.toISOString(),
+      metadata: (run.metadata as Record<string, unknown>) ?? {},
     }));
 
     const response: PaginatedResponse<CrawlLogEntry> = {

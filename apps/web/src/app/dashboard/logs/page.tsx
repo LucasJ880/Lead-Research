@@ -138,6 +138,7 @@ export default function LogsPage() {
     running: runs.filter((r) => r.status === "running" || r.status === "pending").length,
     totalInserted: runs.reduce((sum, r) => sum + r.opportunitiesCreated, 0),
     totalFound: runs.reduce((sum, r) => sum + r.opportunitiesFound, 0),
+    setAsideSkipped: runs.reduce((sum, r) => sum + (r.setAsideSkipped ?? 0), 0),
   };
 
   return (
@@ -180,7 +181,7 @@ export default function LogsPage() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-medium text-muted-foreground">本页运行</p>
@@ -214,6 +215,12 @@ export default function LogsPage() {
                 / {summary.totalInserted} 新增
               </span>
             </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-amber-600">Set-Aside 拦截</p>
+            <p className="mt-1 text-xl font-bold text-amber-600">{summary.setAsideSkipped}</p>
           </CardContent>
         </Card>
       </div>
@@ -251,6 +258,7 @@ export default function LogsPage() {
                       <TableHead className="pb-3 pr-4">耗时</TableHead>
                       <TableHead className="pb-3 pr-4 text-right">页数</TableHead>
                       <TableHead className="pb-3 pr-4 text-right">发现</TableHead>
+                      <TableHead className="pb-3 pr-4 text-right">拦截</TableHead>
                       <TableHead className="pb-3 pr-4 text-right">新增</TableHead>
                       <TableHead className="pb-3 pr-4 text-right">更新</TableHead>
                       <TableHead className="pb-3">错误</TableHead>
@@ -296,6 +304,13 @@ export default function LogsPage() {
                           </TableCell>
                           <TableCell className="py-3 pr-4 text-right tabular-nums">
                             {run.opportunitiesFound}
+                          </TableCell>
+                          <TableCell className="py-3 pr-4 text-right tabular-nums">
+                            {run.setAsideSkipped ? (
+                              <span className="text-amber-600">{run.setAsideSkipped}</span>
+                            ) : (
+                              0
+                            )}
                           </TableCell>
                           <TableCell className="py-3 pr-4 text-right tabular-nums font-medium">
                             {run.opportunitiesCreated > 0 ? (

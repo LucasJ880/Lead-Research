@@ -34,6 +34,7 @@ import {
   getBucketColor,
 } from "@/lib/utils";
 import type {
+  OpportunityLifecycleState,
   OpportunitySummary,
   OpportunityStatus,
   PaginatedResponse,
@@ -57,6 +58,13 @@ const SORT_OPTIONS = [
   { label: "最高关联度", value: "relevance" },
   { label: "最新", value: "newest" },
   { label: "即将截止", value: "closing_soon" },
+];
+
+const LIFECYCLE_TABS: { label: string; value: OpportunityLifecycleState | "actionable" | "watch"; description: string }[] = [
+  { label: "可投标", value: "actionable", description: "开放且高/中关联" },
+  { label: "即将截止", value: "closing_soon", description: "7 天内截止" },
+  { label: "观察", value: "watch", description: "低关联但未过期" },
+  { label: "已过期", value: "expired", description: "过期 14 天内" },
 ];
 
 const STATUS_OPTIONS: { label: string; value: OpportunityStatus | "" }[] = [
@@ -171,6 +179,10 @@ function OpportunitiesPage() {
   const [workflowFilter, setWorkflowFilter] = useState(initialWorkflow);
   const [tagFilter, setTagFilter] = useState("");
   const [sortBy, setSortBy] = useState(initialSort);
+  const [lifecycle, setLifecycle] = useState<OpportunityLifecycleState | "actionable" | "watch">(
+    (nextSearchParams.get("lifecycle") as OpportunityLifecycleState | "actionable" | "watch" | null) || "actionable"
+  );
+  const [lifecycleCounts, setLifecycleCounts] = useState<Record<string, number>>({});
   const [minRelevance, setMinRelevance] = useState(0);
   const [closingAfter, setClosingAfter] = useState("");
   const [closingBefore, setClosingBefore] = useState("");
@@ -208,7 +220,7 @@ function OpportunitiesPage() {
     };
   }, [keyword]);
 
-  const effectiveBucket = businessFocus ? "relevant" : bucketFilter;
+  const effectiveBucket = lifecycle === "watch" ? "all" : businessFocus ? "relevant" : bucketFilter;
 
   const fetchOpportunities = useCallback(() => {
     setLoading(true);
@@ -218,6 +230,7 @@ function OpportunitiesPage() {
       workflow: workflowFilter,
       country: countryFilter,
       bucket: effectiveBucket,
+      lifecycle,
       tag: tagFilter,
       minRelevance,
       closingAfter,
@@ -237,11 +250,20 @@ function OpportunitiesPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [debouncedKeyword, statusFilter, workflowFilter, countryFilter, effectiveBucket, tagFilter, minRelevance, closingAfter, closingBefore, sortBy, page, pageSize]);
+  }, [debouncedKeyword, statusFilter, workflowFilter, countryFilter, effectiveBucket, lifecycle, tagFilter, minRelevance, closingAfter, closingBefore, sortBy, page, pageSize]);
 
   useEffect(() => {
     fetchOpportunities();
   }, [fetchOpportunities]);
+
+  useEffect(() => {
+    fetch("/api/opportunities/counts")
+      .then((res) => res.ok ? res.json() : null)
+      .then((counts) => {
+        if (counts) setLifecycleCounts(counts);
+      })
+      .catch(() => {});
+  }, []);
 
   const opportunities = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -258,6 +280,7 @@ function OpportunitiesPage() {
     setMinRelevance(0);
     setClosingAfter("");
     setClosingBefore("");
+    setLifecycle("actionable");
     setBusinessFocus(false);
     setPage(1);
   }
@@ -280,6 +303,7 @@ function OpportunitiesPage() {
       status: statusFilter,
       country: countryFilter,
       bucket: effectiveBucket,
+      lifecycle,
       workflow: workflowFilter,
       tag: tagFilter,
       minRelevance,
@@ -329,9 +353,38 @@ function OpportunitiesPage() {
         />
       </div>
 
+      {/* Lifecycle tabs */}
+      <div className="grid gap-2 sm:grid-cols-4">
+        {LIFECYCLE_TABS.map((tab) => {
+          const active = lifecycle === tab.value;
+          const count = lifecycleCounts[tab.value] ?? 0;
+          return (
+            <button
+              key={tab.value}
+              onClick={() => {
+                setLifecycle(tab.value);
+                setPage(1);
+                if (tab.value === "closing_soon") setSortBy("closing_soon");
+              }}
+              className={`rounded-lg border p-3 text-left transition-colors ${
+                active ? "border-primary bg-primary/5 shadow-sm" : "bg-card hover:bg-muted/40"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">{tab.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  {count.toLocaleString()}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{tab.description}</p>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Primary filters */}
       <div className="flex items-center gap-2 flex-wrap">
-        <select value={businessFocus ? "relevant" : bucketFilter} onChange={(e) => { setBucketFilter(e.target.value); setBusinessFocus(false); setPage(1); }} className={selectClass}>
+        <select value={lifecycle === "watch" ? "low_relevance" : businessFocus ? "relevant" : bucketFilter} onChange={(e) => { setBucketFilter(e.target.value); setBusinessFocus(false); setPage(1); }} className={selectClass} disabled={lifecycle === "watch"}>
           {BUCKET_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }} className={selectClass}>
@@ -465,7 +518,15 @@ function OpportunitiesPage() {
                     <span className="line-clamp-1">{opp.organization || "—"}</span>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground whitespace-nowrap text-tabular">
-                    {formatDate(opp.closingDate)}
+                    <div className="flex flex-col gap-1">
+                      <span>{formatDate(opp.closingDate)}</span>
+                      {opp.lifecycleState === "closing_soon" && (
+                        <span className="w-fit rounded bg-amber-100 px-1.5 py-px text-[10px] font-medium text-amber-700">即将截止</span>
+                      )}
+                      {opp.lifecycleState === "expired" && (
+                        <span className="w-fit rounded bg-slate-100 px-1.5 py-px text-[10px] font-medium text-slate-600">已过期</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <AnalysisBadge opp={opp} />

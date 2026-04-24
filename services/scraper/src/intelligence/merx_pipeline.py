@@ -16,6 +16,7 @@ Can be triggered for:
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from datetime import datetime, timezone
@@ -58,7 +59,7 @@ class MerxIntelligencePipeline:
                 SELECT o.id, o.title, o.description_full, o.description_summary,
                        o.source_url, o.location_raw,
                        o.closing_date, o.solicitation_number, o.relevance_score,
-                       o.raw_data,
+                       o.raw_data, COALESCE(o.set_aside_restricted, false) AS set_aside_restricted,
                        s.name AS source_name,
                        org.name AS org_name
                 FROM opportunities o
@@ -72,6 +73,17 @@ class MerxIntelligencePipeline:
         if not row:
             logger.error("Opportunity %s not found", opportunity_id)
             return {"error": "Opportunity not found"}
+
+        raw = row.raw_data
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = {}
+        if row.set_aside_restricted or (isinstance(raw, dict) and raw.get("set_aside_restricted")):
+            set_aside = raw.get("set_aside") if isinstance(raw, dict) else "Set-Aside restricted"
+            logger.info("Blocked AI analysis for set-aside restricted opportunity %s: %s", opportunity_id, set_aside)
+            return {"error": "Set-Aside restricted opportunity", "set_aside": set_aside}
 
         title = row.title
         source_url = row.source_url

@@ -55,6 +55,11 @@ export type RelevanceBucket =
   | "low_relevance"
   | "irrelevant";
 
+export type OpportunityLifecycleState =
+  | "active"
+  | "closing_soon"
+  | "expired";
+
 export type WorkflowStatus =
   | "new"
   | "hot"
@@ -93,6 +98,7 @@ export interface OpportunityFilters {
   closingAfter?: string;
   closingBefore?: string;
   minRelevance?: number;
+  lifecycle?: OpportunityLifecycleState | "actionable" | "watch";
   sort?: string;
   page?: number;
   pageSize?: number;
@@ -112,6 +118,9 @@ export interface DashboardStats {
   closingThisWeek: number;
   highRelevanceLeads: number;
   newLast24h: number;
+  actionableOpportunities?: number;
+  expiredOpportunities?: number;
+  samSetAsideSkipped24h?: number;
   recentOpportunities: OpportunitySummary[];
   bucketDistribution?: {
     highly_relevant: number;
@@ -162,6 +171,9 @@ export interface OpportunitySummary {
   category?: string;
   postedDate?: string;
   closingDate?: string;
+  lifecycleState?: OpportunityLifecycleState;
+  setAside?: string;
+  setAsideRestricted?: boolean;
   relevanceScore: number;
   relevanceBucket: RelevanceBucket;
   keywordsMatched: string[];
@@ -273,9 +285,11 @@ export interface CrawlLogEntry {
   opportunitiesFound: number;
   opportunitiesCreated: number;
   opportunitiesUpdated: number;
+  setAsideSkipped?: number;
   errorMessage?: string;
   triggeredBy: string;
   createdAt: string;
+  metadata?: Record<string, unknown>;
 }
 
 // ─── AI Intelligence types (v2.0 report) ───

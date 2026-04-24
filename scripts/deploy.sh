@@ -127,6 +127,12 @@ echo "4/7  Running database migrations (prisma db push)..."
 $COMPOSE run --rm app sh -c \
   'npx prisma@5.22.0 db push --accept-data-loss --skip-generate' 2>&1 | tail -5
 
+echo "     Ensuring full-text search index exists..."
+$COMPOSE exec -T postgres psql -U "${POSTGRES_USER:-leadharvest}" -d "${POSTGRES_DB:-leadharvest}" \
+  -f /dev/stdin < apps/web/prisma/setup-search.sql > /dev/null 2>&1 \
+  && echo "     Search index ready." \
+  || echo "     WARNING: Search index setup failed"
+
 # ── 6. Seed admin user (pure SQL, no Node container needed) ──
 echo ""
 echo "5/7  Ensuring admin user exists..."

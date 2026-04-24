@@ -70,6 +70,28 @@ def _record_usage(session: Any, opp_id: str, model: str, mode: str,
         logger.warning("Failed to record AI usage: %s", exc)
 
 
+def _is_set_aside_restricted(raw_data: Any, set_aside_restricted: bool | None = None) -> tuple[bool, str]:
+    """Return whether an opportunity is blocked by SAM.gov set-aside rules."""
+    unrestricted_values = {"", "no set aside used", "no set-aside used", "none", "n/a", "na", "null"}
+    if set_aside_restricted:
+        return True, "Set-Aside restricted"
+    raw = raw_data
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = {}
+    if not isinstance(raw, dict):
+        return False, ""
+    if raw.get("set_aside_restricted"):
+        return True, str(raw.get("set_aside") or "Set-Aside restricted")
+    set_aside = str(raw.get("set_aside") or "").strip().lower()
+    set_aside_parts = [part.strip() for part in set_aside.split(";")]
+    if set_aside and not all(part in unrestricted_values for part in set_aside_parts):
+        return True, str(raw.get("set_aside"))
+    return False, ""
+
+
 # ─── Text Extraction ─────────────────────────────────────────
 
 
@@ -166,7 +188,8 @@ async def upload_and_analyze(
                 text("""
                     SELECT o.id, o.title, o.description_summary, o.description_full,
                            o.country, o.region, o.city, o.closing_date,
-                           o.solicitation_number,
+                           o.solicitation_number, o.raw_data,
+                           COALESCE(o.set_aside_restricted, false) AS set_aside_restricted,
                            s.name as source_name, org.name as organization_name
                     FROM opportunities o
                     LEFT JOIN sources s ON o.source_id = s.id
@@ -177,6 +200,12 @@ async def upload_and_analyze(
             ).fetchone()
 
             if opp:
+                blocked, set_aside_reason = _is_set_aside_restricted(opp.raw_data, opp.set_aside_restricted)
+                if blocked:
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        f"SAM.gov 项目 Set-Aside 受限（{set_aside_reason}），不能参与，已阻止 AI 深度分析以避免浪费 token。",
+                    )
                 opp_title = opp.title
                 organization = opp.organization_name
                 lp = [p for p in [opp.city, opp.region, opp.country] if p]
