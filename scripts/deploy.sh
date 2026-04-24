@@ -165,6 +165,20 @@ $COMPOSE exec -T scraper-api python -m src.seeds.sources 2>&1 | tail -5 \
   && echo "     Sources seeded." \
   || echo "     WARNING: Source seeding failed (non-critical if sources already exist)"
 
+echo "     Cleaning expired and SAM Set-Aside restricted opportunities..."
+if $COMPOSE exec -T scraper-api python - <<'PY'
+from src.tasks.cleanup_tasks import purge_expired_opportunities_now, purge_sam_set_aside_restricted_now
+
+expired = purge_expired_opportunities_now()
+restricted = purge_sam_set_aside_restricted_now()
+print({"expired": expired, "sam_set_aside_restricted": restricted})
+PY
+then
+  echo "     Maintenance cleanup complete."
+else
+  echo "     WARNING: Maintenance cleanup failed"
+fi
+
 # ── 8. Start all services ───────────────────────────────
 echo ""
 echo "7/8  Starting all services..."

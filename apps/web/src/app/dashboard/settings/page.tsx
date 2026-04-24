@@ -483,7 +483,7 @@ function PurgeExpiredButton() {
       const res = await fetch("/api/maintenance/purge-expired", { method: "POST" });
       const data = await res.json();
       if (data.status === "ok") {
-        setResult(`已删除 ${data.deleted} 个过期项目（截止线：${new Date(data.cutoff).toLocaleDateString("zh-CN")}）`);
+        setResult(`已删除 ${data.deleted} 条无效数据：过期 ${data.expiredDeleted ?? 0} 条，SAM Set-Aside 受限 ${data.samSetAsideDeleted ?? 0} 条。截止线：${new Date(data.cutoff).toLocaleDateString("zh-CN")}`);
       } else {
         setResult(`清理失败: ${data.error || "未知错误"}`);
       }
