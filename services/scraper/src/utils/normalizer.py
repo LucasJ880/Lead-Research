@@ -138,6 +138,96 @@ def normalize_location(location_str: str, country: str = "US") -> dict[str, str 
     return result
 
 
+def normalize_location_extended(location_str: str, country: str = "US") -> dict[str, str | bool | float | None]:
+    """Extended location normalization for North America filters."""
+    base = normalize_location(location_str, country)
+    location_raw = location_str or ""
+    postal_code = None
+    us_match = re.search(r"\b\d{5}(?:-\d{4})?\b", location_raw)
+    ca_match = re.search(r"\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b", location_raw, flags=re.IGNORECASE)
+    if us_match:
+        postal_code = us_match.group(0)
+    elif ca_match:
+        postal_code = ca_match.group(0).upper()
+
+    country_code = (base.get("country") or "").upper()
+    is_north_america = country_code in {"CA", "US"}
+    confidence = 0.0
+    if base.get("country"):
+        confidence += 0.4
+    if base.get("region"):
+        confidence += 0.35
+    if base.get("city"):
+        confidence += 0.2
+    if postal_code:
+        confidence += 0.05
+
+    return {
+        **base,
+        "state_province": base.get("region"),
+        "postal_code": postal_code,
+        "delivery_location": location_raw or None,
+        "is_north_america": is_north_america,
+        "location_confidence": min(1.0, round(confidence, 2)),
+    }
+
+
+_PROCUREMENT_TYPE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bRFQ\b|request\s+for\s+quotation", re.IGNORECASE), "RFQ"),
+    (re.compile(r"\bRFP\b|request\s+for\s+proposal", re.IGNORECASE), "RFP"),
+    (re.compile(r"\bRFI\b|request\s+for\s+information", re.IGNORECASE), "RFI"),
+    (re.compile(r"\bRFN\b|request\s+for\s+notice", re.IGNORECASE), "RFN"),
+    (re.compile(r"\bIFB\b|invitation\s+for\s+bid", re.IGNORECASE), "IFB"),
+    (re.compile(r"\bITB\b|invitation\s+to\s+bid", re.IGNORECASE), "ITB"),
+    (re.compile(r"\btender\b", re.IGNORECASE), "tender"),
+    (re.compile(r"\bnotice\b", re.IGNORECASE), "notice"),
+]
+
+
+def normalize_procurement_type(
+    title: str | None,
+    source_metadata_type: str | None = None,
+    document_text: str | None = None,
+) -> dict[str, str | float]:
+    """Infer normalized procurement type with source and confidence."""
+    if source_metadata_type:
+        token = source_metadata_type.strip().upper()
+        canonical = {
+            "RFQ": "RFQ",
+            "RFP": "RFP",
+            "RFI": "RFI",
+            "RFN": "RFN",
+            "IFB": "IFB",
+            "ITB": "ITB",
+            "TENDER": "tender",
+            "NOTICE": "notice",
+        }.get(token)
+        if canonical:
+            return {
+                "procurement_type": canonical,
+                "procurement_type_source": "source_metadata",
+                "procurement_type_confidence": 0.95,
+            }
+
+    for text, src, conf in (
+        (title or "", "title", 0.75),
+        (document_text or "", "doc_infer", 0.65),
+    ):
+        for pattern, p_type in _PROCUREMENT_TYPE_PATTERNS:
+            if pattern.search(text):
+                return {
+                    "procurement_type": p_type,
+                    "procurement_type_source": src,
+                    "procurement_type_confidence": conf,
+                }
+
+    return {
+        "procurement_type": "unknown",
+        "procurement_type_source": "unknown",
+        "procurement_type_confidence": 0.0,
+    }
+
+
 # ─── Status Normalization ───────────────────────────────────
 
 _STATUS_MAP: dict[str, str] = {

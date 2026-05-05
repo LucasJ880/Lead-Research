@@ -51,10 +51,12 @@ export async function GET() {
 
   // Admin user exists
   try {
-    const adminCount = await prisma.user.count({ where: { role: "admin" } });
+    const adminCount = await prisma.user.count({
+      where: { role: { in: ["owner", "super_admin", "admin"] } },
+    });
     checks.admin = adminCount > 0
-      ? { status: "ok", detail: `${adminCount} admin(s)` }
-      : { status: "warning", detail: "No admin users found" };
+      ? { status: "ok", detail: `${adminCount} admin-like user(s)` }
+      : { status: "warning", detail: "No owner/admin users found" };
   } catch {
     checks.admin = { status: "error", detail: "Cannot query users" };
   }

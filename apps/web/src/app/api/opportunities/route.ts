@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import type {
+  BusinessStatus,
   OpportunityLifecycleState,
   OpportunityStatus,
   OpportunitySummary,
   PaginatedResponse,
+  ProcurementType,
   RelevanceBucket,
   WorkflowStatus,
 } from "@/types";
@@ -15,10 +17,19 @@ interface RawOpportunityRow {
   title: string;
   title_zh: string | null;
   status: string;
+  business_status?: string | null;
   workflow_status: string;
   organization_name: string | null;
   country: string | null;
   region: string | null;
+  state_province?: string | null;
+  postal_code?: string | null;
+  delivery_location?: string | null;
+  location_confidence?: number | null;
+  is_north_america?: boolean | null;
+  procurement_type?: string | null;
+  procurement_type_source?: string | null;
+  procurement_type_confidence?: number | null;
   city: string | null;
   category: string | null;
   posted_date: Date | null;
@@ -50,10 +61,19 @@ function mapRowToSummary(row: RawOpportunityRow): OpportunitySummary {
     title: row.title_zh || row.title,
     titleZh: row.title_zh ?? undefined,
     status: row.status as OpportunityStatus,
+    businessStatus: (row.business_status ?? undefined) as BusinessStatus | undefined,
     workflowStatus: (row.workflow_status ?? "new") as WorkflowStatus,
     organization: row.organization_name ?? undefined,
     country: row.country ?? undefined,
     region: row.region ?? undefined,
+    stateProvince: row.state_province ?? undefined,
+    postalCode: row.postal_code ?? undefined,
+    deliveryLocation: row.delivery_location ?? undefined,
+    locationConfidence: Number(row.location_confidence ?? 0),
+    isNorthAmerica: row.is_north_america ?? undefined,
+    procurementType: (row.procurement_type ?? undefined) as ProcurementType | undefined,
+    procurementTypeSource: row.procurement_type_source ?? undefined,
+    procurementTypeConfidence: Number(row.procurement_type_confidence ?? 0),
     city: row.city ?? undefined,
     category: row.category ?? undefined,
     postedDate: row.posted_date ? new Date(row.posted_date).toISOString() : undefined,
@@ -91,6 +111,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") as OpportunityStatus | null;
     const country = searchParams.get("country");
     const region = searchParams.get("region");
+    const stateProvince = searchParams.get("stateProvince");
+    const northAmericaOnly = searchParams.get("northAmericaOnly");
+    const unknownLocation = searchParams.get("unknownLocation");
+    const procurementType = searchParams.get("procurementType");
+    const businessStatus = searchParams.get("businessStatus");
     const sourceId = searchParams.get("sourceId");
     const category = searchParams.get("category");
     const bucket = searchParams.get("bucket") || "relevant";
@@ -113,6 +138,11 @@ export async function GET(request: NextRequest) {
       workflow,
       country,
       region,
+      stateProvince,
+      northAmericaOnly,
+      unknownLocation,
+      procurementType,
+      businessStatus,
       sourceId,
       category,
       bucket,
@@ -145,6 +175,11 @@ interface SearchParams {
   workflow: string | null;
   country: string | null;
   region: string | null;
+  stateProvince: string | null;
+  northAmericaOnly: string | null;
+  unknownLocation: string | null;
+  procurementType: string | null;
+  businessStatus: string | null;
   sourceId: string | null;
   category: string | null;
   bucket: string | null;
@@ -215,6 +250,9 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
 
   conditions.push(`o.ingestion_mode = 'live'`);
   conditions.push(`COALESCE(o.set_aside_restricted, false) = false`);
+  if (!params.businessStatus) {
+    conditions.push(`COALESCE(o.business_status, 'new_discovered'::"BusinessStatus") NOT IN ('archived', 'not_fit', 'lost')`);
+  }
   addLifecycleCondition(conditions, params.lifecycle);
   addBucketCondition(conditions, values, params.bucket, idx);
 
@@ -234,9 +272,30 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
     values.push(params.status);
     idx.v++;
   }
+  if (params.businessStatus) {
+    conditions.push(`o.business_status = $${idx.v}::"BusinessStatus"`);
+    values.push(params.businessStatus);
+    idx.v++;
+  }
   if (params.country) {
     conditions.push(`o.country = $${idx.v}`);
     values.push(params.country);
+    idx.v++;
+  }
+  if (params.stateProvince) {
+    conditions.push(`COALESCE(o.state_province, o.region) = $${idx.v}`);
+    values.push(params.stateProvince);
+    idx.v++;
+  }
+  if (params.northAmericaOnly === "true") {
+    conditions.push(`COALESCE(o.is_north_america, false) = true`);
+  }
+  if (params.unknownLocation === "true") {
+    conditions.push(`(o.country IS NULL OR o.country = '')`);
+  }
+  if (params.procurementType) {
+    conditions.push(`o.procurement_type = $${idx.v}::"ProcurementType"`);
+    values.push(params.procurementType);
     idx.v++;
   }
   if (params.region) {
@@ -307,8 +366,11 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
   const dataQuery = `
     SELECT
       o.id, o.title, o.title_zh, o.status::text, o.workflow_status::text,
+      o.business_status::text,
       org.name AS organization_name,
-      o.country, o.region, o.city, o.category,
+      o.country, o.region, o.state_province, o.postal_code, o.delivery_location, o.location_confidence, o.is_north_america,
+      o.procurement_type::text, o.procurement_type_source, o.procurement_type_confidence,
+      o.city, o.category,
       o.posted_date, o.closing_date,
       ${LIFECYCLE_SQL} AS lifecycle_state,
       o.set_aside, o.set_aside_restricted,
@@ -357,7 +419,13 @@ async function handleKeywordSearch(params: SearchParams & { keyword: string }) {
 
 async function handlePrismaSearch(params: SearchParams) {
   // Use raw SQL to always include intelligence status (resilient to Prisma client sync issues)
-  const conditions: string[] = ["o.ingestion_mode = 'live'", "COALESCE(o.set_aside_restricted, false) = false"];
+  const conditions: string[] = [
+    "o.ingestion_mode = 'live'",
+    "COALESCE(o.set_aside_restricted, false) = false",
+  ];
+  if (!params.businessStatus) {
+    conditions.push(`COALESCE(o.business_status, 'new_discovered'::"BusinessStatus") NOT IN ('archived', 'not_fit', 'lost')`);
+  }
   const values: unknown[] = [];
   const idx = { v: 1 };
 
@@ -388,9 +456,30 @@ async function handlePrismaSearch(params: SearchParams) {
     values.push(params.status);
     idx.v++;
   }
+  if (params.businessStatus) {
+    conditions.push(`o.business_status = $${idx.v}::"BusinessStatus"`);
+    values.push(params.businessStatus);
+    idx.v++;
+  }
   if (params.country) {
     conditions.push(`o.country = $${idx.v}`);
     values.push(params.country);
+    idx.v++;
+  }
+  if (params.stateProvince) {
+    conditions.push(`COALESCE(o.state_province, o.region) = $${idx.v}`);
+    values.push(params.stateProvince);
+    idx.v++;
+  }
+  if (params.northAmericaOnly === "true") {
+    conditions.push(`COALESCE(o.is_north_america, false) = true`);
+  }
+  if (params.unknownLocation === "true") {
+    conditions.push(`(o.country IS NULL OR o.country = '')`);
+  }
+  if (params.procurementType) {
+    conditions.push(`o.procurement_type = $${idx.v}::"ProcurementType"`);
+    values.push(params.procurementType);
     idx.v++;
   }
   if (params.region) {
@@ -459,8 +548,11 @@ async function handlePrismaSearch(params: SearchParams) {
   const dataQuery = `
     SELECT
       o.id, o.title, o.title_zh, o.status::text, o.workflow_status::text,
+      o.business_status::text,
       org.name AS organization_name,
-      o.country, o.region, o.city, o.category,
+      o.country, o.region, o.state_province, o.postal_code, o.delivery_location, o.location_confidence, o.is_north_america,
+      o.procurement_type::text, o.procurement_type_source, o.procurement_type_confidence,
+      o.city, o.category,
       o.posted_date, o.closing_date,
       ${LIFECYCLE_SQL} AS lifecycle_state,
       o.set_aside, o.set_aside_restricted,

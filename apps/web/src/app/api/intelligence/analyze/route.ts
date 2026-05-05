@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 
 const SCRAPER_API_URL = process.env.SCRAPER_API_URL || "http://localhost:8001";
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 
 export async function POST(request: NextRequest) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole([
+    "owner",
+    "super_admin",
+    "admin",
+    "manager",
+    "sales",
+  ]);
   if (authError) return authError;
 
   try {
     const body = await request.json();
-    const { opportunityId, mode = "quick" } = body;
+    const { opportunityId, mode = "quick", promptTemplateKey } = body;
 
     if (!opportunityId) {
       return NextResponse.json(
@@ -28,6 +34,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         opportunity_id: opportunityId,
         mode,
+        prompt_template_key: promptTemplateKey,
       }),
     });
 

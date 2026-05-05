@@ -13,14 +13,20 @@ Two modes:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+import json
 import openai
+import re
+import yaml
 
 from src.core.config import settings
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "config" / "prompts"
 
 # Per-analysis budget cap (USD)
 MAX_COST_PER_ANALYSIS = 5.0
@@ -257,6 +263,57 @@ _MINI_SUMMARY_PROMPT = """\
 
 直接输出评估内容，不要标题或格式标记。"""
 
+
+def _load_prompt_template(template_key: str, fallback_system: str, fallback_user: str) -> tuple[str, str]:
+    """Load prompt template from YAML, fallback to built-in strings."""
+    try:
+        # Prevent path traversal; template key is logical identifier only.
+        if not re.match(r"^[A-Za-z0-9_.-]+$", template_key or ""):
+            logger.warning("Invalid prompt template key: %s", template_key)
+            return fallback_system, fallback_user
+        prompt_path = _PROMPTS_DIR / f"{template_key}.yaml"
+        if not prompt_path.exists():
+            return fallback_system, fallback_user
+        with prompt_path.open("r", encoding="utf-8") as f:
+            payload = yaml.safe_load(f) or {}
+        system_prompt = str(payload.get("system_prompt") or fallback_system)
+        user_prompt = str(payload.get("user_prompt") or fallback_user)
+        return system_prompt, user_prompt
+    except Exception as exc:
+        logger.warning("Failed to load prompt template '%s': %s", template_key, exc)
+        return fallback_system, fallback_user
+
+
+def _structured_report_to_markdown(payload: dict[str, Any]) -> str:
+    """Render structured Bid/No-Bid output to markdown for backward compatibility."""
+    fit_score = payload.get("fit_score")
+    recommendation = payload.get("recommendation")
+    confidence = payload.get("confidence")
+    lines = [
+        "## Bid/No-Bid 分析报告",
+        "",
+        f"- 匹配分数: {fit_score if fit_score is not None else '未提供'}",
+        f"- 推荐结论: {recommendation or '未提供'}",
+        f"- 置信度: {confidence or '未提供'}",
+        "",
+        "### 主要原因",
+    ]
+    for item in payload.get("main_reasons", []) or ["无"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "### 风险点"])
+    for item in payload.get("risks", []) or ["无"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "### 缺失信息"])
+    for item in payload.get("missing_information", []) or ["无"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "### 需要人工确认"])
+    for item in payload.get("human_confirmations", []) or ["无"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "### 推荐下一步"])
+    for item in payload.get("recommended_next_steps", []) or ["无"]:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
+
 # ──────────────────────────────────────────────────────────────
 # Cost estimation
 # ──────────────────────────────────────────────────────────────
@@ -303,6 +360,7 @@ class TenderAnalyzer:
         *,
         solicitation_number: str | None = None,
         country: str | None = None,
+        prompt_template_key: str | None = None,
     ) -> dict[str, Any]:
         """Run full AI analysis and return a Markdown report.
 
@@ -321,7 +379,14 @@ class TenderAnalyzer:
             logger.warning("No content to analyze for: %s", title)
             return self._fallback(title, description)
 
-        prompt = _FULL_ANALYSIS_PROMPT.format(
+        template_key = prompt_template_key or "default.deep"
+        system_prompt, user_prompt_template = _load_prompt_template(
+            template_key=template_key,
+            fallback_system=_SYSTEM_PROMPT,
+            fallback_user=_FULL_ANALYSIS_PROMPT,
+        )
+
+        prompt = user_prompt_template.format(
             title=title,
             organization=organization or "未说明",
             location=location or "未说明",
@@ -334,7 +399,7 @@ class TenderAnalyzer:
         )
 
         estimated_cost = estimate_analysis_cost(
-            len(prompt) + len(_SYSTEM_PROMPT),
+            len(prompt) + len(system_prompt),
             self._max_tokens,
             self._model,
         )
@@ -344,7 +409,7 @@ class TenderAnalyzer:
                 estimated_cost, MAX_COST_PER_ANALYSIS,
             )
             doc_text = doc_text[:50000]
-            prompt = _FULL_ANALYSIS_PROMPT.format(
+            prompt = user_prompt_template.format(
                 title=title,
                 organization=organization or "未说明",
                 location=location or "未说明",
@@ -366,7 +431,7 @@ class TenderAnalyzer:
             response = client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.15,
@@ -386,7 +451,18 @@ class TenderAnalyzer:
                     4,
                 )
 
-            report_md = response.choices[0].message.content or ""
+            raw_content = response.choices[0].message.content or ""
+            structured_report = None
+            report_md = raw_content
+            try:
+                maybe_json = raw_content.strip()
+                if maybe_json.startswith("{") and maybe_json.endswith("}"):
+                    parsed = json.loads(maybe_json)
+                    if isinstance(parsed, dict):
+                        structured_report = parsed
+                        report_md = _structured_report_to_markdown(parsed)
+            except Exception:
+                structured_report = None
 
             logger.info(
                 "Analysis complete: title='%s' tokens=%d+%d model=%s len=%d cost=$%.4f",
@@ -396,6 +472,7 @@ class TenderAnalyzer:
 
             return {
                 "report_markdown": report_md,
+                "structured_report": structured_report,
                 "model": self._model,
                 "analyzed_at": datetime.now(timezone.utc).isoformat(),
                 "prompt_tokens": prompt_tokens,
@@ -415,6 +492,7 @@ class TenderAnalyzer:
         organization: str | None = None,
         location: str | None = None,
         closing_date: str | None = None,
+        prompt_template_key: str | None = None,
     ) -> str | None:
         if not settings.OPENAI_API_KEY:
             return None
@@ -423,7 +501,14 @@ class TenderAnalyzer:
         if not desc and not title:
             return None
 
-        prompt = _MINI_SUMMARY_PROMPT.format(
+        template_key = prompt_template_key or "default.quick"
+        system_prompt, user_prompt_template = _load_prompt_template(
+            template_key=template_key,
+            fallback_system=_SYSTEM_PROMPT,
+            fallback_user=_MINI_SUMMARY_PROMPT,
+        )
+
+        prompt = user_prompt_template.format(
             title=title,
             organization=organization or "未说明",
             location=location or "未说明",
@@ -436,7 +521,7 @@ class TenderAnalyzer:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,

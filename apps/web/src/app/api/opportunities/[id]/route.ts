@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
-import type { OpportunityDetail, OpportunityStatus, QingyanSyncInfo, RelevanceBucket, WorkflowStatus } from "@/types";
+import { requireAuth, requireRole } from "@/lib/api-auth";
+import type {
+  BusinessStatus,
+  OpportunityDetail,
+  OpportunityStatus,
+  ProcurementType,
+  QingyanSyncInfo,
+  RelevanceBucket,
+  WorkflowStatus,
+} from "@/types";
 
 const VALID_WORKFLOW: WorkflowStatus[] = [
   "new", "hot", "review", "shortlisted", "pursuing", "passed", "not_relevant", "monitor",
@@ -12,7 +20,13 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole([
+    "owner",
+    "super_admin",
+    "admin",
+    "manager",
+    "sales",
+  ]);
   if (authError) return authError;
 
   try {
@@ -75,6 +89,7 @@ export async function GET(
       relevanceScore: Number(opp.relevanceScore),
       relevanceBucket: opp.relevanceBucket as RelevanceBucket,
       workflowStatus: opp.workflowStatus as WorkflowStatus,
+      businessStatus: (opp as unknown as { businessStatus: BusinessStatus }).businessStatus,
       keywordsMatched: opp.keywordsMatched ?? [],
       negativeKeywords: opp.negativeKeywords ?? [],
       industryTags: opp.industryTags ?? [],
@@ -88,6 +103,14 @@ export async function GET(
       descriptionFull: ((opp as any).descriptionFullZh || opp.descriptionFull) ?? undefined,
       descriptionFullZh: (opp as any).descriptionFullZh ?? undefined,
       locationRaw: opp.locationRaw ?? undefined,
+      stateProvince: (opp as unknown as { stateProvince: string | null }).stateProvince ?? undefined,
+      postalCode: (opp as unknown as { postalCode: string | null }).postalCode ?? undefined,
+      deliveryLocation: (opp as unknown as { deliveryLocation: string | null }).deliveryLocation ?? undefined,
+      locationConfidence: Number((opp as unknown as { locationConfidence: number | null }).locationConfidence ?? 0),
+      isNorthAmerica: Boolean((opp as unknown as { isNorthAmerica: boolean | null }).isNorthAmerica),
+      procurementType: (opp as unknown as { procurementType: ProcurementType }).procurementType,
+      procurementTypeSource: (opp as unknown as { procurementTypeSource: string | null }).procurementTypeSource ?? undefined,
+      procurementTypeConfidence: Number((opp as unknown as { procurementTypeConfidence: number | null }).procurementTypeConfidence ?? 0),
       projectType: opp.projectType ?? undefined,
       solicitationNumber: opp.solicitationNumber ?? undefined,
       contactName: opp.contactName ?? undefined,
@@ -121,6 +144,7 @@ export async function GET(
       notes: opp.notes.map((note) => ({
         id: note.id,
         content: note.content,
+        noteType: (note as unknown as { noteType: "general" | "status_reason" | "analysis_note" | "system" }).noteType,
         userName: note.user.name,
         createdAt: note.createdAt.toISOString(),
         updatedAt: note.updatedAt.toISOString(),

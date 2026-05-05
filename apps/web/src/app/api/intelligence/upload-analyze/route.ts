@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 
 const SCRAPER_API_URL = process.env.SCRAPER_API_URL || "http://localhost:8001";
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 
 export async function POST(request: NextRequest) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole([
+    "owner",
+    "super_admin",
+    "admin",
+    "manager",
+    "sales",
+  ]);
   if (authError) return authError;
 
   try {
@@ -23,6 +29,10 @@ export async function POST(request: NextRequest) {
     const title = formData.get("title");
     if (title) {
       proxyForm.append("title", title.toString());
+    }
+    const promptTemplateKey = formData.get("prompt_template_key");
+    if (promptTemplateKey) {
+      proxyForm.append("prompt_template_key", promptTemplateKey.toString());
     }
 
     const res = await fetch(

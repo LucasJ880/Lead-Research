@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -50,7 +51,7 @@ import {
   getBucketLabel,
   getBucketColor,
 } from "@/lib/utils";
-import type { OpportunityDetail, QingyanSyncInfo, WorkflowStatus } from "@/types";
+import type { ActivityTimelineItem, BusinessStatus, OpportunityDetail, QingyanSyncInfo, WorkflowStatus } from "@/types";
 import { QingyanPushButton } from "@/components/qingyan/qingyan-push-button";
 import { QingyanSyncCard } from "@/components/qingyan/qingyan-sync-card";
 
@@ -70,9 +71,26 @@ const WORKFLOW_ACTIONS: { value: WorkflowStatus; icon: typeof Flame; label: stri
   { value: "passed", icon: XCircle, label: "跳过" },
 ];
 
+const BUSINESS_STATUS_LABELS: Record<BusinessStatus, string> = {
+  new_discovered: "新发现",
+  candidate: "候选",
+  under_review: "审核中",
+  fit: "符合",
+  not_fit: "不符合",
+  archived: "已归档",
+  bidding: "投标中",
+  submitted: "已提交",
+  won: "中标",
+  lost: "未中标",
+};
+
 type TabId = "summary" | "analysis" | "documents" | "notes";
 
 export default function OpportunityDetailPage() {
+  const { data: session } = useSession();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const canWrite = ["owner", "super_admin", "admin", "manager", "sales"].includes(role ?? "");
+
   const params = useParams();
   const id = params.id as string;
 
@@ -82,7 +100,9 @@ export default function OpportunityDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [submittingNote, setSubmittingNote] = useState(false);
   const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
+  const [updatingBusinessStatus, setUpdatingBusinessStatus] = useState(false);
   const [intel, setIntel] = useState<any>(null);
+  const [timeline, setTimeline] = useState<ActivityTimelineItem[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>("summary");
   const [qingyanSync, setQingyanSync] = useState<QingyanSyncInfo | null>(null);
   const [retryingQingyan, setRetryingQingyan] = useState(false);
@@ -126,10 +146,18 @@ export default function OpportunityDetailPage() {
       .catch(() => {});
   }, [id]);
 
+  const fetchTimeline = useCallback(() => {
+    fetch(`/api/opportunities/${id}/activity-timeline`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setTimeline(data?.data ?? []))
+      .catch(() => {});
+  }, [id]);
+
   useEffect(() => {
     fetchDetail();
     fetchIntelligence();
-  }, [fetchDetail, fetchIntelligence]);
+    fetchTimeline();
+  }, [fetchDetail, fetchIntelligence, fetchTimeline]);
 
   async function handleGenerateMiniSummary() {
     setMiniLoading(true);
@@ -211,6 +239,31 @@ export default function OpportunityDetailPage() {
       fetchDetail();
     } catch { setActionError("操作失败"); setTimeout(() => setActionError(null), 4000); }
     finally { setUpdatingWorkflow(false); }
+  }
+
+  async function handleBusinessStatusChange(nextStatus: BusinessStatus) {
+    if (!opp || opp.businessStatus === nextStatus) return;
+    let reason = "";
+    if (nextStatus === "not_fit" || nextStatus === "archived") {
+      reason = window.prompt("请填写状态变更原因（必填）", "")?.trim() ?? "";
+      if (!reason) return;
+    }
+    setUpdatingBusinessStatus(true);
+    try {
+      const res = await fetch(`/api/opportunities/${id}/business-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newStatus: nextStatus, reason }),
+      });
+      if (!res.ok) throw new Error();
+      fetchDetail();
+      fetchTimeline();
+    } catch {
+      setActionError("业务状态更新失败");
+      setTimeout(() => setActionError(null), 4000);
+    } finally {
+      setUpdatingBusinessStatus(false);
+    }
   }
 
   async function handleAddNote() {
@@ -360,11 +413,23 @@ export default function OpportunityDetailPage() {
             </div>
 
             <div className="flex items-center gap-1 shrink-0 flex-wrap">
+              <select
+                value={opp.businessStatus ?? "new_discovered"}
+                onChange={(e) => handleBusinessStatusChange(e.target.value as BusinessStatus)}
+                disabled={updatingBusinessStatus || !canWrite}
+                className="h-8 rounded-md border bg-card px-2 text-xs"
+              >
+                {Object.entries(BUSINESS_STATUS_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
               {WORKFLOW_ACTIONS.map((a) => {
                 const active = opp.workflowStatus === a.value;
                 return (
                   <button key={a.value} onClick={() => handleWorkflowChange(a.value)}
-                    disabled={updatingWorkflow || active}
+                    disabled={updatingWorkflow || active || !canWrite}
                     className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium transition-all disabled:opacity-50 ${
                       active ? "bg-primary/10 ring-1 ring-primary/30 text-primary"
                         : "border text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -490,6 +555,38 @@ export default function OpportunityDetailPage() {
                         </div>
                       );
                     })()}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-semibold">活动时间线</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {timeline.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">暂无活动记录</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {timeline.slice(0, 20).map((item) => (
+                          <div key={item.id} className="rounded-md border p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium">{item.title}</p>
+                              <span className="text-[10px] text-muted-foreground">
+                                {formatDate(item.createdAt, "MMM d, yyyy h:mm a")}
+                              </span>
+                            </div>
+                            {item.actorName && (
+                              <p className="mt-1 text-[10px] text-muted-foreground">操作人: {item.actorName}</p>
+                            )}
+                            {item.description && (
+                              <p className="mt-1.5 text-sm text-muted-foreground whitespace-pre-wrap">
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </>
@@ -768,8 +865,9 @@ export default function OpportunityDetailPage() {
                   <div className="space-y-2 pt-2 border-t">
                     <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)}
                       placeholder="添加备注…" rows={3}
+                      disabled={!canWrite}
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none" />
-                    <Button size="sm" onClick={handleAddNote} disabled={!newNote.trim() || submittingNote}>
+                    <Button size="sm" onClick={handleAddNote} disabled={!canWrite || !newNote.trim() || submittingNote}>
                       {submittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                       添加备注
                     </Button>

@@ -10,8 +10,13 @@ datasource db {
 // ─── Enums ─────────────────────────────────────────────────
 
 enum UserRole {
+  owner
+  super_admin
   admin
+  manager
+  sales
   viewer
+  client
 }
 
 enum SourceType {
@@ -112,6 +117,38 @@ enum WorkflowStatus {
   bid_drafted
 }
 
+enum BusinessStatus {
+  new_discovered
+  candidate
+  under_review
+  fit
+  not_fit
+  archived
+  bidding
+  submitted
+  won
+  lost
+}
+
+enum ProcurementType {
+  RFQ
+  RFP
+  RFI
+  RFN
+  IFB
+  ITB
+  tender
+  notice
+  unknown
+}
+
+enum NoteType {
+  general
+  status_reason
+  analysis_note
+  system
+}
+
 enum AccessMode {
   api
   http_scrape
@@ -147,6 +184,8 @@ model User {
   passwordHash String   @map("password_hash") @db.VarChar(255)
   name         String   @db.VarChar(255)
   role         UserRole @default(admin)
+  tenantId     String   @default("default_tenant") @map("tenant_id") @db.VarChar(100)
+  companyId    String?  @map("company_id") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -154,8 +193,25 @@ model User {
   savedSearches SavedSearch[]
   alerts        Alert[]
   auditLogs     AuditLog[]
+  statusChanges OpportunityStatusHistory[]
+  company       Company?                    @relation(fields: [companyId], references: [id])
 
+  @@index([tenantId], name: "idx_users_tenant")
+  @@index([companyId], name: "idx_users_company")
   @@map("users")
+}
+
+model Company {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(255)
+  tenantId  String   @default("default_tenant") @map("tenant_id") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  users User[]
+
+  @@index([tenantId], name: "idx_companies_tenant")
+  @@map("companies")
 }
 
 // ─── Sources ───────────────────────────────────────────────
@@ -300,6 +356,17 @@ model Opportunity {
   workflowStatus      WorkflowStatus    @default(new) @map("workflow_status")
   workflowNote        String?           @map("workflow_note")
   workflowUpdatedAt   DateTime?         @map("workflow_updated_at") @db.Timestamptz()
+  businessStatus      BusinessStatus    @default(new_discovered) @map("business_status")
+  businessStatusReasonLatest String?    @map("business_status_reason_latest")
+  procurementType     ProcurementType   @default(unknown) @map("procurement_type")
+  procurementTypeSource String?         @default("unknown") @map("procurement_type_source") @db.VarChar(30)
+  procurementTypeConfidence Float       @default(0) @map("procurement_type_confidence")
+  postalCode          String?           @map("postal_code") @db.VarChar(20)
+  deliveryLocation    String?           @map("delivery_location")
+  locationConfidence  Float             @default(0) @map("location_confidence")
+  isNorthAmerica      Boolean           @default(false) @map("is_north_america")
+  stateProvince       String?           @map("state_province") @db.VarChar(100)
+  tenantId            String            @default("default_tenant") @map("tenant_id") @db.VarChar(100)
   ingestionMode       String            @default("live") @map("ingestion_mode") @db.VarChar(20)
   rawData             Json?             @map("raw_data")
   searchVector        Unsupported("tsvector")? @map("search_vector")
@@ -318,6 +385,7 @@ model Opportunity {
   documents    OpportunityDocument[]
   tags         OpportunityTag[]
   notes        Note[]
+  statusHistory OpportunityStatusHistory[]
   alerts       Alert[]
   intelligence TenderIntelligence?
   qingyanSync  QingyanSync?
@@ -332,6 +400,11 @@ model Opportunity {
   @@index([relevanceBucket], name: "idx_opportunities_bucket")
   @@index([setAsideRestricted], name: "idx_opportunities_set_aside_restricted")
   @@index([workflowStatus], name: "idx_opportunities_workflow")
+  @@index([businessStatus], name: "idx_opportunities_business_status")
+  @@index([procurementType], name: "idx_opportunities_procurement_type")
+  @@index([isNorthAmerica], name: "idx_opportunities_north_america")
+  @@index([stateProvince], name: "idx_opportunities_state_province")
+  @@index([tenantId], name: "idx_opportunities_tenant")
   @@index([sourceId], name: "idx_opportunities_source")
   @@index([organizationId], name: "idx_opportunities_org")
   @@map("opportunities")
@@ -465,15 +538,42 @@ model Note {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId        String   @map("user_id") @db.Uuid
   opportunityId String   @map("opportunity_id") @db.Uuid
+  noteType      NoteType @default(general) @map("note_type")
+  tenantId      String   @default("default_tenant") @map("tenant_id") @db.VarChar(100)
   content       String
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  statusReasonEvents OpportunityStatusHistory[] @relation("StatusReasonNote")
 
   @@index([opportunityId], name: "idx_notes_opportunity")
+  @@index([noteType], name: "idx_notes_note_type")
+  @@index([tenantId], name: "idx_notes_tenant")
   @@map("notes")
+}
+
+model OpportunityStatusHistory {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  opportunityId      String         @map("opportunity_id") @db.Uuid
+  tenantId           String         @default("default_tenant") @map("tenant_id") @db.VarChar(100)
+  changedByUserId    String?        @map("changed_by_user_id") @db.Uuid
+  oldStatus          BusinessStatus @map("old_status")
+  newStatus          BusinessStatus @map("new_status")
+  reasonNoteId       String?        @map("reason_note_id") @db.Uuid
+  reasonTextSnapshot String?        @map("reason_text_snapshot")
+  source             String         @default("ui") @db.VarChar(20)
+  changedAt          DateTime       @default(now()) @map("changed_at") @db.Timestamptz()
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  changedBy   User?       @relation(fields: [changedByUserId], references: [id])
+  reasonNote  Note?       @relation("StatusReasonNote", fields: [reasonNoteId], references: [id])
+
+  @@index([opportunityId, changedAt(sort: Desc)], name: "idx_opp_status_history_opp_changed")
+  @@index([changedByUserId], name: "idx_opp_status_history_user")
+  @@index([tenantId], name: "idx_opp_status_history_tenant")
+  @@map("opportunity_status_history")
 }
 
 // ─── Audit Logs ────────────────────────────────────────────

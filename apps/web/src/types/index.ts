@@ -6,6 +6,15 @@ export type OpportunityStatus =
   | "archived"
   | "unknown";
 
+export type UserRole =
+  | "owner"
+  | "super_admin"
+  | "admin"
+  | "manager"
+  | "sales"
+  | "viewer"
+  | "client";
+
 export type SourceType =
   | "bid_portal"
   | "municipal"
@@ -75,6 +84,31 @@ export type WorkflowStatus =
   | "rfq_sent"
   | "bid_drafted";
 
+export type BusinessStatus =
+  | "new_discovered"
+  | "candidate"
+  | "under_review"
+  | "fit"
+  | "not_fit"
+  | "archived"
+  | "bidding"
+  | "submitted"
+  | "won"
+  | "lost";
+
+export type ProcurementType =
+  | "RFQ"
+  | "RFP"
+  | "RFI"
+  | "RFN"
+  | "IFB"
+  | "ITB"
+  | "tender"
+  | "notice"
+  | "unknown";
+
+export type NoteType = "general" | "status_reason" | "analysis_note" | "system";
+
 export type AccessMode =
   | "api"
   | "http_scrape"
@@ -84,9 +118,14 @@ export type AccessMode =
 export interface OpportunityFilters {
   keyword?: string;
   status?: OpportunityStatus;
+  businessStatus?: BusinessStatus;
   workflow?: WorkflowStatus;
   country?: string;
   region?: string;
+  stateProvince?: string;
+  northAmericaOnly?: boolean;
+  unknownLocation?: boolean;
+  procurementType?: ProcurementType;
   city?: string;
   organization?: string;
   source?: string;
@@ -163,11 +202,20 @@ export interface OpportunitySummary {
   title: string;
   titleZh?: string;
   status: OpportunityStatus;
+  businessStatus?: BusinessStatus;
   workflowStatus: WorkflowStatus;
   organization?: string;
   country?: string;
   region?: string;
   city?: string;
+  stateProvince?: string;
+  postalCode?: string;
+  deliveryLocation?: string;
+  locationConfidence?: number;
+  isNorthAmerica?: boolean;
+  procurementType?: ProcurementType;
+  procurementTypeSource?: string;
+  procurementTypeConfidence?: number;
   category?: string;
   postedDate?: string;
   closingDate?: string;
@@ -224,6 +272,8 @@ export interface OpportunityDetail extends OpportunitySummary {
   allContacts?: Array<Record<string, string>>;
   documents: DocumentItem[];
   notes: NoteItem[];
+  statusHistory?: OpportunityStatusHistoryItem[];
+  activityTimeline?: ActivityTimelineItem[];
   tags: string[];
   qingyanSync?: QingyanSyncInfo;
 }
@@ -239,9 +289,30 @@ export interface DocumentItem {
 export interface NoteItem {
   id: string;
   content: string;
+  noteType?: NoteType;
   userName: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OpportunityStatusHistoryItem {
+  id: string;
+  oldStatus: BusinessStatus;
+  newStatus: BusinessStatus;
+  reason?: string;
+  changedBy?: string;
+  changedAt: string;
+  source?: string;
+}
+
+export interface ActivityTimelineItem {
+  id: string;
+  type: "status_change" | "note" | "analysis";
+  createdAt: string;
+  actorName?: string;
+  title: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SourceItem {

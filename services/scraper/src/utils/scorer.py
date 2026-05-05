@@ -551,6 +551,9 @@ def score_opportunity(
     project_type=None,
     category=None,
     source_fit_score=None,
+    procurement_type=None,
+    country=None,
+    business_status=None,
 ):
     """Score how relevant an opportunity is to the window-covering / textile business.
 
@@ -616,6 +619,30 @@ def score_opportunity(
             category_bonus = max(category_bonus, bonus)
     positive_score += category_bonus
 
+    procurement_bonus_map = {
+        "RFQ": 12,
+        "RFP": 8,
+        "IFB": 6,
+        "ITB": 6,
+        "TENDER": 4,
+        "RFI": -2,
+        "RFN": -4,
+        "NOTICE": 0,
+        "UNKNOWN": 0,
+    }
+    procurement_bonus = procurement_bonus_map.get(str(procurement_type or "UNKNOWN").upper(), 0)
+    positive_score += procurement_bonus
+
+    location_bonus = 0
+    country_code = (country or "").upper()
+    if country_code == "CA":
+        location_bonus = 10
+    elif country_code == "US":
+        location_bonus = 6
+    elif country_code:
+        location_bonus = -20
+    positive_score += location_bonus
+
     # Negative matches
     for kw, penalty, pattern in _NEGATIVE:
         if pattern.search(scoring_text):
@@ -649,6 +676,9 @@ def score_opportunity(
     raw_score = positive_score - negative_penalty
     final_score = max(0, min(100, raw_score))
 
+    if business_status in {"archived", "not_fit", "lost"}:
+        final_score = max(0, final_score - 30)
+
     bucket = _bucket_from_score(final_score)
     industry_tags = _derive_tags(primary_matches, secondary_matches, semantic_matches)
 
@@ -675,6 +705,8 @@ def score_opportunity(
         "org_bonus": org_bonus,
         "source_fit_bonus": source_fit_bonus,
         "category_bonus": category_bonus,
+        "procurement_bonus": procurement_bonus,
+        "location_bonus": location_bonus,
         "title_boost": title_boost,
         "semantic_score": semantic_score,
         "positive_score": positive_score,

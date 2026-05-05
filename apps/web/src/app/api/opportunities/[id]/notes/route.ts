@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
+import { getSessionUser, requireRole } from "@/lib/api-auth";
 
 const createNoteSchema = z.object({
   content: z.string().min(1, "Content is required").max(10000),
+  noteType: z.enum(["general", "status_reason", "analysis_note", "system"]).default("general"),
 });
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { error: authError } = await requireAuth();
+  const { session, error: authError } = await requireRole([
+    "owner",
+    "super_admin",
+    "admin",
+    "manager",
+    "sales",
+  ]);
   if (authError) return authError;
 
   try {
@@ -39,22 +46,14 @@ export async function POST(
       );
     }
 
-    const adminUser = await prisma.user.findFirst({
-      where: { role: "admin" },
-      select: { id: true, name: true },
-    });
-
-    if (!adminUser) {
-      return NextResponse.json(
-        { error: "No admin user found" },
-        { status: 500 }
-      );
-    }
+    const user = getSessionUser(session);
+    if (!user.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const note = await prisma.note.create({
       data: {
         content: parsed.data.content,
-        userId: adminUser.id,
+        noteType: parsed.data.noteType,
+        userId: user.id,
         opportunityId,
       },
       include: { user: { select: { name: true } } },
@@ -64,6 +63,7 @@ export async function POST(
       {
         id: note.id,
         content: note.content,
+        noteType: note.noteType,
         userName: note.user.name,
         createdAt: note.createdAt.toISOString(),
         updatedAt: note.updatedAt.toISOString(),

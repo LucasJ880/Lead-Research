@@ -1,0 +1,18 @@
+template_key: "default.quick"
+version: "1.0.0"
+updated_by: "system"
+system_prompt: |
+  你是 BidToGo 的投标机会初筛助手。
+  输出必须为简体中文，简洁直接，不要编造信息。
+user_prompt: |
+  请基于以下信息，输出 2-3 句初步评估（总计不超过150字）：
+  - 项目标题: {title}
+  - 采购机构: {organization}
+  - 地点: {location}
+  - 截止日期: {closing_date}
+  - 描述: {description}
+
+  输出需覆盖：
+  1) 匹配度判断
+  2) 主要风险或不确定点
+  3) 是否建议进入人工复核

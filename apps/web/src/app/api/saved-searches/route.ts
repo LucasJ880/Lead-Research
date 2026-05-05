@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
+import { getSessionUser, requireAuth } from "@/lib/api-auth";
 
 const createSavedSearchSchema = z.object({
   name: z.string().min(1).max(255),
@@ -11,21 +11,17 @@ const createSavedSearchSchema = z.object({
 });
 
 export async function GET() {
-  const { error: authError } = await requireAuth();
+  const { session, error: authError } = await requireAuth();
   if (authError) return authError;
 
   try {
-    const adminUser = await prisma.user.findFirst({
-      where: { role: "admin" },
-      select: { id: true },
-    });
-
-    if (!adminUser) {
+    const user = getSessionUser(session);
+    if (!user.id) {
       return NextResponse.json([]);
     }
 
     const searches = await prisma.savedSearch.findMany({
-      where: { userId: adminUser.id },
+      where: { userId: user.id },
       orderBy: { createdAt: "desc" },
     });
 
@@ -49,21 +45,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { error: authError } = await requireAuth();
+  const { session, error: authError } = await requireAuth();
   if (authError) return authError;
 
   try {
-    const adminUser = await prisma.user.findFirst({
-      where: { role: "admin" },
-      select: { id: true },
-    });
-
-    if (!adminUser) {
-      return NextResponse.json(
-        { error: "No admin user found" },
-        { status: 500 }
-      );
-    }
+    const user = getSessionUser(session);
+    if (!user.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
     const parsed = createSavedSearchSchema.safeParse(body);
@@ -77,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     const search = await prisma.savedSearch.create({
       data: {
-        userId: adminUser.id,
+        userId: user.id,
         name: parsed.data.name,
         filters: parsed.data.filters as Prisma.InputJsonValue,
         notifyEnabled: parsed.data.notifyEnabled,

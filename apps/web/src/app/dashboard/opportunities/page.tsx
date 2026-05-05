@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams as useNextSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   Search,
   SlidersHorizontal,
@@ -34,10 +35,12 @@ import {
   getBucketColor,
 } from "@/lib/utils";
 import type {
+  BusinessStatus,
   OpportunityLifecycleState,
   OpportunitySummary,
   OpportunityStatus,
   PaginatedResponse,
+  ProcurementType,
 } from "@/types";
 
 const QUICK_FILTERS = [
@@ -93,10 +96,37 @@ const WORKFLOW_OPTIONS: { label: string; value: string }[] = [
   { label: "不相关", value: "not_relevant" },
 ];
 
-function buildQueryString(params: Record<string, string | number>): string {
+const BUSINESS_STATUS_OPTIONS: { label: string; value: BusinessStatus | "" }[] = [
+  { label: "全部业务状态", value: "" },
+  { label: "新发现", value: "new_discovered" },
+  { label: "候选", value: "candidate" },
+  { label: "审核中", value: "under_review" },
+  { label: "符合", value: "fit" },
+  { label: "不符合", value: "not_fit" },
+  { label: "已归档", value: "archived" },
+  { label: "投标中", value: "bidding" },
+  { label: "已提交", value: "submitted" },
+  { label: "中标", value: "won" },
+  { label: "未中标", value: "lost" },
+];
+
+const PROCUREMENT_TYPE_OPTIONS: { label: string; value: ProcurementType | "" }[] = [
+  { label: "全部类型", value: "" },
+  { label: "RFQ", value: "RFQ" },
+  { label: "RFP", value: "RFP" },
+  { label: "RFI", value: "RFI" },
+  { label: "RFN", value: "RFN" },
+  { label: "IFB", value: "IFB" },
+  { label: "ITB", value: "ITB" },
+  { label: "Tender", value: "tender" },
+  { label: "Notice", value: "notice" },
+  { label: "Unknown", value: "unknown" },
+];
+
+function buildQueryString(params: Record<string, string | number | boolean>): string {
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== "" && value !== 0) {
+    if (value !== "" && value !== 0 && value !== false) {
       searchParams.set(key, String(value));
     }
   }
@@ -166,13 +196,22 @@ function OpportunitiesLoadingSkeleton() {
 }
 
 function OpportunitiesPage() {
+  const { data: session } = useSession();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const canWrite = ["owner", "super_admin", "admin", "manager", "sales"].includes(role ?? "");
+
   const nextSearchParams = useNextSearchParams();
   const initialWorkflow = nextSearchParams.get("workflow") || "";
 
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [businessStatusFilter, setBusinessStatusFilter] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
+  const [stateProvinceFilter, setStateProvinceFilter] = useState("");
+  const [northAmericaOnly, setNorthAmericaOnly] = useState(false);
+  const [unknownLocationOnly, setUnknownLocationOnly] = useState(false);
+  const [procurementTypeFilter, setProcurementTypeFilter] = useState("");
   const initialBucket = nextSearchParams.get("bucket") || "relevant";
   const initialSort = nextSearchParams.get("sort") || "relevance";
   const [bucketFilter, setBucketFilter] = useState(initialBucket);
@@ -227,8 +266,13 @@ function OpportunitiesPage() {
     const qs = buildQueryString({
       keyword: debouncedKeyword,
       status: statusFilter,
+      businessStatus: businessStatusFilter,
       workflow: workflowFilter,
       country: countryFilter,
+      stateProvince: stateProvinceFilter,
+      northAmericaOnly,
+      unknownLocation: unknownLocationOnly,
+      procurementType: procurementTypeFilter,
       bucket: effectiveBucket,
       lifecycle,
       tag: tagFilter,
@@ -250,7 +294,7 @@ function OpportunitiesPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [debouncedKeyword, statusFilter, workflowFilter, countryFilter, effectiveBucket, lifecycle, tagFilter, minRelevance, closingAfter, closingBefore, sortBy, page, pageSize]);
+  }, [debouncedKeyword, statusFilter, businessStatusFilter, workflowFilter, countryFilter, stateProvinceFilter, northAmericaOnly, unknownLocationOnly, procurementTypeFilter, effectiveBucket, lifecycle, tagFilter, minRelevance, closingAfter, closingBefore, sortBy, page, pageSize]);
 
   useEffect(() => {
     fetchOpportunities();
@@ -269,12 +313,31 @@ function OpportunitiesPage() {
   const total = data?.total ?? 0;
   const totalPages = data?.totalPages ?? 1;
 
-  const activeFilterCount = [statusFilter, workflowFilter, countryFilter, bucketFilter !== "relevant" ? bucketFilter : "", tagFilter, closingAfter, closingBefore, minRelevance > 0 ? String(minRelevance) : ""].filter(Boolean).length;
+  const activeFilterCount = [
+    statusFilter,
+    businessStatusFilter,
+    workflowFilter,
+    countryFilter,
+    stateProvinceFilter,
+    procurementTypeFilter,
+    northAmericaOnly ? "northAmericaOnly" : "",
+    unknownLocationOnly ? "unknownLocationOnly" : "",
+    bucketFilter !== "relevant" ? bucketFilter : "",
+    tagFilter,
+    closingAfter,
+    closingBefore,
+    minRelevance > 0 ? String(minRelevance) : "",
+  ].filter(Boolean).length;
 
   function clearFilters() {
     setStatusFilter("");
+    setBusinessStatusFilter("");
     setWorkflowFilter("");
     setCountryFilter("");
+    setStateProvinceFilter("");
+    setNorthAmericaOnly(false);
+    setUnknownLocationOnly(false);
+    setProcurementTypeFilter("");
     setBucketFilter("relevant");
     setTagFilter("");
     setMinRelevance(0);
@@ -301,7 +364,12 @@ function OpportunitiesPage() {
       format: "xlsx",
       keyword: debouncedKeyword,
       status: statusFilter,
+      businessStatus: businessStatusFilter,
       country: countryFilter,
+      stateProvince: stateProvinceFilter,
+      northAmericaOnly,
+      unknownLocation: unknownLocationOnly,
+      procurementType: procurementTypeFilter,
       bucket: effectiveBucket,
       lifecycle,
       workflow: workflowFilter,
@@ -311,6 +379,28 @@ function OpportunitiesPage() {
       closingBefore,
     });
     window.open(`/api/exports?${qs}`, "_blank");
+  }
+
+  async function handleBusinessStatusChange(opp: OpportunitySummary, nextStatus: string) {
+    if (!nextStatus || opp.businessStatus === nextStatus) return;
+    let reason = "";
+    if (nextStatus === "not_fit" || nextStatus === "archived") {
+      reason = window.prompt("请填写原因（必填）", "")?.trim() ?? "";
+      if (!reason) return;
+    }
+    try {
+      const res = await fetch(`/api/opportunities/${opp.id}/business-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newStatus: nextStatus, reason }),
+      });
+      if (!res.ok) {
+        throw new Error("状态更新失败");
+      }
+      fetchOpportunities();
+    } catch {
+      setError("业务状态更新失败");
+    }
   }
 
   const selectClass = "h-8 rounded-md border border-input bg-card px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none cursor-pointer";
@@ -393,8 +483,14 @@ function OpportunitiesPage() {
         <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className={selectClass}>
           {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        <select value={businessStatusFilter} onChange={(e) => { setBusinessStatusFilter(e.target.value); setPage(1); }} className={selectClass}>
+          {BUSINESS_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
         <select value={countryFilter} onChange={(e) => { setCountryFilter(e.target.value); setPage(1); }} className={selectClass}>
           {COUNTRY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select value={procurementTypeFilter} onChange={(e) => { setProcurementTypeFilter(e.target.value); setPage(1); }} className={selectClass}>
+          {PROCUREMENT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select value={workflowFilter} onChange={(e) => { setWorkflowFilter(e.target.value); setPage(1); }} className={selectClass}>
           {WORKFLOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -430,6 +526,40 @@ function OpportunitiesPage() {
             <label className="text-sm text-muted-foreground">之前</label>
             <input type="date" value={closingBefore} onChange={(e) => { setClosingBefore(e.target.value); setPage(1); }} className="h-8 rounded-md border bg-card px-2 text-sm" />
           </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">省/州</label>
+            <input
+              value={stateProvinceFilter}
+              onChange={(e) => {
+                setStateProvinceFilter(e.target.value.toUpperCase());
+                setPage(1);
+              }}
+              placeholder="ON / BC / TX"
+              className="h-8 w-28 rounded-md border bg-card px-2 text-sm"
+            />
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={northAmericaOnly}
+              onChange={(e) => {
+                setNorthAmericaOnly(e.target.checked);
+                setPage(1);
+              }}
+            />
+            仅北美
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={unknownLocationOnly}
+              onChange={(e) => {
+                setUnknownLocationOnly(e.target.checked);
+                setPage(1);
+              }}
+            />
+            未知地址
+          </label>
         </div>
       )}
 
@@ -481,6 +611,7 @@ function OpportunitiesPage() {
                 <TableHead className="font-semibold">发标机构</TableHead>
                 <TableHead className="font-semibold whitespace-nowrap">截止日期</TableHead>
                 <TableHead className="font-semibold">分析</TableHead>
+                <TableHead className="font-semibold">业务状态</TableHead>
                 <TableHead className="font-semibold w-16" />
               </TableRow>
             </TableHeader>
@@ -532,6 +663,20 @@ function OpportunitiesPage() {
                     <AnalysisBadge opp={opp} />
                   </TableCell>
                   <TableCell>
+                    <select
+                      value={opp.businessStatus ?? "new_discovered"}
+                      onChange={(e) => handleBusinessStatusChange(opp, e.target.value)}
+                      disabled={!canWrite}
+                      className="h-8 rounded-md border border-input bg-card px-2 text-xs"
+                    >
+                      {BUSINESS_STATUS_OPTIONS.filter((o) => o.value).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </TableCell>
+                  <TableCell>
                     <Link
                       href={`/dashboard/opportunities/${opp.id}`}
                       className="invisible group-hover:visible inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
@@ -543,7 +688,7 @@ function OpportunitiesPage() {
               ))}
               {!loading && opportunities.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-16 text-center">
+                  <TableCell colSpan={8} className="py-16 text-center">
                     <FileSearch className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
                     <p className="text-sm font-medium text-muted-foreground">没有匹配筛选条件的机会</p>
                     <p className="text-xs text-muted-foreground/60 mt-1">请调整搜索或筛选条件</p>

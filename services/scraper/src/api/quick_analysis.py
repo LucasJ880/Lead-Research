@@ -136,6 +136,7 @@ _SUPPORTED_EXTS = {"pdf", "docx", "doc", "txt", "xlsx", "xls", "csv"}
 async def upload_and_analyze(
     files: list[UploadFile] = File(...),
     opportunity_id: str | None = Form(None),
+    prompt_template_key: str | None = Form(None),
 ) -> dict:
     """Upload up to 10 documents and run deep AI analysis (gpt-4o, 16K tokens, ~$0.20-$0.50).
 
@@ -265,9 +266,11 @@ async def upload_and_analyze(
             document_texts=document_texts,
             solicitation_number=solicitation_number,
             country=country,
+            prompt_template_key=prompt_template_key,
         )
 
         report_md = result.get("report_markdown", "")
+        structured_report = result.get("structured_report")
         model = result.get("model", "gpt-4o")
         prompt_tok = result.get("prompt_tokens", 0)
         completion_tok = result.get("completion_tokens", 0)
@@ -282,6 +285,7 @@ async def upload_and_analyze(
         if opportunity_id:
             summary_json = json.dumps({
                 "report_markdown": report_md,
+                "structured_report": structured_report,
                 "report_version": "5.0",
                 "documents_analyzed": stored_files,
                 "analysis_cost_usd": actual_cost,
@@ -357,6 +361,7 @@ from pydantic import BaseModel
 
 class MiniSummaryRequest(BaseModel):
     opportunity_id: str
+    prompt_template_key: str | None = None
 
 
 @router.post("/mini-summary", dependencies=[Depends(verify_api_key)])
@@ -392,6 +397,7 @@ async def generate_mini_summary(req: MiniSummaryRequest) -> dict:
             organization=opp.organization_name,
             location=", ".join(lp) if lp else None,
             closing_date=str(opp.closing_date) if opp.closing_date else None,
+            prompt_template_key=req.prompt_template_key,
         )
 
         if summary:
