@@ -119,7 +119,7 @@ PRIMARY_KEYWORDS: dict[str, int] = {
     "window film": 30,
     "window shade": 45,
     "window blind": 45,
-    "window": 8,
+    "window": 50,
 }
 
 SECONDARY_KEYWORDS: dict[str, int] = {
