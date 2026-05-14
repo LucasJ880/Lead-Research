@@ -17,6 +17,8 @@ import {
   Sparkles,
   FileSearch,
   ChevronDown,
+  Play,
+  Archive,
 } from "lucide-react";
 import {
   Table,
@@ -97,17 +99,28 @@ const WORKFLOW_OPTIONS: { label: string; value: string }[] = [
 ];
 
 const BUSINESS_STATUS_OPTIONS: { label: string; value: BusinessStatus | "" }[] = [
-  { label: "全部业务状态", value: "" },
+  // 注意：这里的"默认列表"对应 API 的「未传 businessStatus 参数」，
+  // 此时 SQL 会主动排除 archived / not_fit / lost。所以它不是字面意义上的
+  // "全部"，避免之前"全部业务状态却看不到归档"的歧义。
+  { label: "默认列表（不含归档/不符合/未中标）", value: "" },
   { label: "新发现", value: "new_discovered" },
   { label: "候选", value: "candidate" },
   { label: "审核中", value: "under_review" },
   { label: "符合", value: "fit" },
   { label: "不符合", value: "not_fit" },
-  { label: "已归档", value: "archived" },
+  { label: "已归档（待回看）", value: "archived" },
   { label: "投标中", value: "bidding" },
   { label: "已提交", value: "submitted" },
   { label: "中标", value: "won" },
   { label: "未中标", value: "lost" },
+];
+
+// 业务状态快捷标签：归档/不符合默认会被列表过滤，所以单独提供入口。
+// 把"归档"语义统一为"暂存待回看"，与团队实际使用习惯（save-for-later）对齐。
+const BUSINESS_STATUS_QUICK_TABS: { label: string; value: "" | "archived" | "not_fit"; hint: string }[] = [
+  { label: "进行中", value: "", hint: "默认列表，不含归档/不符合/未中标" },
+  { label: "已归档（待回看）", value: "archived", hint: "暂存以后再处理的标的，不会被爬虫覆盖" },
+  { label: "已不符合", value: "not_fit", hint: "已判定不参与的标的" },
 ];
 
 const PROCUREMENT_TYPE_OPTIONS: { label: string; value: ProcurementType | "" }[] = [
@@ -246,6 +259,9 @@ function OpportunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [crawlRunning, setCrawlRunning] = useState(false);
+  const [crawlMessage, setCrawlMessage] = useState<string | null>(null);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -381,11 +397,46 @@ function OpportunitiesPage() {
     window.open(`/api/exports?${qs}`, "_blank");
   }
 
+  const triggerCrawl = useCallback(async () => {
+    if (crawlRunning) return;
+    setCrawlRunning(true);
+    setCrawlMessage(null);
+    try {
+      const res = await fetch("/api/crawler/trigger", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        // 服务端可能返回 status="already_running"（已有抓取在进行中，未派发新任务）
+        // 或 status="dispatched"（成功派发新任务）。前端用不同文案告知用户。
+        const masterTaskId =
+          (body?.task_ids?.[0]?.master_task_id as string | undefined) ||
+          (body?.task_id as string | undefined) ||
+          null;
+        const isAlreadyRunning = body?.status === "already_running";
+        const userMessage = isAlreadyRunning
+          ? "已有抓取正在进行中，无需重复触发。可以在「抓取日志」页查看进度。"
+          : "已开始抓取。完成通常需要数分钟，可以在「抓取日志」页查看进度，结果出来后此列表会自动刷新。";
+        setCrawlMessage(
+          masterTaskId ? `${userMessage}（任务 ID: ${masterTaskId.slice(0, 8)}…）` : userMessage
+        );
+      } else {
+        setCrawlMessage(body?.error || body?.detail || "派发失败，请稍后重试");
+      }
+    } catch {
+      setCrawlMessage("无法连接抓取服务，请稍后重试");
+    } finally {
+      // 前端 30 秒按钮锁是 UX 保护；服务端 60 秒 Redis 锁是真正的防重复保障
+      window.setTimeout(() => setCrawlRunning(false), 30_000);
+    }
+  }, [crawlRunning]);
+
   async function handleBusinessStatusChange(opp: OpportunitySummary, nextStatus: string) {
     if (!nextStatus || opp.businessStatus === nextStatus) return;
     let reason = "";
     if (nextStatus === "not_fit" || nextStatus === "archived") {
-      reason = window.prompt("请填写原因（必填）", "")?.trim() ?? "";
+      const promptMessage = nextStatus === "archived"
+        ? "归档原因（方便以后回顾，例如：等审批 / 资料不全 / 暂时无人跟进）"
+        : "原因（必填）";
+      reason = window.prompt(promptMessage, "")?.trim() ?? "";
       if (!reason) return;
     }
     try {
@@ -425,12 +476,32 @@ function OpportunitiesPage() {
             <Eye className="h-3.5 w-3.5" />
             聚焦模式
           </button>
+          {canWrite && (
+            <button
+              onClick={triggerCrawl}
+              disabled={crawlRunning}
+              title="立即触发一次全量抓取（已归档/已标注的标的不会被覆盖）"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              {crawlRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              {crawlRunning ? "抓取中…" : "运行抓取"}
+            </button>
+          )}
           <button onClick={handleExport} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             <Download className="h-3.5 w-3.5" />
             导出
           </button>
         </div>
       </div>
+
+      {crawlMessage && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 flex items-start justify-between gap-2">
+          <span>{crawlMessage}</span>
+          <button onClick={() => setCrawlMessage(null)} className="text-blue-600 hover:text-blue-800 shrink-0">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -470,6 +541,34 @@ function OpportunitiesPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* Business-status quick tabs (Active / Archived / Not Fit) */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {BUSINESS_STATUS_QUICK_TABS.map((tab) => {
+          const active = businessStatusFilter === tab.value;
+          const isArchived = tab.value === "archived";
+          return (
+            <button
+              key={tab.value || "active"}
+              onClick={() => { setBusinessStatusFilter(tab.value); setPage(1); }}
+              title={tab.hint}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                active
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-card text-muted-foreground border-input hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {isArchived && <Archive className="h-3 w-3" />}
+              {tab.label}
+            </button>
+          );
+        })}
+        {businessStatusFilter === "archived" && (
+          <span className="text-xs text-muted-foreground ml-1">
+            归档的标的可以随时切回「进行中」继续跟进；爬虫不会覆盖你在这里的标注。
+          </span>
+        )}
       </div>
 
       {/* Primary filters */}

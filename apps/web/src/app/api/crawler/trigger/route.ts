@@ -26,6 +26,9 @@ export async function POST() {
     }
 
     const data = await resp.json();
+    // Scraper may return status: "dispatched" or "already_running".
+    // Both are success from the caller's point of view; the frontend
+    // distinguishes them in user copy.
     return NextResponse.json(data);
   } catch (error) {
     console.error("Failed to trigger crawler:", error);

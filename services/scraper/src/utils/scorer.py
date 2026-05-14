@@ -153,6 +153,16 @@ SECONDARY_KEYWORDS: dict[str, int] = {
     "supply agreement": 20,
     "blanket purchase agreement": 20,
     "master agreement": 20,
+    # ── supply / delivery / install language (RFP/RFQ wording) ──
+    "supply and delivery": 20,
+    "supply & delivery": 20,
+    "supply and deliver": 20,
+    "supplying and delivering": 20,
+    "supply / delivery": 20,
+    "supply and delivered": 18,
+    "supply, delivery and installation": 22,
+    "supply and install": 20,
+    "supply, deliver and install": 22,
     # ── furnishing / FF&E / furniture ──────
     "furniture": 25,
     "furnishing": 20,

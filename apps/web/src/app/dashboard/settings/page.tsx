@@ -40,6 +40,10 @@ const SECONDARY_KEYWORDS = [
   "interior fit-out", "commercial furnishing", "commercial interiors",
   "tenant improvement", "office fit-out",
   "standing agreement", "standing offer", "supply agreement",
+  "supply and delivery", "supply & delivery", "supply and deliver",
+  "supplying and delivering", "supply / delivery", "supply and delivered",
+  "supply, delivery and installation", "supply and install",
+  "supply, deliver and install",
   "blanket", "bedding", "bed linen", "towel", "linen",
   "bag", "sock", "socks", "mask", "face mask",
 ];

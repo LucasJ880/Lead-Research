@@ -54,11 +54,18 @@ class CrawlTriggerResponse(BaseModel):
     task_id: str
     source_id: str
     status: str
+    # When status == "already_running" this is the existing task id and
+    # no new Celery task was dispatched. Clients should treat both
+    # statuses as success but may surface different copy.
 
 
 class CrawlAllResponse(BaseModel):
     task_ids: list[dict[str, str]]
     count: int
+    status: str = "dispatched"
+    # "dispatched" → fresh task created. "already_running" → an in-flight
+    # crawl-all is still active (within the dedup TTL) and we returned
+    # its existing task id instead of fanning out duplicates.
 
 
 class TaskStatusResponse(BaseModel):
@@ -150,14 +157,42 @@ async def diagnostics() -> dict:
     dependencies=[Depends(verify_api_key)],
 )
 async def trigger_all_crawls() -> CrawlAllResponse:
-    """Dispatch crawl tasks for every active source."""
+    """Dispatch crawl tasks for every active source.
+
+    Server-side dedup: a Redis lock with a 30-min TTL safety net prevents
+    duplicate crawl-all tasks. The lock is held for the duration of the
+    actual crawl (released by the task body's ``finally`` block), not just
+    the dispatch. See ``src/api/crawl_locks.py`` for full lifecycle.
+
+    The Celery task id is pre-generated here and passed via
+    ``apply_async(task_id=...)`` so the lock value matches the real task
+    id from the start — no race window between dispatch and lock-value
+    update.
+    """
+    from celery.utils import uuid as celery_uuid
+
+    from src.api.crawl_locks import try_acquire
     from src.tasks.crawl_tasks import crawl_all_active_sources
 
-    task = crawl_all_active_sources.delay()
-    logger.info("Dispatched crawl-all task %s", task.id)
+    task_id = celery_uuid()
+    lock_result = try_acquire("all", task_id)
+    if not lock_result.acquired:
+        logger.info(
+            "Crawl-all already in flight (holder=%s); not dispatching duplicate",
+            lock_result.holder_task_id,
+        )
+        return CrawlAllResponse(
+            task_ids=[{"master_task_id": lock_result.holder_task_id or "unknown"}],
+            count=0,
+            status="already_running",
+        )
+
+    crawl_all_active_sources.apply_async(task_id=task_id)
+    logger.info("Dispatched crawl-all task %s", task_id)
     return CrawlAllResponse(
-        task_ids=[{"master_task_id": task.id}],
+        task_ids=[{"master_task_id": task_id}],
         count=1,
+        status="dispatched",
     )
 
 
@@ -185,13 +220,35 @@ async def crawl_status(task_id: str) -> TaskStatusResponse:
     dependencies=[Depends(verify_api_key)],
 )
 async def trigger_crawl(source_id: str) -> CrawlTriggerResponse:
-    """Dispatch a crawl task for a single source."""
+    """Dispatch a crawl task for a single source.
+
+    Server-side dedup: a per-source Redis lock prevents duplicate crawls
+    of the same source. The lock is held for the actual crawl duration
+    (released by the task body's ``finally`` block), with a 30-min TTL
+    safety net. See ``src/api/crawl_locks.py`` for full lifecycle.
+    """
+    from celery.utils import uuid as celery_uuid
+
+    from src.api.crawl_locks import try_acquire
     from src.tasks.crawl_tasks import crawl_source
 
-    task = crawl_source.delay(source_id)
-    logger.info("Dispatched crawl task %s for source %s", task.id, source_id)
+    task_id = celery_uuid()
+    lock_result = try_acquire(f"source:{source_id}", task_id)
+    if not lock_result.acquired:
+        logger.info(
+            "Crawl for source %s already in flight (holder=%s); not dispatching duplicate",
+            source_id, lock_result.holder_task_id,
+        )
+        return CrawlTriggerResponse(
+            task_id=lock_result.holder_task_id or "unknown",
+            source_id=source_id,
+            status="already_running",
+        )
+
+    crawl_source.apply_async(args=[source_id], task_id=task_id)
+    logger.info("Dispatched crawl task %s for source %s", task_id, source_id)
     return CrawlTriggerResponse(
-        task_id=task.id,
+        task_id=task_id,
         source_id=source_id,
         status="dispatched",
     )

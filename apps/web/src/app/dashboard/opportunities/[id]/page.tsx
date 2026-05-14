@@ -77,7 +77,7 @@ const BUSINESS_STATUS_LABELS: Record<BusinessStatus, string> = {
   under_review: "审核中",
   fit: "符合",
   not_fit: "不符合",
-  archived: "已归档",
+  archived: "已归档（待回看）",
   bidding: "投标中",
   submitted: "已提交",
   won: "中标",
@@ -245,7 +245,10 @@ export default function OpportunityDetailPage() {
     if (!opp || opp.businessStatus === nextStatus) return;
     let reason = "";
     if (nextStatus === "not_fit" || nextStatus === "archived") {
-      reason = window.prompt("请填写状态变更原因（必填）", "")?.trim() ?? "";
+      const promptMessage = nextStatus === "archived"
+        ? "归档原因（方便以后回顾，例如：等审批 / 资料不全 / 暂时无人跟进）"
+        : "请填写状态变更原因（必填）";
+      reason = window.prompt(promptMessage, "")?.trim() ?? "";
       if (!reason) return;
     }
     setUpdatingBusinessStatus(true);

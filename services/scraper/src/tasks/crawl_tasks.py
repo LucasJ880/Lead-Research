@@ -50,6 +50,14 @@ def _row_to_source_config(row: Any) -> SourceConfig:
 def crawl_source(self: Any, source_id: str) -> dict[str, Any]:
     """Run the full crawl pipeline for a single source.
 
+    Releases the per-source dedup lock in ``finally`` so the manual
+    crawl button is unblocked the moment the actual crawl finishes
+    (success, failure, or retry exhaustion). See
+    ``src/api/crawl_locks.py`` for full lifecycle. Lock release is a
+    no-op if no lock was acquired (e.g. when this task is invoked via
+    fan-out from ``crawl_all_active_sources`` rather than the per-source
+    API endpoint).
+
     Args:
         source_id: UUID of the source to crawl.
 
@@ -63,80 +71,108 @@ def crawl_source(self: Any, source_id: str) -> dict[str, Any]:
     logger.info("Starting crawl for source %s", source_id)
 
     try:
-        with get_db() as session:
-            row = session.execute(
-                text("SELECT * FROM sources WHERE id = :id"),
-                {"id": source_id},
-            ).fetchone()
+        try:
+            with get_db() as session:
+                row = session.execute(
+                    text("SELECT * FROM sources WHERE id = :id"),
+                    {"id": source_id},
+                ).fetchone()
 
-            if row is None:
-                logger.error("Source %s not found", source_id)
+                if row is None:
+                    logger.error("Source %s not found", source_id)
+                    return CrawlResult(
+                        source_id=source_id,
+                        errors=[f"Source {source_id} not found"],
+                    ).model_dump()
+
+                source_config = _row_to_source_config(row)
+
+            from src.crawlers.pipeline import CrawlPipeline
+
+            with get_db() as session:
+                pipeline = CrawlPipeline(source_config=source_config, db_session=session)
+                result = pipeline.run()
+
+            logger.info(
+                "Crawl complete for source %s: found=%d created=%d updated=%d skipped=%d errors=%d",
+                source_id,
+                result.opportunities_found,
+                result.opportunities_created,
+                result.opportunities_updated,
+                result.opportunities_skipped,
+                len(result.errors),
+            )
+            return result.model_dump()
+
+        except Exception as exc:
+            logger.exception("Crawl failed for source %s", source_id)
+            try:
+                self.retry(exc=exc)
+            except self.MaxRetriesExceededError:
                 return CrawlResult(
                     source_id=source_id,
-                    errors=[f"Source {source_id} not found"],
+                    errors=[str(exc)],
                 ).model_dump()
+            raise
 
-            source_config = _row_to_source_config(row)
-
-        from src.crawlers.pipeline import CrawlPipeline
-
-        with get_db() as session:
-            pipeline = CrawlPipeline(source_config=source_config, db_session=session)
-            result = pipeline.run()
-
-        logger.info(
-            "Crawl complete for source %s: found=%d created=%d updated=%d skipped=%d errors=%d",
-            source_id,
-            result.opportunities_found,
-            result.opportunities_created,
-            result.opportunities_updated,
-            result.opportunities_skipped,
-            len(result.errors),
-        )
-        return result.model_dump()
-
-    except Exception as exc:
-        logger.exception("Crawl failed for source %s", source_id)
+    finally:
+        # Release per-source dedup lock if this task is its rightful holder.
+        # Identity-checked release means cron / fan-out invocations (which
+        # never acquired the lock) cannot accidentally release a manual
+        # crawl's lock.
         try:
-            self.retry(exc=exc)
-        except self.MaxRetriesExceededError:
-            return CrawlResult(
-                source_id=source_id,
-                errors=[str(exc)],
-            ).model_dump()
-        raise
+            from src.api.crawl_locks import release as _release_lock
+
+            _release_lock(f"source:{source_id}", self.request.id)
+        except Exception:
+            logger.debug("Failed to release per-source crawl lock", exc_info=True)
 
 
-@celery_app.task(name="src.tasks.crawl_tasks.crawl_all_active_sources")
-def crawl_all_active_sources() -> dict[str, Any]:
+@celery_app.task(bind=True, name="src.tasks.crawl_tasks.crawl_all_active_sources")
+def crawl_all_active_sources(self: Any) -> dict[str, Any]:
     """Query all active sources and dispatch individual crawl tasks.
 
     Sources with access_mode='local_authenticated_connector' are skipped —
     those are handled by the local agent, not the cloud worker.
+
+    Releases the ``"all"`` dedup lock in ``finally`` so the manual crawl
+    button is unblocked once the fan-out work itself completes (the
+    per-source children continue running independently). Lock release is
+    identity-checked so a cron-triggered run cannot accidentally release
+    a user-triggered run's lock.
     """
     logger.info("Dispatching crawl tasks for all active sources")
     task_ids: list[dict[str, str]] = []
     skipped_local: list[str] = []
 
-    with get_db() as session:
-        rows = session.execute(
-            text("SELECT id, name, access_mode FROM sources WHERE is_active = true")
-        ).fetchall()
+    try:
+        with get_db() as session:
+            rows = session.execute(
+                text("SELECT id, name, access_mode FROM sources WHERE is_active = true")
+            ).fetchall()
 
-    for row in rows:
-        access = getattr(row, "access_mode", "http_scrape") or "http_scrape"
-        if access in ("local_connector", "local_authenticated_connector"):
-            skipped_local.append(row.name)
-            logger.info("Skipping local-agent source: %s", row.name)
-            continue
+        for row in rows:
+            access = getattr(row, "access_mode", "http_scrape") or "http_scrape"
+            if access in ("local_connector", "local_authenticated_connector"):
+                skipped_local.append(row.name)
+                logger.info("Skipping local-agent source: %s", row.name)
+                continue
 
-        source_id = str(row.id)
-        task = crawl_source.delay(source_id)
-        task_ids.append({"source_id": source_id, "task_id": task.id})
-        logger.info("Dispatched crawl task %s for source %s (%s)", task.id, source_id, row.name)
+            source_id = str(row.id)
+            task = crawl_source.delay(source_id)
+            task_ids.append({"source_id": source_id, "task_id": task.id})
+            logger.info("Dispatched crawl task %s for source %s (%s)", task.id, source_id, row.name)
 
-    logger.info("Dispatched %d crawl tasks (skipped %d local-agent sources)", len(task_ids), len(skipped_local))
-    return {"dispatched": task_ids, "count": len(task_ids), "skipped_local_agent": skipped_local}
+        logger.info("Dispatched %d crawl tasks (skipped %d local-agent sources)", len(task_ids), len(skipped_local))
+        return {"dispatched": task_ids, "count": len(task_ids), "skipped_local_agent": skipped_local}
+
+    finally:
+        try:
+            from src.api.crawl_locks import release as _release_lock
+
+            _release_lock("all", self.request.id)
+        except Exception:
+            logger.debug("Failed to release crawl-all dedup lock", exc_info=True)
 
 
 # Tier thresholds for industry_fit_score
