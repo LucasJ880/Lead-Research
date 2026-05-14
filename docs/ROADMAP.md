@@ -129,6 +129,38 @@ Auto-tag opportunities with product categories:
 - PagerDuty integration for crawl failures
 - Weekly reports: opportunities collected, sources healthy, top matches
 
+### 6.4 Runtime / Toolchain Upgrades
+
+**Evaluate Node 22 + pnpm 11 upgrade as a separate tech upgrade.**
+
+Current state (locked in by `apps/web/package.json` `packageManager: pnpm@10.31.0`
+and `apps/web/Dockerfile` `FROM node:20-alpine`):
+- Node 20 (alpine) for the web app build and runtime
+- pnpm 10.31.0 pinned via Corepack `packageManager` field
+- This pin exists because pnpm 11.x requires Node ≥ 22.13 and references the
+  `node:sqlite` builtin, which broke our Docker build the moment pnpm 11.1.2
+  was published (we previously had no version pin, so Corepack pulled latest).
+
+When picking up the upgrade, in a dedicated PR:
+1. **Docker base image** — bump `apps/web/Dockerfile` from `node:20-alpine` to
+   `node:22-alpine` across all three stages (deps / builder / runner).
+2. **CI runtime** — confirm GitHub Actions, deploy script (`scripts/deploy.sh`),
+   and any other build hosts are on Node 22; update setup-node actions if
+   present.
+3. **Dependency compatibility** — verify Next.js 14.x, Prisma 5.22, NextAuth,
+   and the rest of `dependencies` work cleanly under Node 22; check for
+   deprecation warnings.
+4. **pnpm config migration** — update `packageManager` to `pnpm@11.x` (with
+   integrity hash, since Node 22's strict Corepack mode requires it). Re-test
+   `pnpm install` and `pnpm build`.
+5. **Full Docker build verification** — local `docker compose build app` plus
+   a smoke run on staging before merging. Specifically watch for:
+   - Prisma client generation under Node 22
+   - The `node:sqlite` import path change (no longer an error in Node 22)
+   - Any native modules that need recompiling
+
+Until that PR ships, keep `packageManager: pnpm@10.31.0` and Node 20.
+
 ---
 
 ## Phase 7: Advanced Features (Priority: Low)
