@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
 
+// Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
+export const maxDuration = 60;
+
 const SCRAPER_API_URL = process.env.SCRAPER_API_URL || "http://localhost:8001";
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 

@@ -3,6 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
+export const maxDuration = 60;
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {

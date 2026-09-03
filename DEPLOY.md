@@ -1,5 +1,9 @@
 # BidToGo — Deployment Checklist
 
+> **Web tier now deploys to Vercel** (project `bidtogo`, auto-deploys from `main`).
+> See [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md). The checklist below covers the
+> backend tier (Postgres / Redis / scraper / Celery) that still runs on the droplet.
+
 ## Pre-deployment
 
 - [ ] `.env` file exists on server at `/opt/app/.env`

@@ -5,6 +5,9 @@ import { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 import type { OpportunityStatus } from "@/types";
 
+// Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
+export const maxDuration = 60;
+
 interface ExportRow {
   Title: string;
   Status: string;

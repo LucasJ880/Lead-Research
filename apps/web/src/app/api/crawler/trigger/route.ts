@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+// Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
+export const maxDuration = 60;
+
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) {

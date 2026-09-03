@@ -1,6 +1,7 @@
 {
   "name": "leadharvest",
   "private": true,
+  "packageManager": "pnpm@10.31.0",
   "description": "Opportunity intelligence platform for the window covering industry",
   "scripts": {
     "dev": "pnpm --filter @leadharvest/web dev",
