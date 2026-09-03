@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
+import { getSessionUser, requireAuth } from "@/lib/api-auth";
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { error: authError } = await requireAuth();
+  const { session, error: authError } = await requireAuth();
   if (authError) return authError;
+  const user = getSessionUser(session);
+  if (!user.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
-    const existing = await prisma.savedSearch.findUnique({
-      where: { id: params.id },
+    // Only the owner may delete their saved search
+    const existing = await prisma.savedSearch.findFirst({
+      where: { id: params.id, userId: user.id },
       select: { id: true },
     });
 

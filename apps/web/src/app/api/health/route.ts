@@ -11,10 +11,8 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     checks.database = { status: "ok" };
   } catch (e) {
-    checks.database = {
-      status: "error",
-      detail: e instanceof Error ? e.message : "Unknown error",
-    };
+    console.error("health: database check failed:", e);
+    checks.database = { status: "error", detail: "Cannot reach database" };
   }
 
   // Scraper API

@@ -128,8 +128,8 @@ export async function GET(request: NextRequest) {
     const minRelevance = searchParams.get("minRelevance");
     const lifecycle = searchParams.get("lifecycle") || "actionable";
     const sort = searchParams.get("sort") || "relevance";
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10)));
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "20", 10) || 20));
     const offset = (page - 1) * pageSize;
 
     const params: SearchParams = {

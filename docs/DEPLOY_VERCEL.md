@@ -36,7 +36,7 @@ Routes that proxy to the scraper or run heavy queries declare `export const maxD
 | `NEXTAUTH_SECRET` | Generated fresh for Vercel (`openssl rand -base64 32`). Does not need to match the droplet. |
 | `NEXTAUTH_URL` | `https://bidtogo.vercel.app` now; change to `https://bidtogo.ca` at DNS cutover. |
 | `SCRAPER_API_URL` | Public base URL of the FastAPI scraper (see below). |
-| `SCRAPER_API_KEY` | Same value as `SCRAPER_API_KEY` in the droplet `.env`. |
+| `SCRAPER_API_KEY` | Same value as `SCRAPER_API_KEY` in the droplet `.env`. **Required** — `/api/crawler/trigger` refuses to run without it (the old hard-coded fallback key was removed). |
 | `QINGYAN_ENABLED` / `QINGYAN_API_BASE` / `QINGYAN_API_TOKEN` / `QINGYAN_WEBHOOK_SECRET` | Copy from droplet `.env` when enabling Qingyan sync from Vercel. Set to `false` until then so two deployments do not both push. |
 | `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
 
@@ -84,6 +84,12 @@ and the scraper API + Celery worker + beat (Railway, Render, Fly.io, or DigitalO
 Platform — anything that runs the existing `services/scraper/Dockerfile` as long-running
 services). The Celery beat schedule is what drives automatic crawling; without it nothing new
 is ingested.
+
+## Schema note
+
+`User.role` now defaults to `viewer` (it used to default to `admin`). Apply it to the database
+with `prisma db push` (the droplet's `scripts/deploy.sh` already does this). Existing rows are
+not changed; only inserts that omit `role` are affected.
 
 ## Verifying a deployment
 

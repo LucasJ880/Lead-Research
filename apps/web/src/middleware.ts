@@ -1,7 +1,8 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/api/agent"];
+// /api/webhooks/* verifies an HMAC signature itself (no session cookie on server-to-server calls)
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/health", "/api/agent", "/api/webhooks"];
 const STATIC_PREFIXES = ["/_next", "/favicon.ico", "/images", "/fonts"];
 
 export async function middleware(req: NextRequest) {

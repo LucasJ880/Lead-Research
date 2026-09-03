@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import type { SourceItem, SourceType, AccessMode, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
 const createSourceSchema = z.object({
@@ -81,7 +81,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole(["owner", "super_admin", "admin", "manager"]);
   if (authError) return authError;
 
   try {

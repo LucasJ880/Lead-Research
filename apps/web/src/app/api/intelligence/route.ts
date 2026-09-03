@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const filter = searchParams.get("filter") || "all"; // all | pursue | review | skip
-    const page = Math.max(1, Number(searchParams.get("page") || 1));
-    const pageSize = Math.min(50, Math.max(1, Number(searchParams.get("pageSize") || 20)));
+    const page = Math.max(1, Number(searchParams.get("page")) || 1);
+    const pageSize = Math.min(50, Math.max(1, Number(searchParams.get("pageSize")) || 20));
     const offset = (page - 1) * pageSize;
 
     let recFilter = "";

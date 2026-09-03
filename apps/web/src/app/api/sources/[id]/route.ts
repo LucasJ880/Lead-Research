@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, requireRole } from "@/lib/api-auth";
 import type { Source } from "@prisma/client";
 import type { AccessMode, SourceItem, SourceType, CrawlFrequency, RunStatus, SourcePriority, SourceHealthStatus } from "@/types";
 
@@ -94,7 +94,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole(["owner", "super_admin", "admin", "manager"]);
   if (authError) return authError;
 
   try {
@@ -139,7 +139,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole(["owner", "super_admin", "admin", "manager"]);
   if (authError) return authError;
 
   try {

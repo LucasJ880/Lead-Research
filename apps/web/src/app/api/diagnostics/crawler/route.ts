@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireRole } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
 // Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
@@ -9,10 +8,8 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error: authError } = await requireRole(["owner", "super_admin", "admin", "manager"]);
+  if (authError) return authError;
 
   const scraperUrl = process.env.SCRAPER_API_URL || "http://localhost:8001";
   const apiKey = process.env.SCRAPER_API_KEY || "";

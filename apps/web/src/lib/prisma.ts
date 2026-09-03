@@ -13,4 +13,6 @@ export const prisma =
         : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Cache on globalThis in every environment: on serverless hosts a warm function
+// re-executes this module and would otherwise open a new connection pool each time.
+globalForPrisma.prisma = prisma;

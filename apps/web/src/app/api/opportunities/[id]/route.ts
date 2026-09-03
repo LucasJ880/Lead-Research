@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, requireRole } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 import type {
   BusinessStatus,
   OpportunityDetail,
@@ -178,7 +178,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole(["owner", "super_admin", "admin", "manager", "sales"]);
   if (authError) return authError;
 
   try {
@@ -198,7 +198,15 @@ export async function PATCH(
 
     const data: Record<string, unknown> = { workflowUpdatedAt: new Date() };
     if (workflowStatus) data.workflowStatus = workflowStatus;
-    if (workflowNote !== undefined) data.workflowNote = workflowNote;
+    if (workflowNote !== undefined) {
+      if (typeof workflowNote !== "string" || workflowNote.length > 5000) {
+        return NextResponse.json(
+          { error: "workflowNote must be a string of at most 5000 characters" },
+          { status: 400 }
+        );
+      }
+      data.workflowNote = workflowNote;
+    }
 
     const updated = await prisma.opportunity.update({
       where: { id },

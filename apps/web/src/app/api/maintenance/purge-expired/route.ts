@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
+import { requireRole } from "@/lib/api-auth";
 
 // Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
 export const maxDuration = 60;
 
 export async function POST() {
-  const { error: authError } = await requireAuth();
+  const { error: authError } = await requireRole(["owner", "super_admin", "admin"]);
   if (authError) return authError;
 
   try {

@@ -5,6 +5,12 @@ import { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 import type { OpportunityStatus } from "@/types";
 
+// Hard cap on exported rows (memory-bound: the whole workbook is built in memory)
+const MAX_EXPORT_ROWS = Math.min(
+  50000,
+  Math.max(100, Number(process.env.MAX_EXPORT_ROWS) || 10000)
+);
+
 // Vercel: allow up to 60s for this route (proxies to the scraper / heavy queries)
 export const maxDuration = 60;
 
@@ -350,7 +356,7 @@ async function fetchWithPrisma(params: FilterParams): Promise<ExportRow[]> {
   const opportunities = await prisma.opportunity.findMany({
     where,
     orderBy: { postedDate: { sort: "desc", nulls: "last" } },
-    take: 10000,
+    take: MAX_EXPORT_ROWS,
     include: {
       source: { select: { name: true } },
       organization: { select: { name: true } },

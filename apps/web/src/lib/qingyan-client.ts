@@ -151,7 +151,10 @@ export function verifyQingyanWebhookSignature(
     .update(`${timestamp}.${body}`)
     .digest("hex");
 
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 export function mapFeasibilityToRiskLevel(
