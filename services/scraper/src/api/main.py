@@ -39,10 +39,12 @@ from src.api.auth import verify_api_key
 from src.api.agent_sync import router as agent_router
 from src.api.quick_analysis import router as analysis_router
 from src.api.cron import router as cron_router
+from src.api.probe import router as probe_router
 from src.models.opportunity import TriggerType
 app.include_router(agent_router)
 app.include_router(analysis_router)
 app.include_router(cron_router)
+app.include_router(probe_router)
 
 
 # ─── Response Models ────────────────────────────────────────
