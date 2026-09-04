@@ -32,6 +32,16 @@ class BaseCrawler(ABC):
         self._robots_cache: dict[str, RobotExclusionRulesParser] = {}
         self._http = requests.Session()
         self._http.headers.update({"User-Agent": self.config.DEFAULT_USER_AGENT})
+        # Some government portals ship an incomplete certificate chain that fails
+        # verification on serverless hosts; sources can opt out via crawl_config.
+        if source_config.crawl_config.get("verify_ssl") is False:
+            self._http.verify = False
+            try:
+                import urllib3
+
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            except Exception:
+                pass
 
         # Time budget (monotonic timestamp). Set by the pipeline on serverless
         # hosts where an invocation cannot exceed a few minutes. ``None`` means

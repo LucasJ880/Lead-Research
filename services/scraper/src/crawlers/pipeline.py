@@ -17,6 +17,13 @@ class _SafeEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+def _status_value(status: object) -> str:
+    """Enum or plain-string status → DB enum label."""
+    if status is None:
+        return "unknown"
+    return str(getattr(status, "value", status)).lower() or "unknown"
+
+
 def _safe_json_dumps(obj):
     if obj is None:
         return None
@@ -226,7 +233,17 @@ class CrawlPipeline:
             opp.city = loc["city"] or opp.city
 
         if opp.raw_data and opp.raw_data.get("status"):
-            opp.status = normalize_status(opp.raw_data["status"])  # type: ignore[assignment]
+            # normalize_status returns a plain string; keep the enum on the model
+            # (an unknown value must not override a status the crawler already set)
+            from src.models.opportunity import OpportunityStatus
+
+            normalized = normalize_status(str(opp.raw_data["status"]))
+            try:
+                candidate = OpportunityStatus(normalized)
+            except ValueError:
+                candidate = OpportunityStatus.UNKNOWN
+            if candidate != OpportunityStatus.UNKNOWN:
+                opp.status = candidate
 
         if opp.estimated_value is None and opp.raw_data and opp.raw_data.get("estimated_value"):
             amount, currency = normalize_currency(opp.raw_data["estimated_value"])
@@ -441,7 +458,7 @@ class CrawlPipeline:
                     "summary_zh": zh.get("summary_zh"),
                     "full_zh": zh.get("full_zh"),
                     "translated_at": datetime.now(timezone.utc) if zh else None,
-                    "status": opp.status.value if opp.status else "unknown",
+                    "status": _status_value(opp.status),
                     "country": opp.country,
                     "region": opp.region,
                     "city": opp.city,
@@ -562,7 +579,7 @@ class CrawlPipeline:
                     "summary_zh": zh.get("summary_zh"),
                     "full_zh": zh.get("full_zh"),
                     "translated_at": datetime.now(timezone.utc) if zh else None,
-                    "status": opp.status.value if opp.status else "unknown",
+                    "status": _status_value(opp.status),
                     "closing_date": opp.closing_date,
                     "estimated_value": float(opp.estimated_value) if opp.estimated_value else None,
                     "contact_name": opp.contact_name,

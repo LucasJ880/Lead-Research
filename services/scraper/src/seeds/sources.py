@@ -173,6 +173,7 @@ SOURCES = [
         "listing_path": "/content/public/Search.aspx",
         "crawl_config": {
             "crawler_class": "sasktenders",
+            "verify_ssl": False,  # sasktenders.ca serves an incomplete chain
             "rate_limit_seconds": 2,
         },
         "access_mode": "http_scrape",
