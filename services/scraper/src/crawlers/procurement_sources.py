@@ -11,6 +11,7 @@ To add a new custom crawler:
 
 from __future__ import annotations
 
+from src.crawlers.alberta_apc import AlbertaApcCrawler
 from src.crawlers.base import BaseCrawler
 from src.crawlers.bcbid import BCBidCrawler
 from src.crawlers.biddingo import BiddingoCrawler
@@ -21,10 +22,12 @@ from src.crawlers.merx import MerxCrawler
 from src.crawlers.novascotia import NovaScotiaCrawler
 from src.crawlers.sam_gov import SamGovCrawler
 from src.crawlers.sasktenders import SaskTendersCrawler
+from src.crawlers.seao import SeaoCrawler
 from src.crawlers.toronto import TorontoCrawler
 from src.crawlers.vancouver import VancouverCrawler
 
 CRAWLER_REGISTRY: dict[str, type[BaseCrawler]] = {
+    "alberta_apc": AlbertaApcCrawler,
     "bcbid": BCBidCrawler,
     "biddingo": BiddingoCrawler,
     "bidsandtenders": BidsAndTendersCrawler,
@@ -34,6 +37,7 @@ CRAWLER_REGISTRY: dict[str, type[BaseCrawler]] = {
     "novascotia": NovaScotiaCrawler,
     "sam_gov": SamGovCrawler,
     "sasktenders": SaskTendersCrawler,
+    "seao": SeaoCrawler,
     "toronto": TorontoCrawler,
     "vancouver": VancouverCrawler,
 }
