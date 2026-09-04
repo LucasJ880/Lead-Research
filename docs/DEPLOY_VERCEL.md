@@ -76,10 +76,26 @@ from the repo root (the CLI honours each project's Root Directory), or just push
   only nudges the score. Re-crawls rescore existing rows; `backfill_scores.py` rescores everything.
 * Bids and Tenders is crawled per municipal tenant (`{city}.bidsandtenders.ca`, 31 Ontario
   tenants by default, configurable in `sources.crawl_config.tenants`).
+* Active cloud sources (2026-09-04): CanadaBuys, SAM.gov, Toronto, Biddingo, Bids and Tenders,
+  SaskTenders (new 2026 site), SEAO Québec (Données Québec OCDS weekly files), Alberta Purchasing
+  Connection (public JSON search API). MERX is still `local_connector`: the probe endpoint
+  `GET /api/diagnostics/fetch?url=` (X-API-Key) showed merx.com answering 200 from Vercel, so it
+  can be switched to `http_scrape` in `src/seeds/sources.py` if the business decides to crawl it
+  from the cloud. Nova Scotia, BC Bid and BidNet need a browser/anti-bot solution and stay off.
 * Expired tenders are marked `closed` by the maintenance tick (1 day after the deadline) and
   purged 14 days later.
 * Qingyan payload now includes the original notice URL, buyer contact, Chinese descriptions,
   full description, AI feasibility + structured report, and extracted document text.
+
+## Connecting Qingyan
+
+1. In Qingyan (super admin), create an API token for system `bidtogo` via
+   `POST /api/admin/api-tokens` `{ "name": "BidToGo", "system": "bidtogo", "permissions": "project:create" }`.
+2. On the `bidtogo` Vercel project set `QINGYAN_API_BASE=https://qingyan.ca`,
+   `QINGYAN_API_TOKEN=<token>`, `QINGYAN_ENABLED=true`; `QINGYAN_AUTO_PUSH_MIN_SCORE=70` is already set.
+3. For status sync back, register a `WebhookEndpoint` row in Qingyan's database
+   (`system=bidtogo`, `url=https://bidtogo.ca/api/webhooks/qingyan`, `events=["project.status_changed"]`,
+   random `secret`) and set the same value as `QINGYAN_WEBHOOK_SECRET` on `bidtogo`.
 
 ## Fresh database setup
 
