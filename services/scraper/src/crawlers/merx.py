@@ -169,7 +169,7 @@ class MerxCrawler(BaseCrawler):
         if include_broad:
             keywords.extend(_BROAD_KEYWORDS)
 
-        for kw in keywords:
+        for kw in self.iter_keywords(keywords):
             opps = self._search_keyword(kw, max_pages, fetch_detail, seen_urls)
             all_opps.extend(opps)
             self._diag.search_results.append(("kw", kw, len(opps)))
