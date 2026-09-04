@@ -33,6 +33,16 @@ class BaseCrawler(ABC):
         self._http = requests.Session()
         self._http.headers.update({"User-Agent": self.config.DEFAULT_USER_AGENT})
 
+        # Time budget (monotonic timestamp). Set by the pipeline on serverless
+        # hosts where an invocation cannot exceed a few minutes. ``None`` means
+        # unlimited (Docker / local runs).
+        self.deadline: float | None = None
+        self.deadline_hit: bool = False
+        # Position in the keyword list to resume from on the next run. Only
+        # meaningful for crawlers that use ``iter_keywords``.
+        self.next_keyword_cursor: int | None = None
+        self.keywords_completed: bool = True
+
     # ─── Properties ─────────────────────────────────────────
 
     @property
@@ -127,6 +137,47 @@ class BaseCrawler(ABC):
         return self._robots_cache[origin].is_allowed(
             settings.DEFAULT_USER_AGENT, url
         )
+
+    # ─── Time Budget ────────────────────────────────────────
+
+    def time_remaining(self) -> float | None:
+        """Seconds left before ``deadline`` (``None`` when unlimited)."""
+        if self.deadline is None:
+            return None
+        return max(0.0, self.deadline - time.monotonic())
+
+    def should_stop(self) -> bool:
+        """True once the time budget is exhausted. Crawlers check this between units of work."""
+        if self.deadline is not None and time.monotonic() >= self.deadline:
+            if not self.deadline_hit:
+                self.logger.warning("Crawl time budget exhausted; returning partial results")
+            self.deadline_hit = True
+            return True
+        return False
+
+    def iter_keywords(self, keywords: list[str]):
+        """Yield search keywords starting from the persisted cursor, honouring the deadline.
+
+        The pipeline stores ``next_keyword_cursor`` in ``sources.crawl_config``
+        after each run so a source whose keyword list cannot be finished in one
+        invocation continues where it left off next time (round-robin).
+        """
+        n = len(keywords)
+        if n == 0:
+            self.next_keyword_cursor = 0
+            return
+        try:
+            start = int(self._source_config.crawl_config.get("keyword_cursor", 0) or 0) % n
+        except (TypeError, ValueError):
+            start = 0
+        done = 0
+        for i in range(n):
+            if self.should_stop():
+                break
+            yield keywords[(start + i) % n]
+            done += 1
+        self.keywords_completed = done == n
+        self.next_keyword_cursor = (start + done) % n
 
     # ─── Rate Limiting ──────────────────────────────────────
 

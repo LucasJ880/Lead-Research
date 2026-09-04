@@ -59,24 +59,42 @@ class CrawlPipeline:
         self._session = db_session
         self._result = CrawlResult(source_id=source_config.id)
         self._crawler_diagnostics: dict = {}
+        self._time_budget: float | None = None
+        self._deadline: float | None = None
 
-    def run(self, triggered_by: TriggerType = TriggerType.SCHEDULE) -> CrawlResult:
+    def run(
+        self,
+        triggered_by: TriggerType = TriggerType.SCHEDULE,
+        source_run_id: str | None = None,
+        time_budget_seconds: float | None = None,
+    ) -> CrawlResult:
         """Execute the full pipeline and return a summary.
 
         Args:
             triggered_by: What initiated this crawl (schedule, manual, retry).
+            source_run_id: Reuse an existing (queued) ``source_runs`` row instead
+                of inserting a new one. Used by the serverless job runner.
+            time_budget_seconds: Hard wall-clock budget for the whole run. The
+                crawler gets ~60% of it and stops early (returning partial
+                results, resumable via the keyword cursor); processing uses the
+                rest. ``None`` means unlimited.
 
         Returns:
             CrawlResult with aggregate statistics.
         """
         pipeline_start = _time.monotonic()
+        self._time_budget = time_budget_seconds
+        self._deadline = pipeline_start + time_budget_seconds if time_budget_seconds else None
         access_mode = getattr(self._source_config, "access_mode", "http")
         logger.info(
             "Pipeline starting for source '%s' [access_mode=%s, triggered_by=%s]",
             self._source_config.name, access_mode, triggered_by.value,
         )
 
-        source_run_id = self._create_source_run(triggered_by)
+        if source_run_id:
+            self._claim_source_run(source_run_id, triggered_by)
+        else:
+            source_run_id = self._create_source_run(triggered_by)
 
         try:
             # 1. Crawl
@@ -91,16 +109,29 @@ class CrawlPipeline:
 
             # 2. Normalize + score + dedup + store
             t0 = _time.monotonic()
+            processed = 0
             for opp in raw_opportunities:
+                if self._deadline is not None and _time.monotonic() >= self._deadline:
+                    logger.warning(
+                        "Time budget exhausted after processing %d/%d opportunities; "
+                        "the rest will be picked up on the next crawl",
+                        processed, len(raw_opportunities),
+                    )
+                    self._crawler_diagnostics["processing_truncated"] = len(raw_opportunities) - processed
+                    break
                 try:
                     opp = self._normalize(opp)
                     opp = self._score(opp)
                     opp.source_run_id = source_run_id
                     zh_fields = self._translate_if_relevant(opp)
                     self._dedup_and_store(opp, zh_fields=zh_fields)
+                    # Commit per row so an aborted invocation keeps what it stored.
+                    self._session.commit()
                 except Exception as exc:
+                    self._session.rollback()
                     self._result.errors.append(f"Processing error: {exc}")
                     logger.exception("Error processing opportunity: %s", opp.title)
+                processed += 1
             process_ms = int((_time.monotonic() - t0) * 1000)
 
             total_ms = int((_time.monotonic() - pipeline_start) * 1000)
@@ -148,14 +179,27 @@ class CrawlPipeline:
             )
             crawler = GenericCrawler(self._source_config, self._session)
 
+        if self._deadline is not None:
+            # Leave ~40% of the budget for normalize/score/translate/store.
+            crawler.deadline = _time.monotonic() + max(10.0, (self._deadline - _time.monotonic()) * 0.6)
+
         opportunities = crawler.crawl()
+
+        self._crawler_diagnostics = {}
+        if getattr(crawler, "deadline_hit", False):
+            self._crawler_diagnostics["crawl_truncated"] = True
+        cursor = getattr(crawler, "next_keyword_cursor", None)
+        if cursor is not None:
+            self._crawler_diagnostics["keyword_cursor"] = cursor
+            self._crawler_diagnostics["keywords_completed"] = bool(getattr(crawler, "keywords_completed", True))
+            self._persist_keyword_cursor(cursor)
+
         diagnostics_fn = getattr(crawler, "diagnostics", None)
         if callable(diagnostics_fn):
             try:
-                self._crawler_diagnostics = diagnostics_fn() or {}
+                self._crawler_diagnostics.update(diagnostics_fn() or {})
             except Exception:
                 logger.exception("Failed to read crawler diagnostics for %s", self._source_config.name)
-                self._crawler_diagnostics = {}
         self._result.pages_crawled = self._source_config.crawl_config.get(
             "max_pages", settings.DEFAULT_MAX_PAGES_PER_SOURCE
         )
@@ -510,6 +554,40 @@ class CrawlPipeline:
 
     # ─── Source Run Management ──────────────────────────────
 
+    def _persist_keyword_cursor(self, cursor: int) -> None:
+        """Store the keyword round-robin position in ``sources.crawl_config``."""
+        try:
+            self._session.execute(
+                text("""
+                    UPDATE sources
+                    SET crawl_config = COALESCE(crawl_config, '{}'::jsonb) || CAST(:patch AS jsonb)
+                    WHERE id = :id
+                """),
+                {"id": self._source_config.id, "patch": json.dumps({"keyword_cursor": int(cursor)})},
+            )
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            logger.exception("Failed to persist keyword cursor for %s", self._source_config.id)
+
+    def _claim_source_run(self, run_id: str, triggered_by: TriggerType) -> None:
+        """Mark a queued source_run as running (serverless job runner path)."""
+        self._session.execute(
+            text("""
+                UPDATE source_runs
+                SET status = :status, started_at = :started_at, triggered_by = :triggered_by
+                WHERE id = :id
+            """),
+            {
+                "id": run_id,
+                "status": RunStatus.RUNNING.value,
+                "started_at": datetime.now(timezone.utc),
+                "triggered_by": triggered_by.value,
+            },
+        )
+        self._session.commit()
+        logger.info("Claimed queued source_run %s for source %s", run_id, self._source_config.id)
+
     def _create_source_run(self, triggered_by: TriggerType) -> str:
         """Insert a new source_run record and return its ID."""
         row = self._session.execute(
@@ -525,7 +603,7 @@ class CrawlPipeline:
                 "triggered_by": triggered_by.value,
             },
         ).fetchone()
-        self._session.flush()
+        self._session.commit()
         run_id = str(row.id)  # type: ignore[union-attr]
         logger.info("Created source_run %s for source %s", run_id, self._source_config.id)
         return run_id

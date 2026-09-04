@@ -1,100 +1,100 @@
-# BidToGo — Vercel Deployment (web tier)
+# BidToGo — Deployment on Vercel + Neon
 
-BidToGo is **not** a single Next.js app. It has two tiers:
+Everything now runs on Vercel and Neon. The DigitalOcean droplet, Docker Compose,
+Caddy, Redis and Celery are no longer required.
 
-| Tier | What | Where it runs |
-|------|------|---------------|
-| Web | `apps/web` — Next.js 14 UI + `/api/*` routes, Prisma, next-auth | **Vercel** (project `bidtogo`, team `lucas-9039s-projects`) |
-| Backend | PostgreSQL 16, Redis 7, Python FastAPI scraper (`services/scraper`), Celery worker + beat | Docker Compose on the DigitalOcean droplet (`docker-compose.prod.yml`) |
+| Tier | Code | Vercel project | Notes |
+|------|------|----------------|-------|
+| Web | `apps/web` (Next.js 14, Prisma, next-auth) | `bidtogo` → https://bidtogo.vercel.app | Root Directory `apps/web`, Node 24, build `prisma generate && next build` |
+| Scraper API + scheduler | `services/scraper` (FastAPI) | `bidtogo-scraper` → https://bidtogo-scraper.vercel.app | Root Directory `services/scraper`, one Python function (`api/index.py`), `maxDuration` 300 s, Vercel Cron every 5 min |
+| Database | Prisma schema (`apps/web/prisma/schema.prisma`) | Neon Postgres (`neondb`) | Use the `-pooler` host for both projects |
 
-Vercel only runs serverless functions. It **cannot** host Postgres, Redis, or the always-on
-Celery crawler processes. Until those are moved to another host (see "Retiring the droplet"),
-the droplet must stay up and the Vercel deployment must be able to reach it over the internet.
+Both projects auto-deploy from `main` of `LucasJ880/Lead-Research` (team `lucas-9039s-projects`).
 
-## Vercel project settings
+## How crawling works without Celery
 
-| Setting | Value |
-|---------|-------|
-| Root Directory | `apps/web` |
-| Framework | Next.js |
-| Build Command | `prisma generate && next build` |
-| Node.js | 24.x |
-| Package manager | pnpm 10.31.0 via corepack (`packageManager` in root `package.json`, `ENABLE_EXPERIMENTAL_COREPACK=1`) |
-| Git | `LucasJ880/Lead-Research`, `main` → production |
+`source_runs` is the work queue (`src/core/runner.py`):
 
-`apps/web/next.config.js` disables `output: "standalone"` when `VERCEL` is set (standalone is
-only for the Docker image) and traces `services/scraper/config/prompts/*.yaml` into the
-`/api/intelligence/prompts` function.
+1. `POST /api/crawl/all` (the "Run Crawler" button) or `POST /api/crawl/{source_id}` inserts a
+   `pending` row per active cloud-crawlable source. A source with a pending/running row is not
+   queued twice (`status: already_running`).
+2. Vercel Cron calls `GET /api/cron/tick` every 5 minutes with `Authorization: Bearer $CRON_SECRET`.
+   Each tick:
+   - marks runs stuck in `running` for > 20 min as failed (a killed invocation),
+   - queues a `schedule` run for any active source not crawled in the last 20 h (replaces the
+     daily Celery beat job),
+   - claims the oldest pending run with `FOR UPDATE SKIP LOCKED` and crawls it with a wall-clock
+     budget (~250 s). Keyword-driven crawlers (Biddingo, Bids&Tenders) stop at the deadline and
+     resume from `sources.crawl_config.keyword_cursor` next time, so long keyword lists are
+     covered across several ticks. Rows are committed one by one, so partial runs keep their data.
+   - if nothing is queued it does maintenance instead: document text extraction, Chinese
+     translation of pending rows, and purge of expired / SAM set-aside opportunities.
+3. `GET /api/crawl/status/{run_id}` reports the run row (`PENDING` / `STARTED` / `SUCCESS` / `FAILURE`).
 
-Routes that proxy to the scraper or run heavy queries declare `export const maxDuration = 60`.
+A full sweep of the 6 active sources takes roughly 30–60 minutes of ticks. Tunables (env):
+`TICK_BUDGET_SECONDS` (250), `STALE_RUN_MINUTES` (20), `SCHEDULE_INTERVAL_HOURS` (20),
+`DEFAULT_RATE_LIMIT_SECONDS` (1 on Vercel).
 
-## Environment variables (Production)
+## Environment variables
 
-| Variable | Value / source |
-|----------|----------------|
-| `DATABASE_URL` | Postgres reachable **from the public internet**. Append `?schema=public&connection_limit=5&pool_timeout=20` (serverless = many short-lived connections). |
-| `NEXTAUTH_SECRET` | Generated fresh for Vercel (`openssl rand -base64 32`). Does not need to match the droplet. |
-| `NEXTAUTH_URL` | `https://bidtogo.vercel.app` now; change to `https://bidtogo.ca` at DNS cutover. |
-| `SCRAPER_API_URL` | Public base URL of the FastAPI scraper (see below). |
-| `SCRAPER_API_KEY` | Same value as `SCRAPER_API_KEY` in the droplet `.env`. **Required** — `/api/crawler/trigger` refuses to run without it (the old hard-coded fallback key was removed). |
-| `QINGYAN_ENABLED` / `QINGYAN_API_BASE` / `QINGYAN_API_TOKEN` / `QINGYAN_WEBHOOK_SECRET` | Copy from droplet `.env` when enabling Qingyan sync from Vercel. Set to `false` until then so two deployments do not both push. |
-| `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
+### `bidtogo` (web)
 
-Set with `vercel env add NAME production` from the repo root (it is linked to the project).
+| Variable | Value |
+|----------|-------|
+| `DATABASE_URL` | Neon pooler URL + `?sslmode=require&channel_binding=require&connection_limit=5&pool_timeout=20` |
+| `NEXTAUTH_SECRET` | random 32 bytes |
+| `NEXTAUTH_URL` | `https://bidtogo.vercel.app` → `https://bidtogo.ca` after DNS cutover |
+| `SCRAPER_API_URL` | `https://bidtogo-scraper.vercel.app` |
+| `SCRAPER_API_KEY` | shared secret, identical in both projects |
+| `QINGYAN_ENABLED` / `QINGYAN_API_BASE` / `QINGYAN_API_TOKEN` / `QINGYAN_WEBHOOK_SECRET` | optional |
+| `ENABLE_EXPERIMENTAL_COREPACK` | `1` (pnpm 10.31.0 via `packageManager`) |
 
-## Making the droplet reachable from Vercel
+### `bidtogo-scraper`
 
-The compose file only publishes ports 80/443 (Caddy). Two things must be exposed:
+| Variable | Value |
+|----------|-------|
+| `DATABASE_URL` | same Neon pooler URL (Prisma-only params are stripped automatically) |
+| `SCRAPER_API_KEY`, `AGENT_API_KEY` | same shared secret as the web project |
+| `CRON_SECRET` | random; Vercel Cron sends it as a Bearer token |
+| `OPENAI_API_KEY`, `MERX_EMAIL`, `MERX_PASSWORD`, `GOOGLE_TRANSLATE_API_KEY`, `SAM_GOV_API_KEY` | integrations |
+| `DEFAULT_RATE_LIMIT_SECONDS` | `1` |
+| `AI_DAILY_BUDGET_USD`, `AI_MONTHLY_BUDGET_USD` | `5`, `100` |
 
-1. **Scraper API.** The web app calls `/health`, `/api/health`, `/api/crawl/all`,
-   `/api/diagnostics`, `/api/analysis/*` on `SCRAPER_API_URL`. Caddy currently only proxies
-   `/api/agent/*`, `/api/analysis/*`, `/api/scraper/*`. Add a dedicated host in `Caddyfile`:
+Set with `vercel env add NAME production` while the repo root is linked to the right project
+(`vercel link --project bidtogo` / `--project bidtogo-scraper`). Deploy with `vercel deploy --prod`
+from the repo root (the CLI honours each project's Root Directory), or just push to `main`.
 
-   ```
-   api.bidtogo.ca {
-       reverse_proxy scraper-api:8001
-   }
-   ```
+## Fresh database setup
 
-   plus an `A` record `api.bidtogo.ca → 137.184.163.168` at GoDaddy (bidtogo.ca DNS is on
-   `ns13/ns14.domaincontrol.com`). All mutating scraper routes require `X-API-Key`; `/health`
-   is public and harmless. Then set `SCRAPER_API_URL=https://api.bidtogo.ca`.
+```bash
+cd apps/web
+DATABASE_URL=<neon direct url> npx prisma db push --skip-generate
+DATABASE_URL=<neon direct url> npx prisma db execute --file prisma/setup-search.sql --schema prisma/schema.prisma
+# admin user: create with bcrypt hash (see prisma/seed.ts — do not run the whole seed, it inserts demo opportunities)
+cd ../../services/scraper
+DATABASE_URL=<neon url> python -m src.seeds.sources
+```
 
-2. **PostgreSQL.** Either
-   - publish `5432` on the droplet (`ports: ["5432:5432"]` on the `postgres` service), enable
-     `ssl = on` in Postgres, and use `?sslmode=require` in `DATABASE_URL`, or
-   - (recommended) move the database to a managed Postgres (Neon / Supabase / DigitalOcean
-     Managed DB) with `pg_dump` → `pg_restore`, then point **both** Vercel and the scraper
-     containers at it. This is the first step of retiring the droplet anyway.
+`User.role` defaults to `viewer`; the first admin must be inserted with role `owner`/`admin`.
 
 ## DNS cutover (bidtogo.ca → Vercel)
 
-1. `vercel domains add bidtogo.ca` (and `www.bidtogo.ca`) on project `bidtogo`.
-2. At GoDaddy: `A bidtogo.ca → 76.76.21.21`, `CNAME www → cname.vercel-dns.com`.
-   Keep `api.bidtogo.ca → droplet`.
-3. Update `NEXTAUTH_URL=https://bidtogo.ca` on Vercel and redeploy.
-4. Remove the `bidtogo.ca` site block from `Caddyfile` (keep `api.bidtogo.ca`) so the droplet
-   stops serving the old UI; the `/api/agent/*` endpoint used by external agents must then be
-   called on `api.bidtogo.ca`.
+1. `vercel domains add bidtogo.ca --scope lucas-9039s-projects` on project `bidtogo` (and `www.bidtogo.ca`).
+2. At GoDaddy (`bidtogo.ca` uses `ns13/ns14.domaincontrol.com`): set `A @ → 76.76.21.21` and
+   `CNAME www → cname.vercel-dns.com`, delete the old `A` record pointing at `137.184.163.168`.
+3. `vercel env add NEXTAUTH_URL production` = `https://bidtogo.ca`, then redeploy `bidtogo`.
+4. Optionally `api.bidtogo.ca` → project `bidtogo-scraper` (then update `SCRAPER_API_URL`).
 
-## Retiring the droplet
-
-Only possible after all three move: Postgres (managed DB), Redis (Upstash / managed Redis),
-and the scraper API + Celery worker + beat (Railway, Render, Fly.io, or DigitalOcean App
-Platform — anything that runs the existing `services/scraper/Dockerfile` as long-running
-services). The Celery beat schedule is what drives automatic crawling; without it nothing new
-is ingested.
-
-## Schema note
-
-`User.role` now defaults to `viewer` (it used to default to `admin`). Apply it to the database
-with `prisma db push` (the droplet's `scripts/deploy.sh` already does this). Existing rows are
-not changed; only inserts that omit `role` are affected.
-
-## Verifying a deployment
+## Verifying
 
 ```bash
 curl -s https://bidtogo.vercel.app/api/health
+curl -s https://bidtogo-scraper.vercel.app/api/health
+curl -s -H "Authorization: Bearer $CRON_SECRET" https://bidtogo-scraper.vercel.app/api/cron/tick
 ```
 
-`database`, `scraper`, `environment`, `sources`, `admin` should all be `ok`.
+## Legacy Docker deployment
+
+`docker-compose*.yml`, `Caddyfile`, `scripts/deploy.sh` and the Celery tasks are kept so the
+service can still run self-hosted (the Celery wrappers call the same functions the runner uses).
+They are not needed for Vercel.

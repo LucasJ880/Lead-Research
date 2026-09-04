@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     SCRAPER_API_KEY: str = ""
+    # Vercel Cron sends "Authorization: Bearer <CRON_SECRET>" to /api/cron/tick
+    CRON_SECRET: str = ""
     AGENT_API_KEY: str = ""
 
     # MERX authenticated access (never log or expose these)

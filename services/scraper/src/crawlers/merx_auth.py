@@ -35,7 +35,11 @@ logger = get_logger(__name__)
 
 _BASE = "https://www.merx.com"
 _LOGIN_URL = f"{_BASE}/public/authentication/login"
-_DOC_STORAGE_ROOT = Path(__file__).resolve().parents[3] / "documents" / "merx"
+_DOC_STORAGE_ROOT = Path(
+    os.environ.get("DOC_STORAGE_ROOT")
+    or ("/tmp/bidtogo/documents/merx" if os.environ.get("VERCEL") else
+        Path(__file__).resolve().parents[3] / "documents" / "merx")
+)
 
 
 @dataclass

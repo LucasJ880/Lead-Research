@@ -38,8 +38,11 @@ app.add_middleware(
 from src.api.auth import verify_api_key
 from src.api.agent_sync import router as agent_router
 from src.api.quick_analysis import router as analysis_router
+from src.api.cron import router as cron_router
+from src.models.opportunity import TriggerType
 app.include_router(agent_router)
 app.include_router(analysis_router)
+app.include_router(cron_router)
 
 
 # ─── Response Models ────────────────────────────────────────
@@ -156,44 +159,20 @@ async def diagnostics() -> dict:
     response_model=CrawlAllResponse,
     dependencies=[Depends(verify_api_key)],
 )
-async def trigger_all_crawls() -> CrawlAllResponse:
-    """Dispatch crawl tasks for every active source.
+def trigger_all_crawls() -> CrawlAllResponse:
+    """Queue a crawl for every active source.
 
-    Server-side dedup: a Redis lock with a 30-min TTL safety net prevents
-    duplicate crawl-all tasks. The lock is held for the duration of the
-    actual crawl (released by the task body's ``finally`` block), not just
-    the dispatch. See ``src/api/crawl_locks.py`` for full lifecycle.
-
-    The Celery task id is pre-generated here and passed via
-    ``apply_async(task_id=...)`` so the lock value matches the real task
-    id from the start — no race window between dispatch and lock-value
-    update.
+    Runs are queued as ``pending`` rows in ``source_runs`` and executed one
+    per cron tick (``/api/cron/tick``). A source that already has a pending
+    or running row is not queued twice.
     """
-    from celery.utils import uuid as celery_uuid
+    from src.core.runner import enqueue_crawl_all
 
-    from src.api.crawl_locks import try_acquire
-    from src.tasks.crawl_tasks import crawl_all_active_sources
-
-    task_id = celery_uuid()
-    lock_result = try_acquire("all", task_id)
-    if not lock_result.acquired:
-        logger.info(
-            "Crawl-all already in flight (holder=%s); not dispatching duplicate",
-            lock_result.holder_task_id,
-        )
-        return CrawlAllResponse(
-            task_ids=[{"master_task_id": lock_result.holder_task_id or "unknown"}],
-            count=0,
-            status="already_running",
-        )
-
-    crawl_all_active_sources.apply_async(task_id=task_id)
-    logger.info("Dispatched crawl-all task %s", task_id)
-    return CrawlAllResponse(
-        task_ids=[{"master_task_id": task_id}],
-        count=1,
-        status="dispatched",
-    )
+    out = enqueue_crawl_all(TriggerType.MANUAL)
+    first = next((t["task_id"] for t in out["task_ids"] if t["task_id"]), "")
+    task_ids = [{"master_task_id": first, **t} for t in out["task_ids"]] if out["task_ids"] else []
+    logger.info("Queued crawl-all: %d new run(s), status=%s", out["count"], out["status"])
+    return CrawlAllResponse(task_ids=task_ids, count=out["count"], status=out["status"])
 
 
 @app.get(
@@ -201,17 +180,14 @@ async def trigger_all_crawls() -> CrawlAllResponse:
     response_model=TaskStatusResponse,
     dependencies=[Depends(verify_api_key)],
 )
-async def crawl_status(task_id: str) -> TaskStatusResponse:
-    """Return the current status / result of a crawl task."""
-    from src.tasks.celery_app import celery_app
+def crawl_status(task_id: str) -> TaskStatusResponse:
+    """Return the current status / result of a queued crawl run."""
+    from src.core.runner import get_run_status
 
-    result = celery_app.AsyncResult(task_id)
-    response = TaskStatusResponse(
-        task_id=task_id,
-        status=result.status,
-        result=result.result if result.ready() and isinstance(result.result, dict) else None,
-    )
-    return response
+    info = get_run_status(task_id)
+    if info is None:
+        return TaskStatusResponse(task_id=task_id, status="PENDING", result=None)
+    return TaskStatusResponse(**info)
 
 
 @app.post(
@@ -219,39 +195,13 @@ async def crawl_status(task_id: str) -> TaskStatusResponse:
     response_model=CrawlTriggerResponse,
     dependencies=[Depends(verify_api_key)],
 )
-async def trigger_crawl(source_id: str) -> CrawlTriggerResponse:
-    """Dispatch a crawl task for a single source.
+def trigger_crawl(source_id: str) -> CrawlTriggerResponse:
+    """Queue a crawl for a single source (executed by the next cron tick)."""
+    from src.core.runner import enqueue_crawl
 
-    Server-side dedup: a per-source Redis lock prevents duplicate crawls
-    of the same source. The lock is held for the actual crawl duration
-    (released by the task body's ``finally`` block), with a 30-min TTL
-    safety net. See ``src/api/crawl_locks.py`` for full lifecycle.
-    """
-    from celery.utils import uuid as celery_uuid
-
-    from src.api.crawl_locks import try_acquire
-    from src.tasks.crawl_tasks import crawl_source
-
-    task_id = celery_uuid()
-    lock_result = try_acquire(f"source:{source_id}", task_id)
-    if not lock_result.acquired:
-        logger.info(
-            "Crawl for source %s already in flight (holder=%s); not dispatching duplicate",
-            source_id, lock_result.holder_task_id,
-        )
-        return CrawlTriggerResponse(
-            task_id=lock_result.holder_task_id or "unknown",
-            source_id=source_id,
-            status="already_running",
-        )
-
-    crawl_source.apply_async(args=[source_id], task_id=task_id)
-    logger.info("Dispatched crawl task %s for source %s", task_id, source_id)
-    return CrawlTriggerResponse(
-        task_id=task_id,
-        source_id=source_id,
-        status="dispatched",
-    )
+    out = enqueue_crawl(source_id, TriggerType.MANUAL)
+    logger.info("Queued crawl for source %s: %s", source_id, out["status"])
+    return CrawlTriggerResponse(**out)
 
 
 @app.post(

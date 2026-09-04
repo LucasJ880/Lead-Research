@@ -1,0 +1,7 @@
+.venv
+tests
+Dockerfile
+__pycache__
+*.pyc
+.pytest_cache
+sources_live.json

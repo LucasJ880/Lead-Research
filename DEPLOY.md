@@ -1,8 +1,7 @@
 # BidToGo — Deployment Checklist
 
-> **Web tier now deploys to Vercel** (project `bidtogo`, auto-deploys from `main`).
-> See [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md). The checklist below covers the
-> backend tier (Postgres / Redis / scraper / Celery) that still runs on the droplet.
+> **Production now runs on Vercel + Neon** — see [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md).
+> The checklist below is the legacy self-hosted (Docker Compose on a VPS) procedure.
 
 ## Pre-deployment
 

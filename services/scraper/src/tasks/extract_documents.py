@@ -87,9 +87,8 @@ _EXTRACTORS = {
 }
 
 
-@shared_task(name="src.tasks.extract_documents.extract_opportunity_documents", bind=True, max_retries=2)
-def extract_opportunity_documents(self, opportunity_id: str) -> dict:
-    """Download and extract text from all documents for an opportunity."""
+def extract_documents_for_opportunity(opportunity_id: str) -> dict:
+    """Download and extract text from all documents for an opportunity (Celery-free)."""
     session = get_db_session()
     try:
         docs = session.execute(
@@ -190,33 +189,70 @@ def extract_opportunity_documents(self, opportunity_id: str) -> dict:
         logger.info("Document extraction complete: %s", result)
         return result
 
-    except Exception as exc:
+    except Exception:
         session.rollback()
-        logger.exception("extract_opportunity_documents failed for %s", opportunity_id)
-        raise self.retry(exc=exc, countdown=30)
+        logger.exception("extract_documents_for_opportunity failed for %s", opportunity_id)
+        raise
     finally:
         session.close()
 
 
-@shared_task(name="src.tasks.extract_documents.extract_pending_documents")
-def extract_pending_documents() -> dict:
-    """Find all opportunities with un-extracted documents and process them."""
+def _pending_opportunity_ids(limit: int) -> list[str]:
     session = get_db_session()
     try:
         rows = session.execute(
             text("""
-                        SELECT DISTINCT opportunity_id
-                        FROM opportunity_documents
-                        WHERE text_extracted = false
-                          AND url IS NOT NULL AND url != ''
-                          AND LOWER(file_type) IN ('pdf', 'docx', 'doc', 'txt', 'xlsx', 'xls', 'csv')
-                        LIMIT 50
+                SELECT DISTINCT opportunity_id
+                FROM opportunity_documents
+                WHERE text_extracted = false
+                  AND url IS NOT NULL AND url != ''
+                  AND LOWER(file_type) IN ('pdf', 'docx', 'doc', 'txt', 'xlsx', 'xls', 'csv')
+                LIMIT :limit
             """),
+            {"limit": limit},
         ).fetchall()
-
-        for row in rows:
-            extract_opportunity_documents.delay(str(row.opportunity_id))
-
-        return {"queued": len(rows)}
+        return [str(row.opportunity_id) for row in rows]
     finally:
         session.close()
+
+
+def extract_pending_documents_now(limit: int = 10, deadline: float | None = None) -> dict:
+    """Synchronously extract documents for up to ``limit`` opportunities.
+
+    ``deadline`` is a ``time.monotonic()`` timestamp; processing stops once it
+    passes so the caller (a serverless cron tick) stays inside its time limit.
+    """
+    import time as _time
+
+    ids = _pending_opportunity_ids(limit)
+    processed = 0
+    extracted = failed = 0
+    for opp_id in ids:
+        if deadline is not None and _time.monotonic() >= deadline:
+            break
+        try:
+            result = extract_documents_for_opportunity(opp_id)
+            extracted += result.get("extracted", 0)
+            failed += result.get("failed", 0)
+        except Exception:
+            failed += 1
+        processed += 1
+    return {"candidates": len(ids), "processed": processed, "extracted": extracted, "failed": failed}
+
+
+@shared_task(name="src.tasks.extract_documents.extract_opportunity_documents", bind=True, max_retries=2)
+def extract_opportunity_documents(self, opportunity_id: str) -> dict:
+    """Celery wrapper (Docker deployment) around ``extract_documents_for_opportunity``."""
+    try:
+        return extract_documents_for_opportunity(opportunity_id)
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=30)
+
+
+@shared_task(name="src.tasks.extract_documents.extract_pending_documents")
+def extract_pending_documents() -> dict:
+    """Find all opportunities with un-extracted documents and queue them (Celery)."""
+    ids = _pending_opportunity_ids(50)
+    for opp_id in ids:
+        extract_opportunity_documents.delay(opp_id)
+    return {"queued": len(ids)}

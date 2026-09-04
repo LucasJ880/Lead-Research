@@ -97,7 +97,7 @@ class BidsAndTendersCrawler(BaseCrawler):
         seen_urls: set[str] = set()
         all_opps: list[OpportunityCreate] = []
 
-        for kw in _SEARCH_KEYWORDS:
+        for kw in self.iter_keywords(_SEARCH_KEYWORDS):
             opps = self._search_keyword(kw, max_pages, page_size, seen_urls)
             all_opps.extend(opps)
             self._diag.search_results.append((kw, len(opps)))

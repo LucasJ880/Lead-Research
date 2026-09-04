@@ -253,27 +253,17 @@ def test_crawl_all_active_sources_is_bind_true():
     )
 
 
-def test_api_endpoints_use_pre_generated_celery_task_id():
-    """The API endpoints must pre-generate the Celery task id and pass
-    it via apply_async(task_id=...). Otherwise the lock value (a
-    placeholder) would not match the real task id, and the task body's
-    identity-checked release would not free the lock — every lock would
-    wait for the TTL."""
+def test_api_endpoints_queue_runs_without_celery():
+    """The crawl endpoints must queue work through the Celery-free runner
+    (``source_runs`` rows executed by ``/api/cron/tick``) so the service
+    can run on serverless hosts without Redis or a worker process."""
     import inspect
 
     from src.api import main as api_main
 
     for endpoint_name in ("trigger_all_crawls", "trigger_crawl"):
         source = inspect.getsource(getattr(api_main, endpoint_name))
-        assert "celery_uuid" in source or "celery.utils" in source, (
-            f"{endpoint_name} no longer pre-generates a Celery task id; "
-            f"the lock value will not match the real task id and "
-            f"identity-checked release in the task body will fail."
-        )
-        # Require both apply_async (not .delay) and an explicit task_id=
-        # kwarg so the lock value can match the dispatched task's id.
-        assert "apply_async" in source and "task_id=" in source, (
-            f"{endpoint_name} no longer dispatches with apply_async("
-            f"task_id=...); lock value will drift from real task id and "
-            f"the task body's release will become a no-op."
+        assert "src.core.runner" in source, f"{endpoint_name} must dispatch via src.core.runner"
+        assert "apply_async" not in source and ".delay(" not in source, (
+            f"{endpoint_name} must not enqueue Celery tasks"
         )

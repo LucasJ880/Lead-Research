@@ -10,11 +10,11 @@
 #
 # To enable: remove the `if: false` line below.
 
-name: Deploy
+# NOTE: production now runs on Vercel (auto-deploys from main). This SSH deploy is kept for
+# self-hosted installs only and must be triggered manually.
+name: Deploy (legacy self-hosted)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
