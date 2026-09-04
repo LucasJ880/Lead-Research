@@ -29,27 +29,62 @@ export interface QingyanProjectPayload {
     estimated_value: number | null;
     currency: string;
     solicitation_number: string | null;
+    /** Original notice on the procurement portal (not the BidToGo page). */
+    source_url?: string | null;
+    posted_date?: string | null;
+    procurement_type?: string | null;
+    set_aside?: string | null;
+    addenda_count?: number;
+    has_documents?: boolean;
+    mandatory_site_visit?: string | null;
+    pre_bid_meeting?: string | null;
+    contact?: { name: string | null; email: string | null; phone: string | null } | null;
+    /** Full English description (truncated) and Chinese translations when available. */
+    description_full?: string | null;
+    description_zh?: string | null;
+    description_full_zh?: string | null;
+    industry_tags?: string[];
   };
   intelligence: {
     recommendation: string | null;
     risk_level: "low" | "medium" | "high" | "unassessed";
+    /** Keyword relevance (0-100) — how well the tender matches our products. */
     fit_score: number | null;
+    /** AI feasibility (0-100) — whether we can realistically win/deliver. */
+    feasibility_score?: number | null;
     summary: string | null;
     full_report_url: string | null;
     full_report: Record<string, unknown> | null;
+    structured_report?: Record<string, unknown> | null;
+    scope_of_work?: string | null;
+    technical_requirements?: unknown;
+    qualification_reqs?: unknown;
+    critical_dates?: unknown;
+    risk_factors?: unknown;
+    china_source_analysis?: string | null;
+    analyzed_at?: string | null;
   };
   documents: Array<{
     title: string;
     url: string;
     file_type: string | null;
+    page_count?: number | null;
+    file_size_bytes?: number | null;
+    /** First ~8k chars of extracted text so Qingyan can index/search it. */
+    extracted_text?: string | null;
   }>;
   metadata: {
     bidtogo_workflow_status: string;
     relevance_score: number;
     relevance_bucket: string;
     keywords_matched: string[];
+    negative_keywords?: string[];
+    business_status?: string | null;
+    industry_tags?: string[];
+    source_external_id?: string | null;
     pushed_by: string;
     pushed_at: string;
+    push_mode?: "manual" | "auto";
   };
   workflow_template: "tender_review";
 }

@@ -277,6 +277,19 @@ def run_maintenance(deadline: float) -> dict[str, Any]:
             logger.exception("Maintenance: translation failed")
             out["translated"] = {"error": str(exc)}
 
+    try:
+        with get_db() as session:
+            res = session.execute(
+                text("""
+                    UPDATE opportunities SET status = 'closed', updated_at = NOW()
+                    WHERE status = 'open' AND closing_date IS NOT NULL AND closing_date < NOW() - INTERVAL '1 day'
+                """)
+            )
+            out["closed"] = res.rowcount or 0
+    except Exception as exc:
+        logger.exception("Maintenance: close-expired failed")
+        out["closed"] = {"error": str(exc)}
+
     if time.monotonic() < deadline - 10:
         try:
             from src.tasks.cleanup_tasks import (

@@ -192,9 +192,9 @@ SOURCES = [
         "listing_path": "/bid-opportunities/",
         "crawl_config": {
             "crawler_class": "bidsandtenders",
-            "max_pages_per_search": 5,
-            "page_size": 50,
-            "rate_limit_seconds": 2,
+            "max_pages_per_tenant": 3,
+            "page_size": 100,
+            "rate_limit_seconds": 1,
         },
         "access_mode": "api",
         "frequency": "daily",
@@ -202,7 +202,7 @@ SOURCES = [
         "source_priority": "critical",
         "industry_fit_score": 75,
         "health_status": "untested",
-        "notes": "Canadian municipal e-procurement aggregator (1790+ open bids). JSON API via ic9.esolg.ca AJAX endpoint.",
+        "notes": "Ontario municipal e-procurement platform. Crawled per tenant ({city}.bidsandtenders.ca) via the module JSON listing; tenants configurable in crawl_config.tenants.",
     },
     {
         "name": "BidNet Direct",

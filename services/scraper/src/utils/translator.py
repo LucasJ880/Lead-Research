@@ -52,7 +52,7 @@ def translate_to_zh(content: str) -> str | None:
 def translate_opportunity_fields(session: Session, opp_id: str) -> bool:
     """Translate title, description_summary, description_full for one opportunity.
 
-    Only called for opportunities with relevance_score >= 80.
+    Only called for opportunities with relevance_score >= 70.
     Returns True if translation was written, False otherwise.
     """
     row = session.execute(
@@ -104,7 +104,7 @@ def translate_pending_batch(session: Session, limit: int = 50) -> int:
     rows = session.execute(
         text("""
             SELECT id FROM opportunities
-            WHERE relevance_score >= 80
+            WHERE relevance_score >= 70
               AND title_zh IS NULL
             ORDER BY created_at DESC
             LIMIT :lim

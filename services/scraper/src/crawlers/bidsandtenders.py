@@ -1,73 +1,67 @@
-"""Bids & Tenders crawler — Canadian municipal e-procurement aggregator.
+"""bids&tenders (bidsandtenders.ca) crawler — per-municipality portals.
 
-Strategy:
-  bidsandtenders.com embeds an iframe from the eSolutions ic9 platform.
-  The underlying data is served via a JSON AJAX endpoint at:
-    https://bidsandtenders.ic9.esolg.ca/Modules/BidsAndTenders/services/bidsSearch.ashx
+The old aggregator JSON API (``bidsandtenders.ic9.esolg.ca/.../bidsSearch.ashx``)
+was retired in 2026 and now returns 404. Every buyer runs its own tenant at
+``https://{tenant}.bidsandtenders.ca`` with the same ASP.NET module, which
+exposes a JSON listing:
 
-  This endpoint accepts GET parameters:
-    keywords, statusId (1=Open), pageNum, pageSize, organizationId,
-    sortColumn, sortDir, fromDateUtc, toDateUtc
+    GET  /Module/Tenders/en                       → session cookie, hidden
+                                                    ``NodeId`` (tenant GUID) and
+                                                    anti-forgery token
+    POST /Module/Tenders/en/Tender/Search/{NodeId}?status=Open&limit=100&start=0
+         &dir=ASC&from=&to=&sort=DateClosing ASC,Id
+                                                  → {"success": true, "data": [...]}
 
-  Response: {"success": true, "data": {"count": N, "totalCount": N, "tenders": [...]}}
+Each row carries Id, Title, Description (HTML), DateClosing/DateAvailable
+(``/Date(ms)/``), Documents (count) and Addendums. The detail page is
+``/Module/Tenders/en/Tender/Detail/{Id}``.
 
-  Each tender includes: name, status, utcClosingDate, utcPublishDate,
-  organization (name, displayName), viewUrl, registerUrl, bidHasFee, timeZone.
-
-  The crawler uses targeted keyword searches then deduplicates by viewUrl.
+Tenants are configured in ``crawl_config["tenants"]`` (list of subdomains,
+defaults to :data:`DEFAULT_TENANTS`); every open bid on every tenant is
+returned and the relevance scorer decides what matters — there is no keyword
+search on this platform. Tenants are visited round-robin under the time
+budget so a slow run resumes with the next tenant.
 """
 
 from __future__ import annotations
 
-import time
+import html as _html
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from src.crawlers.base import BaseCrawler
 from src.models.opportunity import OpportunityCreate, OpportunityStatus
 
-_API_URLS = [
-    "https://bidsandtenders.ic9.esolg.ca/Modules/BidsAndTenders/services/bidsSearch.ashx",
-    "https://www.bidsandtenders.ca/Module/Tenders/en/Tender/Search",
+# Ontario municipalities / regions verified to serve the tenant module (2026-09).
+DEFAULT_TENANTS = [
+    "london", "mississauga", "brampton", "hamilton", "kitchener", "waterloo",
+    "regionofwaterloo", "guelph", "oakville", "burlington", "milton", "halton",
+    "markham", "vaughan", "richmondhill", "newmarket", "aurora", "york",
+    "oshawa", "whitby", "ajax", "pickering", "durham", "peelregion", "caledon",
+    "barrie", "niagarafalls", "stcatharines", "niagararegion", "thunderbay",
+    "greatersudbury",
 ]
 
-_SEARCH_KEYWORDS = [
-    "blinds",
-    "window coverings",
-    "curtains",
-    "drapery",
-    "shades",
-    "window treatment",
-    "roller shade",
-    "motorized shade",
-    "privacy curtain",
-    "cubicle curtain",
-    "hospital curtain",
-    "FF&E",
-    "furnishing",
-    "interior fit-out",
-    "tenant improvement",
-    "standing agreement",
-    "supply and delivery",
-    "supply and deliver",
-    "supply and install",
-    "window",
-    "liner",
-    "blanket",
-    "textiles",
-    "shutters",
-    "bedding",
-    "towel",
-    "bag",
-    "sock",
-    "mask",
-]
+_NODE_ID_RE = re.compile(r'id="NodeId"\s+value="([0-9a-fA-F-]{36})"')
+# The search POST must carry the anti-forgery token from the #bidDetailAntiForgery form.
+_ANTIFORGERY_BLOCK_RE = re.compile(r'id="bidDetailAntiForgery".*?name="__RequestVerificationToken"[^>]*value="([^"]+)"', re.S)
+_ANY_TOKEN_RE = re.compile(r'name="__RequestVerificationToken"[^>]*value="([^"]+)"')
+_MS_DATE_RE = re.compile(r"/Date\((-?\d+)\)/")
+_TAG_RE = re.compile(r"<[^>]+>")
+_SOLICITATION_RE = re.compile(r"^\s*([A-Z]{2,6}[- ]?\d{2,4}[- ]\d{1,5}[A-Z]?)\s*[-–:]\s*(.+)$")
+_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 
 
 @dataclass
 class _Diagnostics:
     api_calls: int = 0
     api_failures: int = 0
+    tenants_visited: int = 0
+    tenants_failed: list = field(default_factory=list)
     rows_parsed: int = 0
     rows_skipped_dup: int = 0
     rows_skipped_closed: int = 0
@@ -75,188 +69,182 @@ class _Diagnostics:
 
 
 class BidsAndTendersCrawler(BaseCrawler):
-    """Crawl bidsandtenders.com via the eSolutions ic9 JSON API."""
+    """Crawl every configured bidsandtenders.ca tenant's open-bid listing."""
 
     def crawl(self) -> list[OpportunityCreate]:
         cfg = self.source_config.crawl_config
-        max_pages = cfg.get("max_pages_per_search", 5)
-        page_size = cfg.get("page_size", 50)
+        tenants = [t for t in (cfg.get("tenants") or DEFAULT_TENANTS) if t]
+        page_size = int(cfg.get("page_size", 100))
+        max_pages = int(cfg.get("max_pages_per_tenant", 3))
 
         self._diag = _Diagnostics()
         self._http.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": _USER_AGENT,
             "Accept": "application/json, text/plain, */*",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://www.bidsandtenders.com/bid-opportunities/",
+            "Accept-Language": "en-CA,en;q=0.9",
         })
 
-        seen_urls: set[str] = set()
+        seen: set[str] = set()
         all_opps: list[OpportunityCreate] = []
 
-        for kw in self.iter_keywords(_SEARCH_KEYWORDS):
-            opps = self._search_keyword(kw, max_pages, page_size, seen_urls)
+        for tenant in self.iter_keywords(tenants):
+            try:
+                opps = self._crawl_tenant(tenant, page_size, max_pages, seen)
+            except Exception as exc:
+                self._diag.tenants_failed.append(tenant)
+                self.logger.warning("bids&tenders tenant %s failed: %s", tenant, exc)
+                opps = []
+            self._diag.tenants_visited += 1
+            self._diag.search_results.append((tenant, len(opps)))
             all_opps.extend(opps)
-            self._diag.search_results.append((kw, len(opps)))
 
         d = self._diag
         self.logger.info(
-            "BidsAndTenders crawl complete: %d unique opps | "
-            "API calls: %d ok, %d failed | "
-            "rows: %d parsed, %d dup, %d closed",
-            len(all_opps), d.api_calls, d.api_failures,
-            d.rows_parsed, d.rows_skipped_dup, d.rows_skipped_closed,
+            "bids&tenders crawl complete: %d bids from %d tenants (%d failed) | api ok=%d failed=%d | dup=%d closed=%d",
+            len(all_opps), d.tenants_visited, len(d.tenants_failed), d.api_calls, d.api_failures,
+            d.rows_skipped_dup, d.rows_skipped_closed,
         )
-        for kw, count in d.search_results:
-            self.logger.info("  kw %-30s → %d opps", kw, count)
-
         return all_opps
 
-    def _search_keyword(
-        self,
-        keyword: str,
-        max_pages: int,
-        page_size: int,
-        seen: set[str],
-    ) -> list[OpportunityCreate]:
+    # ─── Per-tenant ──────────────────────────────────────────
+
+    def _crawl_tenant(self, tenant: str, page_size: int, max_pages: int, seen: set[str]) -> list[OpportunityCreate]:
+        base = f"https://{tenant}.bidsandtenders.ca"
+        self.rate_limit()
+        resp = self._http.get(f"{base}/Module/Tenders/en", timeout=30, allow_redirects=True)
+        resp.raise_for_status()
+        m = _NODE_ID_RE.search(resp.text)
+        if not m:
+            raise RuntimeError("NodeId not found (portal moved or blocked)")
+        node_id = m.group(1)
+        tm = _ANTIFORGERY_BLOCK_RE.search(resp.text) or _ANY_TOKEN_RE.search(resp.text)
+        token = tm.group(1) if tm else ""
+
         results: list[OpportunityCreate] = []
-
-        for page_num in range(1, max_pages + 1):
-            data = self._api_search(keyword, page_num, page_size)
-            if data is None:
+        for page in range(max_pages):
+            if page and self.should_stop():
                 break
-
-            tenders = data.get("tenders", [])
-            if not tenders:
+            self.rate_limit()
+            params = {
+                "status": "Open",
+                "limit": str(page_size),
+                "start": str(page * page_size),
+                "dir": "ASC",
+                "from": "",
+                "to": "",
+                "sort": "DateClosing ASC,Id",
+            }
+            r = self._http.post(
+                f"{base}/Module/Tenders/en/Tender/Search/{node_id}",
+                params=params,
+                data={"keywords": "", "__RequestVerificationToken": token},
+                headers={"X-Requested-With": "XMLHttpRequest", "Referer": f"{base}/Module/Tenders/en"},
+                timeout=30,
+            )
+            if r.status_code != 200 or "json" not in (r.headers.get("content-type") or ""):
+                self._diag.api_failures += 1
+                self.logger.warning("tenant %s page %d: HTTP %s (%s)", tenant, page, r.status_code, r.headers.get("content-type"))
                 break
-
-            for tender in tenders:
-                opp = self._parse_tender(tender, seen)
+            self._diag.api_calls += 1
+            payload = r.json()
+            rows = payload.get("data") or []
+            for row in rows:
+                opp = self._parse_row(tenant, base, row, seen)
                 if opp:
                     results.append(opp)
-
-            if len(tenders) < page_size:
+            if len(rows) < page_size:
                 break
-
         return results
 
-    def _api_search(self, keyword: str, page_num: int, page_size: int) -> dict | None:
-        cfg_url = self.source_config.crawl_config.get("api_url")
-        urls = [cfg_url] if cfg_url else _API_URLS
-
-        for api_url in urls:
-            self.rate_limit()
-            try:
-                resp = self._http.get(
-                    api_url,
-                    params={
-                        "keywords": keyword,
-                        "statusId": "1",
-                        "pageNum": str(page_num),
-                        "pageSize": str(page_size),
-                    },
-                    timeout=30,
-                )
-                resp.raise_for_status()
-
-                ct = resp.headers.get("content-type", "")
-                if "json" not in ct and "javascript" not in ct:
-                    self.logger.warning("Non-JSON response from %s: %s", api_url[:60], ct)
-                    continue
-
-                payload = resp.json()
-                self._diag.api_calls += 1
-
-                if not payload.get("success") and not payload.get("data"):
-                    self.logger.warning("API returned empty for kw=%s from %s", keyword, api_url[:60])
-                    continue
-
-                data = payload.get("data", payload)
-                if isinstance(data, dict):
-                    return data
-                return {"tenders": data} if isinstance(data, list) else {}
-
-            except Exception as exc:
-                self.logger.warning("API search failed kw=%s at %s: %s", keyword, api_url[:60], exc)
-
-        self._diag.api_failures += 1
-        return None
-
-    def _parse_tender(self, t: dict, seen: set[str]) -> OpportunityCreate | None:
-        view_url = (t.get("viewUrl") or "").strip()
-        if not view_url:
+    def _parse_row(self, tenant: str, base: str, t: dict, seen: set[str]) -> OpportunityCreate | None:
+        bid_id = (t.get("Id") or "").strip()
+        title = _html.unescape((t.get("Title") or "").strip())
+        if not bid_id or not title:
             return None
-
-        if view_url in seen:
+        external_id = f"{tenant}:{bid_id}"
+        if external_id in seen:
             self._diag.rows_skipped_dup += 1
             return None
-        seen.add(view_url)
+        seen.add(external_id)
 
-        name = (t.get("name") or "").strip()
-        if not name:
-            return None
-
-        status_name = (t.get("status", {}).get("name") or "").lower()
-        if status_name in ("closed", "awarded", "cancelled"):
+        status_raw = (t.get("Status") or "").strip().lower()
+        if status_raw in ("closed", "awarded", "cancelled", "unofficial results", "official results"):
             self._diag.rows_skipped_closed += 1
             return None
 
-        org = t.get("organization", {})
-        org_display = org.get("displayName") or org.get("name") or ""
-        org_short = org.get("name") or ""
+        closing = self._ms_date(t.get("DateClosing"))
+        posted = self._ms_date(t.get("DateAvailable"))
+        description_html = t.get("Description") or ""
+        description = _html.unescape(_TAG_RE.sub(" ", description_html))
+        description = re.sub(r"\s+", " ", description).strip() or None
 
-        closing_date = self._parse_iso(t.get("utcClosingDate"))
-        publish_date = self._parse_iso(t.get("utcPublishDate"))
-        posted_date_val = publish_date.date() if publish_date else None
+        solicitation = None
+        m = _SOLICITATION_RE.match(title)
+        if m:
+            solicitation = m.group(1).strip()
+
+        org_display = _html.unescape((t.get("OrganizationName") or "").strip()) or self._tenant_display_name(tenant)
+        docs = int(t.get("Documents") or 0)
+        addenda = int(t.get("Addendums") or 0)
+        view_url = f"{base}/Module/Tenders/en/Tender/Detail/{bid_id}"
 
         self._diag.rows_parsed += 1
-
         return OpportunityCreate(
             source_id=self.source_config.id,
-            external_id=view_url,
-            title=name,
-            description_summary=None,
-            description_full=None,
+            external_id=external_id,
+            title=title,
+            description_summary=(description[:500] if description else None),
+            description_full=description,
             status=OpportunityStatus.OPEN,
             country="CA",
-            region=None,
-            city=None,
-            location_raw=org_display or None,
-            posted_date=posted_date_val,
-            closing_date=closing_date,
-            category="Procurement",
-            solicitation_number=None,
+            region="ON",
+            city=self._tenant_display_name(tenant),
+            location_raw=org_display,
+            posted_date=posted.date() if posted else None,
+            closing_date=closing,
+            category="Municipal Procurement",
+            solicitation_number=solicitation,
             currency="CAD",
-            contact_name=None,
-            contact_email=None,
             source_url=view_url,
-            has_documents=False,
-            organization_name=org_display or None,
+            has_documents=docs > 0,
+            addenda_count=addenda,
+            organization_name=org_display,
             raw_data={
-                "parser_version": "bidsandtenders_v1",
-                "org_short": org_short,
-                "org_display": org_display,
-                "register_url": t.get("registerUrl"),
-                "bid_has_fee": t.get("bidHasFee"),
-                "time_zone": t.get("timeZone"),
-                "converted_publish_date": t.get("convertedPublishDate"),
-                "converted_closing_date": t.get("convertedClosingDate"),
+                "parser_version": "bidsandtenders_v2_tenant",
+                "tenant": tenant,
+                "bid_id": bid_id,
+                "status": t.get("Status"),
+                "documents": docs,
+                "addendums": addenda,
+                "plan_takers": t.get("PlanTakers"),
+                "closing_display": t.get("DateClosingDisplay"),
+                "time_zone": t.get("TimeZoneLabel"),
+                "procurement_type": (solicitation or title).split("-")[0].strip() if solicitation else None,
                 "fetch_timestamp": datetime.now(timezone.utc).isoformat(),
             },
             fingerprint="",
         )
 
+    # ─── Helpers ─────────────────────────────────────────────
+
     @staticmethod
-    def _parse_iso(raw: str | None) -> datetime | None:
+    def _ms_date(raw: str | None) -> datetime | None:
         if not raw:
             return None
-        try:
-            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-        except (ValueError, TypeError):
+        m = _MS_DATE_RE.search(str(raw))
+        if not m:
             return None
+        try:
+            return datetime.fromtimestamp(int(m.group(1)) / 1000, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            return None
+
+    @staticmethod
+    def _tenant_display_name(tenant: str) -> str:
+        special = {
+            "regionofwaterloo": "Region of Waterloo", "peelregion": "Peel Region", "york": "York Region",
+            "durham": "Durham Region", "halton": "Halton Region", "niagararegion": "Niagara Region",
+            "richmondhill": "Richmond Hill", "stcatharines": "St. Catharines", "niagarafalls": "Niagara Falls",
+            "thunderbay": "Thunder Bay", "greatersudbury": "Greater Sudbury",
+        }
+        return special.get(tenant, tenant.capitalize())

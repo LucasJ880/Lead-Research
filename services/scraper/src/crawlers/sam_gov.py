@@ -482,8 +482,9 @@ class SamGovCrawler(BaseCrawler):
         posted = _parse_date(record.get("postedDate"))
         response_deadline = _parse_date(record.get("responseDeadLine"))
         archive_date = _parse_date(record.get("archiveDate"))
-        # Use archive/inactive date as closing date; fall back to response deadline
-        closing = archive_date or response_deadline
+        # responseDeadLine is the actual bid due date; archiveDate is when SAM
+        # hides the notice (typically ~15 days later) and only serves as a fallback.
+        closing = response_deadline or archive_date
 
         # --- Location from officeAddress ---
         office_addr = record.get("officeAddress") or {}

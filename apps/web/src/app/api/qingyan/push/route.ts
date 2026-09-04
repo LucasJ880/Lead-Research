@@ -1,253 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
-import {
-  createQingyanProject,
-  isQingyanEnabled,
-  mapFeasibilityToRiskLevel,
-  QingyanApiError,
-  type QingyanProjectPayload,
-} from "@/lib/qingyan-client";
+import { requireRole } from "@/lib/api-auth";
+import { isQingyanEnabled } from "@/lib/qingyan-client";
+import { pushOpportunityToQingyan } from "@/lib/qingyan-push";
+
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  const { session, error: authError } = await requireAuth();
+  const { session, error: authError } = await requireRole(["owner", "super_admin", "admin", "manager", "sales"]);
   if (authError) return authError;
 
   if (!isQingyanEnabled()) {
-    return NextResponse.json(
-      { error: "Qingyan integration is not enabled" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Qingyan integration is not enabled" }, { status: 503 });
   }
 
   try {
     const body = await request.json();
     const { opportunityId, options } = body as {
       opportunityId: string;
-      options?: {
-        createAs?: "project" | "task";
-        priority?: "high" | "medium" | "low";
-        assignTo?: string;
-        notes?: string;
-      };
+      options?: { createAs?: "project" | "task"; priority?: "high" | "medium" | "low"; assignTo?: string; notes?: string };
     };
-
     if (!opportunityId) {
       return NextResponse.json({ error: "opportunityId is required" }, { status: 400 });
     }
 
-    const existing = await prisma.qingyanSync.findUnique({
-      where: { opportunityId },
-    });
+    const user = (session as { user?: { id?: string; email?: string } })?.user;
+    const outcome = await pushOpportunityToQingyan(
+      opportunityId,
+      { userId: user?.id, email: user?.email },
+      { ...options, mode: "manual" }
+    );
 
-    if (existing && existing.syncStatus === "synced") {
-      return NextResponse.json(
-        {
-          error: "This opportunity has already been pushed to Qingyan",
-          syncId: existing.id,
-          qingyanProjectId: existing.qingyanProjectId,
-          qingyanUrl: existing.qingyanUrl,
-        },
-        { status: 409 }
-      );
-    }
-
-    const opp = await prisma.opportunity.findUnique({
-      where: { id: opportunityId },
-      include: {
-        source: { select: { name: true } },
-        organization: { select: { name: true } },
-        documents: { select: { title: true, url: true, fileType: true } },
-        intelligence: {
-          select: {
-            feasibilityScore: true,
-            recommendationStatus: true,
-            intelligenceSummary: true,
-            projectOverview: true,
+    switch (outcome.status) {
+      case "not_found":
+        return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
+      case "already_synced":
+        return NextResponse.json(
+          {
+            error: "This opportunity has already been pushed to Qingyan",
+            syncId: outcome.syncId,
+            qingyanProjectId: outcome.qingyanProjectId,
+            qingyanUrl: outcome.qingyanUrl,
           },
-        },
-      },
-    });
-
-    if (!opp) {
-      return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
-    }
-
-    const userId = (session as { user?: { id?: string } })?.user?.id;
-
-    const syncRecord = existing
-      ? await prisma.qingyanSync.update({
-          where: { id: existing.id },
-          data: {
-            syncStatus: "pushing",
-            errorMessage: null,
-            retryCount: { increment: 1 },
-          },
-        })
-      : await prisma.qingyanSync.create({
-          data: {
-            opportunityId,
-            syncStatus: "pushing",
-            pushedBy: userId || null,
-            pushedAt: new Date(),
-          },
-        });
-
-    const intel = opp.intelligence;
-    const intelSummary = (intel?.intelligenceSummary as Record<string, unknown>) ?? {};
-
-    let markdownReport: string | null = null;
-    if (typeof intelSummary.report_markdown === "string") {
-      markdownReport = intelSummary.report_markdown as string;
-    }
-
-    const locationParts = [opp.city, opp.region, opp.country].filter(Boolean);
-    const baseUrl = process.env.NEXTAUTH_URL || "https://bidtogo.ca";
-    const oppUrl = `${baseUrl}/dashboard/opportunities/${opp.id}`;
-
-    // Short summary for project.description (not the full report)
-    const shortSummary = opp.descriptionSummary
-      || intel?.projectOverview
-      || opp.title;
-
-    const payload: QingyanProjectPayload = {
-      external_ref: {
-        system: "bidtogo",
-        id: opp.id,
-        url: oppUrl,
-      },
-      project: {
-        name: `[招标] ${(opp as any).titleZh || opp.title}`,
-        description: shortSummary,
-        category: "tender_opportunity",
-        priority: options?.priority || "medium",
-        deadline: opp.closingDate ? opp.closingDate.toISOString() : null,
-        source_platform: opp.source.name,
-        client_organization: opp.organization?.name || null,
-        location: locationParts.length > 0 ? locationParts.join(", ") : null,
-        estimated_value: opp.estimatedValue ? Number(opp.estimatedValue) : null,
-        currency: opp.currency,
-        solicitation_number: opp.solicitationNumber || null,
-      },
-      intelligence: {
-        recommendation: intel?.recommendationStatus || null,
-        risk_level: mapFeasibilityToRiskLevel(intel?.feasibilityScore),
-        fit_score: opp.relevanceScore || null,
-        summary: opp.businessFitExplanation || intel?.projectOverview || null,
-        full_report_url: null,
-        full_report: markdownReport ? { report_markdown: markdownReport } : null,
-      },
-      documents: opp.documents.map((doc) => ({
-        title: doc.title || "Untitled",
-        url: doc.url,
-        file_type: doc.fileType || null,
-      })),
-      metadata: {
-        bidtogo_workflow_status: opp.workflowStatus,
-        relevance_score: opp.relevanceScore,
-        relevance_bucket: opp.relevanceBucket,
-        keywords_matched: opp.keywordsMatched,
-        pushed_by: session?.user?.email || "unknown",
-        pushed_at: new Date().toISOString(),
-      },
-      workflow_template: "tender_review",
-    };
-
-    try {
-      const result = await createQingyanProject(payload);
-
-      await prisma.qingyanSync.update({
-        where: { id: syncRecord.id },
-        data: {
-          syncStatus: "synced",
-          qingyanProjectId: result.project_id,
-          qingyanUrl: result.project_url,
-          qingyanStatus: "new",
-          pushedAt: new Date(),
-          lastSyncAt: new Date(),
-          payloadSnapshot: JSON.parse(JSON.stringify(payload)),
-          metadata: JSON.parse(JSON.stringify({
-            tasksCreated: result.tasks_created || [],
-            createAs: options?.createAs || "project",
-            assignTo: options?.assignTo,
-            userNotes: options?.notes,
-          })),
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          userId: userId || null,
-          action: "qingyan_push",
-          entityType: "opportunity",
-          entityId: opp.id,
-          metadata: {
-            qingyanProjectId: result.project_id,
-            syncId: syncRecord.id,
-          },
-        },
-      });
-
-      return NextResponse.json({
-        syncId: syncRecord.id,
-        status: "synced",
-        qingyanProjectId: result.project_id,
-        qingyanUrl: result.project_url,
-        pushedAt: new Date().toISOString(),
-      });
-    } catch (apiErr) {
-      const errMsg =
-        apiErr instanceof QingyanApiError ? apiErr.message : "Unknown push error";
-      const retryable =
-        apiErr instanceof QingyanApiError
-          ? apiErr.status >= 500 || apiErr.status === 408 || apiErr.status === 0
-          : true;
-
-      if (
-        apiErr instanceof QingyanApiError &&
-        apiErr.code === "DUPLICATE_EXTERNAL_REF"
-      ) {
-        await prisma.qingyanSync.update({
-          where: { id: syncRecord.id },
-          data: {
-            syncStatus: "synced",
-            qingyanProjectId: apiErr.existingProjectId || null,
-            qingyanUrl: apiErr.existingProjectUrl || null,
-            lastSyncAt: new Date(),
-          },
-        });
-
+          { status: 409 }
+        );
+      case "pushing":
+        return NextResponse.json({ error: "A push is already in progress", syncId: outcome.syncId }, { status: 409 });
+      case "failed":
+        return NextResponse.json(
+          { syncId: outcome.syncId, status: "failed", error: outcome.error, retryable: outcome.retryable },
+          { status: 502 }
+        );
+      case "synced":
         return NextResponse.json({
-          syncId: syncRecord.id,
+          syncId: outcome.syncId,
           status: "synced",
-          qingyanProjectId: apiErr.existingProjectId,
-          qingyanUrl: apiErr.existingProjectUrl,
+          qingyanProjectId: outcome.qingyanProjectId,
+          qingyanUrl: outcome.qingyanUrl,
           pushedAt: new Date().toISOString(),
-          note: "Already existed in Qingyan — linked successfully",
+          ...(outcome.note ? { note: outcome.note } : {}),
         });
-      }
-
-      await prisma.qingyanSync.update({
-        where: { id: syncRecord.id },
-        data: {
-          syncStatus: "failed",
-          errorMessage: errMsg,
-        },
-      });
-
-      return NextResponse.json(
-        {
-          syncId: syncRecord.id,
-          status: "failed",
-          error: errMsg,
-          retryable,
-        },
-        { status: 502 }
-      );
     }
   } catch (error) {
     console.error("POST /api/qingyan/push error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-

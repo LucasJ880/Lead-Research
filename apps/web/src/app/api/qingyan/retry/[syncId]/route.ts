@@ -1,38 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-auth";
-import {
-  createQingyanProject,
-  isQingyanEnabled,
-  QingyanApiError,
-  type QingyanProjectPayload,
-} from "@/lib/qingyan-client";
+import { requireRole } from "@/lib/api-auth";
+import { isQingyanEnabled } from "@/lib/qingyan-client";
+import { pushOpportunityToQingyan } from "@/lib/qingyan-push";
 
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: { syncId: string } }
-) {
-  const { session, error: authError } = await requireAuth();
+export const maxDuration = 60;
+
+/**
+ * Retry a failed push. The payload is rebuilt from the current opportunity
+ * data (not replayed from the old snapshot) so any enrichment that happened
+ * since the failure — translations, AI report, documents — is included.
+ */
+export async function POST(_request: NextRequest, { params }: { params: { syncId: string } }) {
+  const { session, error: authError } = await requireRole(["owner", "super_admin", "admin", "manager", "sales"]);
   if (authError) return authError;
 
   if (!isQingyanEnabled()) {
-    return NextResponse.json(
-      { error: "Qingyan integration is not enabled" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Qingyan integration is not enabled" }, { status: 503 });
   }
 
   try {
-    const { syncId } = params;
-
-    const sync = await prisma.qingyanSync.findUnique({
-      where: { id: syncId },
-    });
-
+    const sync = await prisma.qingyanSync.findUnique({ where: { id: params.syncId } });
     if (!sync) {
       return NextResponse.json({ error: "Sync record not found" }, { status: 404 });
     }
-
     if (sync.syncStatus === "synced") {
       return NextResponse.json({
         syncId: sync.id,
@@ -43,74 +34,35 @@ export async function POST(
       });
     }
 
-    if (!sync.payloadSnapshot) {
-      return NextResponse.json(
-        { error: "No payload snapshot available for retry. Please push again." },
-        { status: 400 }
-      );
-    }
+    const user = (session as { user?: { id?: string; email?: string } })?.user;
+    const outcome = await pushOpportunityToQingyan(
+      sync.opportunityId,
+      { userId: user?.id, email: user?.email },
+      { mode: "manual" }
+    );
 
-    await prisma.qingyanSync.update({
-      where: { id: syncId },
-      data: {
-        syncStatus: "pushing",
-        errorMessage: null,
-        retryCount: { increment: 1 },
-      },
-    });
-
-    const payload = sync.payloadSnapshot as unknown as QingyanProjectPayload;
-
-    try {
-      const result = await createQingyanProject(payload);
-
-      await prisma.qingyanSync.update({
-        where: { id: syncId },
-        data: {
-          syncStatus: "synced",
-          qingyanProjectId: result.project_id,
-          qingyanUrl: result.project_url,
-          qingyanStatus: "new",
-          lastSyncAt: new Date(),
-        },
-      });
-
-      const userId = (session as { user?: { id?: string } })?.user?.id;
-      await prisma.auditLog.create({
-        data: {
-          userId: userId || null,
-          action: "qingyan_retry",
-          entityType: "opportunity",
-          entityId: sync.opportunityId,
-          metadata: { syncId, qingyanProjectId: result.project_id },
-        },
-      });
-
-      return NextResponse.json({
-        syncId,
-        status: "synced",
-        qingyanProjectId: result.project_id,
-        qingyanUrl: result.project_url,
-      });
-    } catch (apiErr) {
-      const errMsg =
-        apiErr instanceof QingyanApiError ? apiErr.message : "Unknown retry error";
-
-      await prisma.qingyanSync.update({
-        where: { id: syncId },
-        data: {
-          syncStatus: "failed",
-          errorMessage: errMsg,
-        },
-      });
-
-      return NextResponse.json(
-        { syncId, status: "failed", error: errMsg, retryable: true },
-        { status: 502 }
-      );
+    switch (outcome.status) {
+      case "not_found":
+        return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
+      case "pushing":
+        return NextResponse.json({ error: "A push is already in progress", syncId: outcome.syncId }, { status: 409 });
+      case "failed":
+        return NextResponse.json(
+          { syncId: outcome.syncId, status: "failed", error: outcome.error, retryable: outcome.retryable },
+          { status: 502 }
+        );
+      case "already_synced":
+      case "synced":
+        return NextResponse.json({
+          syncId: outcome.syncId,
+          status: "synced",
+          qingyanProjectId: outcome.qingyanProjectId,
+          qingyanUrl: outcome.qingyanUrl,
+          pushedAt: new Date().toISOString(),
+        });
     }
   } catch (error) {
-    console.error("POST /api/qingyan/retry/[syncId] error:", error);
+    console.error("POST /api/qingyan/retry error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

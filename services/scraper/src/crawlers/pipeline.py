@@ -42,6 +42,7 @@ from src.utils.normalizer import (
     normalize_date,
     normalize_location,
     normalize_status,
+    normalize_procurement_type,
 )
 from src.utils.scorer import score_opportunity
 from src.utils.translator import translate_to_zh
@@ -210,8 +211,9 @@ class CrawlPipeline:
         if opp.closing_date is None and opp.raw_data and opp.raw_data.get("closing_date"):
             parsed = normalize_date(opp.raw_data["closing_date"])
             if parsed:
+                # Date-only deadlines mean "by end of that day"
                 opp.closing_date = datetime(
-                    parsed.year, parsed.month, parsed.day, tzinfo=timezone.utc
+                    parsed.year, parsed.month, parsed.day, 23, 59, 59, tzinfo=timezone.utc
                 )
 
         if opp.posted_date is None and opp.raw_data and opp.raw_data.get("posted_date"):
@@ -235,6 +237,24 @@ class CrawlPipeline:
         if opp.description_full:
             opp.description_full = clean_html(opp.description_full)
 
+        # Canadian sources quote CAD unless the crawler said otherwise
+        if (opp.country or self._source_config.country or "").upper() == "CA" and (
+            not opp.currency or opp.currency == "USD"
+        ) and not (opp.raw_data or {}).get("currency"):
+            opp.currency = "CAD"
+
+        # Procurement type (RFP/RFQ/tender/...) inferred from the title / source metadata
+        try:
+            ptype = normalize_procurement_type(
+                opp.title,
+                (opp.raw_data or {}).get("procurement_type") or (opp.raw_data or {}).get("notice_type"),
+                opp.description_summary,
+            )
+            opp.raw_data = dict(opp.raw_data or {})
+            opp.raw_data["_procurement"] = ptype
+        except Exception:
+            logger.debug("procurement type inference failed", exc_info=True)
+
         closing_str = str(opp.closing_date) if opp.closing_date else ""
         opp.fingerprint = generate_fingerprint(
             opp.title,
@@ -249,6 +269,7 @@ class CrawlPipeline:
         """Compute the relevance score, bucket, tags, and keyword arrays."""
         description = opp.description_full or opp.description_summary or ""
         source_fit = getattr(self._source_config, "industry_fit_score", None)
+        ptype = ((opp.raw_data or {}).get("_procurement") or {}).get("procurement_type")
         score, breakdown = score_opportunity(
             title=opp.title,
             description=description,
@@ -256,6 +277,8 @@ class CrawlPipeline:
             project_type=opp.project_type,
             category=opp.category,
             source_fit_score=source_fit,
+            procurement_type=ptype,
+            country=(opp.country or self._source_config.country or None),
         )
         opp.relevance_score = score
         opp.relevance_breakdown = breakdown
@@ -279,16 +302,17 @@ class CrawlPipeline:
             logger.warning("Rejected opportunity: invalid source_url — %s", opp.source_url)
             self._result.opportunities_skipped += 1
             return False
-        from src.models.opportunity import OpportunityStatus
-        if opp.status in (OpportunityStatus.CLOSED, OpportunityStatus.AWARDED, OpportunityStatus.CANCELLED):
-            logger.debug("Rejected non-open opportunity: %s (status=%s)", opp.title[:60], opp.status)
-            self._result.opportunities_skipped += 1
-            return False
         return True
 
+    @staticmethod
+    def _is_closed(opp: OpportunityCreate) -> bool:
+        from src.models.opportunity import OpportunityStatus
+
+        return opp.status in (OpportunityStatus.CLOSED, OpportunityStatus.AWARDED, OpportunityStatus.CANCELLED)
+
     def _translate_if_relevant(self, opp: OpportunityCreate) -> dict | None:
-        """Translate title/descriptions to Chinese if relevance >= 80."""
-        if opp.relevance_score < 80:
+        """Translate title/descriptions to Chinese if relevance >= 70 (highly_relevant)."""
+        if opp.relevance_score < 70:
             return None
         try:
             title_zh = translate_to_zh(opp.title) if opp.title else None
@@ -305,23 +329,62 @@ class CrawlPipeline:
         if not self._validate(opp):
             return
 
-        # Check by source + external ID first
+        opp.organization_id = self._resolve_organization(opp)
+
+        # Check by source + external ID first, then by fingerprint
+        existing_id = None
         if opp.external_id:
             existing_id = check_source_duplicate(
                 self._session, opp.source_id, opp.external_id
             )
-            if existing_id:
-                self._update_opportunity(existing_id, opp, zh_fields=zh_fields)
-                return
+        if not existing_id:
+            existing_id = check_duplicate(self._session, opp.fingerprint)
 
-        # Check by fingerprint
-        existing_id = check_duplicate(self._session, opp.fingerprint)
         if existing_id:
+            # Re-crawls refresh the row (status, deadline, docs, scores); user-owned
+            # workflow fields are never touched by _update_opportunity.
+            self._update_opportunity(existing_id, opp, zh_fields=zh_fields)
+            return
+
+        if self._is_closed(opp):
+            logger.debug("Not inserting already-closed opportunity: %s", opp.title[:60])
             self._result.opportunities_skipped += 1
-            logger.debug("Skipping duplicate: %s", opp.title)
             return
 
         self._insert_opportunity(opp, zh_fields=zh_fields)
+
+    def _resolve_organization(self, opp: OpportunityCreate) -> str | None:
+        """Find-or-create the buyer organization so it can be joined/filtered on."""
+        name = (opp.organization_name or "").strip()
+        if not name:
+            return opp.organization_id
+        normalized = " ".join(name.lower().split())[:500]
+        country = (opp.country or self._source_config.country or None)
+        region = opp.region or None
+        try:
+            row = self._session.execute(
+                text("""
+                    SELECT id FROM organizations
+                    WHERE name_normalized = :n AND country IS NOT DISTINCT FROM :c AND region IS NOT DISTINCT FROM :r
+                    LIMIT 1
+                """),
+                {"n": normalized, "c": country, "r": region},
+            ).fetchone()
+            if row:
+                return str(row.id)
+            row = self._session.execute(
+                text("""
+                    INSERT INTO organizations (name, name_normalized, country, region, city, updated_at)
+                    VALUES (:name, :n, :c, :r, :city, NOW())
+                    ON CONFLICT (name_normalized, country, region) DO UPDATE SET updated_at = NOW()
+                    RETURNING id
+                """),
+                {"name": name[:500], "n": normalized, "c": country, "r": region, "city": opp.city},
+            ).fetchone()
+            return str(row.id) if row else None
+        except Exception:
+            logger.debug("organization resolution failed for %r", name, exc_info=True)
+            return opp.organization_id
 
     # ─── Database Operations ────────────────────────────────
 
@@ -333,6 +396,8 @@ class CrawlPipeline:
             self._session.execute(
                 text("""
                     INSERT INTO opportunities (
+                        organization_id, procurement_type, procurement_type_source,
+                        procurement_type_confidence, business_fit_explanation,
                         source_id, source_run_id, external_id,
                         title, description_summary, description_full,
                         title_zh, description_summary_zh, description_full_zh, translated_at,
@@ -347,6 +412,8 @@ class CrawlPipeline:
                         set_aside, set_aside_restricted,
                         ingestion_mode, raw_data, fingerprint, updated_at
                     ) VALUES (
+                        :organization_id, :procurement_type, :procurement_type_source,
+                        :procurement_type_confidence, :business_fit_explanation,
                         :source_id, :source_run_id, :external_id,
                         :title, :description_summary, :description_full,
                         :title_zh, :summary_zh, :full_zh, :translated_at,
@@ -363,6 +430,7 @@ class CrawlPipeline:
                     )
                 """),
                 {
+                    **self._enrichment_params(opp),
                     "source_id": opp.source_id,
                     "source_run_id": opp.source_run_id,
                     "external_id": opp.external_id,
@@ -440,6 +508,21 @@ class CrawlPipeline:
                         translated_at = COALESCE(:translated_at, translated_at),
                         status = :status,
                         closing_date = COALESCE(:closing_date, closing_date),
+                        posted_date = COALESCE(posted_date, :posted_date),
+                        country = COALESCE(country, :country),
+                        region = COALESCE(region, :region),
+                        city = COALESCE(city, :city),
+                        location_raw = COALESCE(location_raw, :location_raw),
+                        category = COALESCE(:category, category),
+                        project_type = COALESCE(:project_type, project_type),
+                        solicitation_number = COALESCE(:solicitation_number, solicitation_number),
+                        currency = COALESCE(:currency, currency),
+                        source_url = COALESCE(:source_url, source_url),
+                        procurement_type = COALESCE(:procurement_type, procurement_type),
+                        procurement_type_source = COALESCE(:procurement_type_source, procurement_type_source),
+                        procurement_type_confidence = COALESCE(:procurement_type_confidence, procurement_type_confidence),
+                        business_fit_explanation = COALESCE(:business_fit_explanation, business_fit_explanation),
+                        addenda_count = GREATEST(addenda_count, :addenda_count),
                         estimated_value = COALESCE(:estimated_value, estimated_value),
                         contact_name = COALESCE(:contact_name, contact_name),
                         contact_email = COALESCE(:contact_email, contact_email),
@@ -458,7 +541,19 @@ class CrawlPipeline:
                     WHERE id = :id
                 """),
                 {
+                    **self._enrichment_params(opp),
                     "id": opportunity_id,
+                    "posted_date": opp.posted_date,
+                    "country": opp.country,
+                    "region": opp.region,
+                    "city": opp.city,
+                    "location_raw": opp.location_raw,
+                    "category": opp.category,
+                    "project_type": opp.project_type,
+                    "solicitation_number": opp.solicitation_number,
+                    "currency": opp.currency,
+                    "source_url": opp.source_url,
+                    "addenda_count": opp.addenda_count or 0,
                     "source_run_id": opp.source_run_id,
                     "title": opp.title,
                     "description_summary": opp.description_summary,
@@ -485,6 +580,12 @@ class CrawlPipeline:
                     "raw_data": _safe_json_dumps(opp.raw_data) if opp.raw_data else None,
                 },
             )
+            if opp.organization_id:
+                # Only fill in a missing buyer link; never re-point an existing one.
+                self._session.execute(
+                    text("UPDATE opportunities SET organization_id = :org WHERE id = :id AND organization_id IS NULL"),
+                    {"org": opp.organization_id, "id": opportunity_id},
+                )
             self._session.flush()
             self._result.opportunities_updated += 1
             logger.debug("Updated opportunity %s: %s", opportunity_id, opp.title)
@@ -501,6 +602,18 @@ class CrawlPipeline:
                 self._session.execute(text("ROLLBACK TO SAVEPOINT opp_update"))
             except Exception:
                 pass
+
+    @staticmethod
+    def _enrichment_params(opp: OpportunityCreate) -> dict:
+        ptype = (opp.raw_data or {}).get("_procurement") or {}
+        conf = ptype.get("procurement_type_confidence")
+        return {
+            "organization_id": opp.organization_id,
+            "procurement_type": ptype.get("procurement_type"),
+            "procurement_type_source": ptype.get("procurement_type_source"),
+            "procurement_type_confidence": float(conf) if conf is not None else None,
+            "business_fit_explanation": (opp.relevance_breakdown or {}).get("business_fit_explanation"),
+        }
 
     def _insert_documents(
         self, external_id: str, source_id: str, docs: list[dict],

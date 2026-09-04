@@ -48,6 +48,9 @@ A full sweep of the 6 active sources takes roughly 30–60 minutes of ticks. Tun
 | `SCRAPER_API_KEY` | shared secret, identical in both projects |
 | `QINGYAN_ENABLED` / `QINGYAN_API_BASE` / `QINGYAN_API_TOKEN` / `QINGYAN_WEBHOOK_SECRET` | optional |
 | `ENABLE_EXPERIMENTAL_COREPACK` | `1` (pnpm 10.31.0 via `packageManager`) |
+| `CRON_SECRET` | random; Vercel Cron calls `/api/qingyan/auto-push` every 30 min with it |
+| `QINGYAN_AUTO_PUSH_MIN_SCORE` | e.g. `70` — auto-push open tenders at/above this relevance score to Qingyan; unset = manual push only |
+| `QINGYAN_AUTO_PUSH_BATCH` | max pushes per cron run (default 10) |
 
 ### `bidtogo-scraper`
 
@@ -63,6 +66,20 @@ A full sweep of the 6 active sources takes roughly 30–60 minutes of ticks. Tun
 Set with `vercel env add NAME production` while the repo root is linked to the right project
 (`vercel link --project bidtogo` / `--project bidtogo-scraper`). Deploy with `vercel deploy --prod`
 from the repo root (the CLI honours each project's Root Directory), or just push to `main`.
+
+## Crawling quality notes
+
+* Relevance engine v4 (`services/scraper/src/utils/scorer.py`): generic words ("window", "shade",
+  "liner") no longer score on their own; false-positive contexts ("curtain wall", "window glazing",
+  "Rideau Canal", "Windows Server", "shade structure") are scrubbed before matching; French
+  window-covering terms are recognised; contract language ("standing offer", "supply and delivery")
+  only nudges the score. Re-crawls rescore existing rows; `backfill_scores.py` rescores everything.
+* Bids and Tenders is crawled per municipal tenant (`{city}.bidsandtenders.ca`, 31 Ontario
+  tenants by default, configurable in `sources.crawl_config.tenants`).
+* Expired tenders are marked `closed` by the maintenance tick (1 day after the deadline) and
+  purged 14 days later.
+* Qingyan payload now includes the original notice URL, buyer contact, Chinese descriptions,
+  full description, AI feasibility + structured report, and extracted document text.
 
 ## Fresh database setup
 

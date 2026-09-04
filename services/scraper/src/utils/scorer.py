@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 PRIMARY_KEYWORDS: dict[str, int] = {
     # ── blinds ────────────────────────────
     "blinds": 45,
-    "blind": 30,
+    "blind": 20,
     "roller blinds": 50,
     "roller blind": 50,
     "zebra blinds": 50,
@@ -51,8 +51,8 @@ PRIMARY_KEYWORDS: dict[str, int] = {
     "faux wood blinds": 45,
     "aluminum blinds": 45,
     # ── shades ────────────────────────────
-    "shade": 35,
-    "shades": 35,
+    "shade": 15,
+    "shades": 18,
     "roller shade": 50,
     "roller shades": 50,
     "solar shades": 50,
@@ -72,15 +72,15 @@ PRIMARY_KEYWORDS: dict[str, int] = {
     "shade systems": 45,
     "automated shades": 50,
     "blackout systems": 45,
-    "blackout": 30,
+    "blackout": 15,
     "pleated shades": 45,
     "dual shades": 45,
     # ── curtains / drapery ────────────────
-    "curtain": 40,
+    "curtain": 30,
     "curtains": 45,
     "drapery": 50,
     "drapes": 45,
-    "drape": 40,
+    "drape": 30,
     "privacy curtain": 50,
     "privacy curtains": 50,
     "cubicle curtain": 50,
@@ -91,25 +91,25 @@ PRIMARY_KEYWORDS: dict[str, int] = {
     "drapery tracks": 50,
     "room divider curtain": 45,
     "patient room curtain": 50,
-    "shower curtain": 30,
+    "shower curtain": 20,
     "stage curtain": 35,
     "acoustic curtain": 40,
     "thermal curtain": 40,
     "blackout curtain": 50,
     "blackout curtains": 50,
     # ── shutters ───────────────────────────
-    "shutters": 40,
-    "shutter": 35,
+    "shutters": 30,
+    "shutter": 25,
     "plantation shutters": 45,
     "plantation shutter": 45,
     "interior shutters": 45,
     "window shutters": 45,
     # ── liners ────────────────────────────
-    "liner": 30,
-    "liners": 30,
+    "liner": 6,
+    "liners": 6,
     "curtain liner": 45,
     "curtain liners": 45,
-    "shower liner": 25,
+    "shower liner": 10,
     # ── window covering catch-all ─────────
     "window covering": 50,
     "window coverings": 50,
@@ -119,7 +119,71 @@ PRIMARY_KEYWORDS: dict[str, int] = {
     "window film": 30,
     "window shade": 45,
     "window blind": 45,
-    "window": 50,
+    "window": 12,
+    "window shades": 50,
+    "window blinds": 50,
+    "window shading": 45,
+    "shading system": 40,
+    "shading systems": 40,
+    "window dressing": 40,
+    "window dressings": 40,
+    "roman blind": 45,
+    "roman blinds": 45,
+    "vertical louvre": 45,
+    "vertical louvres": 45,
+    "louvre blinds": 45,
+    "louver blinds": 45,
+    "valance": 30,
+    "valances": 30,
+    "cornice board": 30,
+    "pelmet": 30,
+    "pelmets": 30,
+    "sunshade": 30,
+    "sunshades": 30,
+    "sun shade": 30,
+    "sun shades": 30,
+    "solar screen": 35,
+    "solar screens": 35,
+    "light filtering": 25,
+    "light-filtering": 25,
+    "dim-out": 25,
+    "dimout": 25,
+    "anti-ligature": 30,
+    "cubicle track": 45,
+    "cubicle tracks": 45,
+    "curtain track": 40,
+    "curtain tracks": 40,
+    "drapery hardware": 45,
+    "curtain rod": 30,
+    "curtain rods": 30,
+    # ── French (Quebec / federal bilingual notices) ──
+    "stores enrouleurs": 50,
+    "store enrouleur": 50,
+    "stores à rouleau": 50,
+    "store à rouleau": 50,
+    "stores vénitiens": 50,
+    "store vénitien": 50,
+    "stores verticaux": 50,
+    "store vertical": 45,
+    "toiles solaires": 45,
+    "toile solaire": 45,
+    "rideaux": 45,
+    "rideau": 20,
+    "draperies": 45,
+    "tentures": 40,
+    "voilages": 40,
+    "persiennes": 40,
+    "habillage de fenêtres": 50,
+    "habillage de fenêtre": 50,
+    "couvre-fenêtres": 50,
+    "couvre-fenêtre": 50,
+    "garnitures de fenêtre": 45,
+    "traitement de fenêtre": 45,
+    "traitements de fenêtre": 45,
+    "rideaux d'hôpital": 50,
+    "rideaux de séparation": 45,
+    "rails à rideaux": 40,
+    "volets intérieurs": 40,
 }
 
 SECONDARY_KEYWORDS: dict[str, int] = {
@@ -131,21 +195,21 @@ SECONDARY_KEYWORDS: dict[str, int] = {
     "soft furnishings": 30,
     "soft goods": 25,
     # ── bedding / towels / linen (textile supply) ──
-    "blanket": 20,
-    "blankets": 20,
-    "bedding": 20,
+    "blanket": 10,
+    "blankets": 10,
+    "bedding": 12,
     "bed linen": 20,
-    "towel": 15,
-    "towels": 15,
+    "towel": 8,
+    "towels": 8,
     "linen": 15,
     "linens": 15,
-    "bag": 10,
-    "bags": 10,
+    "bag": 4,
+    "bags": 4,
     "tote bag": 12,
-    "sock": 10,
-    "socks": 10,
-    "mask": 10,
-    "masks": 10,
+    "sock": 4,
+    "socks": 4,
+    "mask": 4,
+    "masks": 4,
     "face mask": 12,
     # ── standing agreement / contract types ──
     "standing agreement": 25,
@@ -343,10 +407,47 @@ def _compile(d):
         compiled.append((kw, pts, pattern))
     return compiled
 
+# Secondary keywords that describe how something is bought rather than what.
+_CONTRACT_LANGUAGE = {
+    "standing agreement", "standing offer", "supply agreement", "blanket purchase agreement",
+    "master agreement", "supply and delivery", "supply & delivery", "supply and deliver",
+    "supplying and delivering", "supply / delivery", "supply and delivered",
+    "supply, delivery and installation", "supply and install", "supply, deliver and install",
+}
+
 _PRIMARY = _compile(PRIMARY_KEYWORDS)
 _SECONDARY = _compile(SECONDARY_KEYWORDS)
 _CONTEXTUAL = _compile(CONTEXTUAL_KEYWORDS)
 _NEGATIVE = _compile(NEGATIVE_KEYWORDS)
+
+# Phrases in which a product keyword does NOT mean a window covering / textile.
+# They are blanked out of the text before keyword matching so "window" in
+# "window glazing" or "curtain" in "curtain wall" cannot score.
+_FALSE_POSITIVE_CONTEXT = re.compile(
+    r"\b(?:"
+    r"Blind River|blind spot\w*|blind flange\w*|colou?r blind\w*|blind bolt\w*|"
+    r"Rideau (?:Canal|River|Hall|Street|Centre|Center|Lakes?|Valley|Cottage|Ferry)|Ontario Waterways?|"
+    r"curtain ?walls?|curtainwall\w*|"
+    r"windows? (?:cleaning|washing|glazing|glass|replacement|repair|installation|film removal|"
+    r"tint(?:ing)? removal|wells?|frames?|units?|assembl\w+|hardware|screens?|air conditioner\w*|ac units?)|"
+    r"(?:glazing|glass|storefront|aluminum|aluminium|vinyl|wood|steel|pvc) (?:and )?(?:doors? and )?windows?|"
+    r"windows? (?:and|&) doors?|doors? (?:and|&) windows?|"
+    r"vehicle windows?|windshields?|"
+    r"(?:microsoft )?windows (?:server|10|11|7|xp|os|desktop|update\w*)|windows-based|"
+    r"shade (?:structures?|sails?|canop\w+|trees?|cloth|tolerant|garden\w*)|"
+    r"(?:pipe|pond|landfill|tank|culvert|sewer|manhole|cured[- ]in[- ]place|cipp|chimney|flue|truck bed|bin) lin(?:er|ers|ing)|"
+    r"liner (?:replacement|repair|install\w*) for (?:pipes?|ponds?|tanks?)|"
+    r"shutter(?:ed|ing) (?:speed|island)|storm shutters?|hurricane shutters?|security shutters?|roll(?:ing|-up)? shutters?|"
+    r"stage lighting|light(?:ing)? fixtures?|"
+    r"drape(?:d|s)? (?:in|over|around) |"
+    r"masking tape|face mask fit|mask fit test\w*|gas masks?|respirator\w*|"
+    r"sand ?bags?|garbage bags?|trash bags?|body bags?|air ?bags?|"
+    r"sock(?:et|ets)\b|windsock\w*|"
+    r"electric blankets?|blanket (?:purchase )?orders?|blanket (?:agreement|contract)s?|"
+    r"shower (?:valves?|heads?|stalls?|bases?|pans?)"
+    r")\b",
+    re.I,
+)
 
 # ───────────────────────────────────────────────────────────────────────
 # SEMANTIC PHRASE PATTERNS
@@ -572,9 +673,11 @@ def score_opportunity(
     """
     combined = "{} {} {}".format(title or "", description or "", project_type or "")
 
-    # Remove known false-positive location names before scoring
-    _false_positives = re.compile(r"\bBlind River\b", re.I)
-    scoring_text = _false_positives.sub("", combined)
+    # Remove known false-positive phrases before scoring: place names and
+    # contexts where a product word means something else entirely
+    # ("curtain wall" is a facade, "window cleaning" is janitorial, ...).
+    scoring_text = _FALSE_POSITIVE_CONTEXT.sub(" ", combined)
+    title_scrubbed = _FALSE_POSITIVE_CONTEXT.sub(" ", title or "")
 
     positive_score = 0
     negative_penalty = 0
@@ -584,15 +687,33 @@ def score_opportunity(
     contextual_matches = []
     negative_matches = []
 
+    primary_points: list[int] = []
     for kw, points, pattern in _PRIMARY:
         if pattern.search(scoring_text):
             primary_matches.append(kw)
-            positive_score += points
+            primary_points.append(points)
+    # Strongest product signal counts in full; overlapping variants of the same
+    # product ("blackout curtains" also hits "blackout" + "curtains") add only a
+    # little, so scores stop piling up at 100 and keep their ranking power.
+    if primary_points:
+        primary_points.sort(reverse=True)
+        primary_score = primary_points[0] + int(sum(primary_points[1:]) * 0.25)
+        positive_score += min(primary_score, 75)
 
+    secondary_product = 0
+    secondary_contract = 0
     for kw, points, pattern in _SECONDARY:
         if pattern.search(scoring_text):
             secondary_matches.append(kw)
-            positive_score += points
+            if kw in _CONTRACT_LANGUAGE:
+                secondary_contract += points
+            else:
+                secondary_product += points
+    # "standing offer" / "supply and delivery" describe the contract form, not the
+    # product: without a product match they only add a small nudge.
+    if not primary_matches:
+        secondary_contract = min(secondary_contract, 20)
+    positive_score += min(secondary_product, 45) + min(secondary_contract, 30)
 
     for kw, points, pattern in _CONTEXTUAL:
         if pattern.search(scoring_text):
@@ -606,7 +727,7 @@ def score_opportunity(
         if pattern.search(scoring_text):
             semantic_matches.append(label)
             semantic_score += points
-    semantic_score = min(semantic_score, 60)
+    semantic_score = min(semantic_score, 40)
     positive_score += semantic_score
 
     # Org type bonus
@@ -660,15 +781,16 @@ def score_opportunity(
             negative_penalty += penalty
 
     # Title boost — primary keyword in title is the strongest signal
-    title_lower = (title or "").lower()
+    # (evaluated on the scrubbed title so "Blind River" / "curtain wall" don't count)
+    title_lower = title_scrubbed.lower()
     title_boost = 0
-    for kw, _, pattern in _PRIMARY:
-        if pattern.search(title_lower):
+    for kw, points, pattern in _PRIMARY:
+        if points >= 30 and pattern.search(title_lower):
             title_boost = 25
             break
     if not title_boost:
-        for kw, _, pattern in _SECONDARY:
-            if pattern.search(title_lower):
+        for kw, points, pattern in _SECONDARY:
+            if points >= 15 and kw not in _CONTRACT_LANGUAGE and pattern.search(title_lower):
                 title_boost = 15
                 break
 

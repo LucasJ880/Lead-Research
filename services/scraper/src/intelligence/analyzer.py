@@ -284,6 +284,26 @@ def _load_prompt_template(template_key: str, fallback_system: str, fallback_user
         return fallback_system, fallback_user
 
 
+def _extract_json_block(text_: str) -> dict | None:
+    """Return the last fenced ```json {...}``` object (or trailing bare object) in a report."""
+    import re as _re
+
+    candidates = _re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text_, _re.S)
+    if not candidates:
+        # bare trailing object
+        idx = text_.rfind("\n{")
+        if idx != -1 and text_.rstrip().endswith("}"):
+            candidates = [text_[idx + 1:]]
+    for cand in reversed(candidates):
+        try:
+            parsed = json.loads(cand)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 def _structured_report_to_markdown(payload: dict[str, Any]) -> str:
     """Render structured Bid/No-Bid output to markdown for backward compatibility."""
     fit_score = payload.get("fit_score")
@@ -461,6 +481,12 @@ class TenderAnalyzer:
                     if isinstance(parsed, dict):
                         structured_report = parsed
                         report_md = _structured_report_to_markdown(parsed)
+                else:
+                    # The deep prompt returns Markdown with a trailing ```json block;
+                    # keep the Markdown and lift the block out as structured data.
+                    parsed = _extract_json_block(raw_content)
+                    if isinstance(parsed, dict):
+                        structured_report = parsed
             except Exception:
                 structured_report = None
 

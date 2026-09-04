@@ -138,6 +138,32 @@ class BaseCrawler(ABC):
             settings.DEFAULT_USER_AGENT, url
         )
 
+    # ─── Diagnostics ────────────────────────────────────────
+
+    def diagnostics(self) -> dict:
+        """Counters recorded on the source_run (override or set ``self._diag``).
+
+        Crawlers that keep a dataclass in ``self._diag`` get it serialized
+        automatically; ``search_results`` lists of (keyword, count) become a
+        ``zero_yield_searches`` ratio so a silently broken parser is visible.
+        """
+        diag = getattr(self, "_diag", None)
+        if diag is None:
+            return {}
+        try:
+            import dataclasses
+
+            data = dataclasses.asdict(diag) if dataclasses.is_dataclass(diag) else dict(vars(diag))
+        except Exception:
+            return {}
+        searches = data.get("search_results")
+        if isinstance(searches, list) and searches:
+            zero = sum(1 for item in searches if isinstance(item, (list, tuple)) and len(item) == 2 and not item[1])
+            data["searches"] = len(searches)
+            data["zero_yield_searches"] = zero
+            data["search_results"] = [list(item) for item in searches[:60]]
+        return data
+
     # ─── Time Budget ────────────────────────────────────────
 
     def time_remaining(self) -> float | None:
